@@ -1,0 +1,24 @@
+[project]
+name = "video-notes"
+version = "0.1.0"
+description = "Turn a TikTok collection into notes in Marco's brain"
+requires-python = ">=3.12"
+dependencies = [
+  "yt-dlp[default,curl-cffi]",
+  "gallery-dl",
+  "faster-whisper",
+  "pytesseract",
+  "opencv-python-headless",
+  "numpy",
+  "pillow",
+]
+
+[project.scripts]
+vn = "video_notes.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

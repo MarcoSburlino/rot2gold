@@ -1,0 +1,16 @@
+# video-notes configuration. This is the only place the collection URL is stored.
+
+collection_url = "https://www.tiktok.com/@someone/collection/Material-7000000000000000001"
+
+[fetch]
+delay_min = 3          # seconds to pause between posts
+delay_max = 10
+max_resolution = 720   # short side of the video, in pixels
+
+[ocr]
+langs = "eng+ita+spa"
+workers = 8            # parallel tesseract processes
+
+[whisper]
+model = "medium"       # chosen by scripts/whisper_bench.py, see docs/spec.md
+compute_type = "int8"

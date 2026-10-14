@@ -1,0 +1,83 @@
+[
+ {
+  "model": "small",
+  "audio": "7684933110965849377",
+  "duration": 82.0,
+  "seconds": 20.2,
+  "rtf": 0.246,
+  "language": "it",
+  "prob": 0.99
+ },
+ {
+  "model": "small",
+  "audio": "7695872432585936150",
+  "duration": 39.6,
+  "seconds": 4.6,
+  "rtf": 0.117,
+  "language": "en",
+  "prob": 0.979
+ },
+ {
+  "model": "small",
+  "audio": "7696202941811690784",
+  "duration": 87.1,
+  "seconds": 8.7,
+  "rtf": 0.1,
+  "language": "en",
+  "prob": 0.994
+ },
+ {
+  "model": "medium",
+  "audio": "7684933110965849377",
+  "duration": 82.0,
+  "seconds": 23.3,
+  "rtf": 0.284,
+  "language": "it",
+  "prob": 0.998
+ },
+ {
+  "model": "medium",
+  "audio": "7695872432585936150",
+  "duration": 39.6,
+  "seconds": 13.2,
+  "rtf": 0.332,
+  "language": "en",
+  "prob": 0.992
+ },
+ {
+  "model": "medium",
+  "audio": "7696202941811690784",
+  "duration": 87.1,
+  "seconds": 22.1,
+  "rtf": 0.253,
+  "language": "en",
+  "prob": 0.986
+ },
+ {
+  "model": "large-v3-turbo",
+  "audio": "7684933110965849377",
+  "duration": 82.0,
+  "seconds": 17.1,
+  "rtf": 0.209,
+  "language": "it",
+  "prob": 0.999
+ },
+ {
+  "model": "large-v3-turbo",
+  "audio": "7695872432585936150",
+  "duration": 39.6,
+  "seconds": 11.5,
+  "rtf": 0.29,
+  "language": "en",
+  "prob": 1.0
+ },
+ {
+  "model": "large-v3-turbo",
+  "audio": "7696202941811690784",
+  "duration": 87.1,
+  "seconds": 41.4,
+  "rtf": 0.475,
+  "language": "en",
+  "prob": 0.999
+ }
+]
