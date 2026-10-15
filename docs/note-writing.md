@@ -95,6 +95,15 @@ Everything outside Content is in English.
 - **commonplace.md**: list the post under its theme in `## Posts by theme`, as `- [[video-<slug>]] — <short description>` under a `### <Theme>` heading. Reuse an existing theme where it fits; themes are broad (e.g. "Philosophy and meaning", "Money and business", "AI and work"). Add any new topic tags to `## Topic tags in use`.
 - Run `vn done <id> Resources/commonplace/videos/video-<slug>.md`.
 
+## Working rules (learned on the first full run)
+
+- Finish each post completely before starting the next: note, quotes, hub, Inbox, `vn done`. If you are interrupted, nothing is left half-registered.
+- Edit files in place; never make backup copies. Git tracks the brain.
+- Many posts are quote slideshows from the same few accounts. Before checking a quote, `rg` the existing notes: if it was already checked, link that note and reuse its verdict.
+- If you identify an unnamed speaker only by face or voice, say it is unconfirmed ("appears to be … [?]").
+- If you do your own calculation in a note, say it is an AI calculation and state the assumption it rests on.
+- Marco may have Obsidian open on the vault: if a file changes on disk, re-read it before editing.
+
 ## Quality bar
 
 - Neutral tone throughout, including the title and key points. No praise, no debunking voice; let the "Checked" verdicts and attributed perspectives carry the evaluation.

@@ -99,6 +99,11 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
   - only short italic labels may be added to Content;
   - wording-changing grammar fixes get `[?]`.
 
-## Results
+## Results of the first full run (2026-10-14 → 2026-10-15)
 
-See the project note `~/Projects/brain/Projects/video-notes.md` (Log) for the run on the full collection.
+- **Collection:** 104 posts (83 videos, 21 slideshows) by the end of the run; it grew from 99 while the pipeline was being built.
+- **Pipeline:** every post fetched and processed in three `vn run` chunks. There were no download failures, no blocks, and no "no content" skips. One chunk was interrupted mid-fetch on purpose and resumed cleanly. Kept images take 150 MB.
+- **Notes:** 101 written. 3 were skipped by the note writer as useless: a Dolomites photo slideshow, a mountaineering photo meme, and a boiling-frog clip where only "take one frog" was captured.
+- **Note writing:** 5 test notes written by the coordinator, then 10 batches of about 10, one sub-agent per batch, run sequentially. One sub-agent was cut off by an API content-filter error (most likely a false positive). A fresh sub-agent finished the batch, which led to the "finish each post before the next" rule.
+- **OCR quality:** good on slides with clean overlaid text (confidence 85–96). Poor on most video frames and on stylised quote slideshows (text over paintings or manga, decorative fonts), so note writers read those images directly. Frame OCR is best treated as a hint.
+- **Speech:** Whisper medium was accurate on clear English and Italian. Errors were mostly proper nouns ("Antropic", "Q1" for Qwen, "Unschlot" for Unsloth) and lines spoken over music.
