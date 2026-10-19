@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Ideas · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<h1>Ideas</h1>
+<form method="get" class="filters">
+  <label>Status <select name="status">{% for s in ['all', 'new', 'trying', 'kept', 'dropped'] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></label>
+  <label class="grow">Search <input name="q" value="{{ q }}" placeholder="Title or description"></label>
+  <button>Filter</button>
+</form>
+{% if rows %}<div class="cards idea-cards">
+{% for idea in rows %}
+<article class="card">
+  <a class="name" href="/ideas/{{ idea.name }}">{{ idea.title }}</a>
+  {% set same = idea.description|lower|replace('"', "'") == idea.title|lower|replace('"', "'") %}
+  {% if idea.description and not same %}<p class="description">{{ idea.description }}</p>{% endif %}
+  <p class="meta"><span class="badge">{{ idea.support }} {{ 'source' if idea.support == 1 else 'sources' }}</span> <span class="badge">{{ idea.status }}</span> · {{ idea.updated }}</p>
+  <p>{% for src in idea.source_links %}{% if src.url %}<a class="chip" href="{{ src.url }}">{{ src.name }}</a>{% else %}<span class="chip">{{ src.name }}</span>{% endif %}{% endfor %}</p>
+  <a href="{{ idea.obsidian }}">Open in Obsidian</a>
+</article>
+{% endfor %}
+</div>{% else %}<p class="empty">No ideas match these filters.</p>{% endif %}
+<section class="add">
+  <h2>Rebuild ideas</h2>
+  <form method="post" action="/ideas/rebuild" class="stack narrow">
+    <p class="muted">Consider unchecked notes under these themes:</p>
+    {% for theme in themes %}<label class="check"><input type="checkbox" name="themes" value="{{ theme.name }}"> {{ theme.name }} <span class="muted">{{ theme.unchecked }} of {{ theme.total }} notes not checked yet</span></label>{% endfor %}
+    <label class="check"><input type="checkbox" name="dry_run" value="1" checked> Dry run (preview only, nothing written to the brain)</label>
+    <label>At most <input type="number" name="limit" min="1" placeholder="all" class="num"> notes</label>
+    <button class="primary" {% if active %}disabled title="A run is in progress"{% endif %}>Find ideas</button>
+  </form>
+</section>
+{% endblock %}

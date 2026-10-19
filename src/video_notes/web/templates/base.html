@@ -13,7 +13,7 @@
       <a href="/" {% if request.url.path == '/' %}aria-current="page"{% endif %}>Connections</a>
       <a href="/runs" {% if request.url.path.startswith('/runs') %}aria-current="page"{% endif %}>Runs</a>
       <a href="/videos" {% if request.url.path.startswith('/videos') %}aria-current="page"{% endif %}>Videos</a>
-      <span class="soon" title="Phase 3">Ideas</span>
+      <a href="/ideas" {% if request.url.path.startswith('/ideas') %}aria-current="page"{% endif %}>Ideas</a>
       <span class="soon" title="Phase 4">Settings</span>
     </nav>
   </header>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Ideas preview · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<p class="crumbs"><a href="/runs/{{ run_id }}">← Run {{ run_id }}</a></p>
+<h1>Ideas preview</h1>
+{% if manifest.applied %}
+  <div class="banner ok">Dry run {{ run_id }} was applied to the brain ({{ manifest.applied }}).</div>
+{% else %}
+  <div class="banner warn">Dry run {{ run_id }}: nothing was written to the brain yet.
+    {{ rows|length }} idea {{ 'file' if rows|length == 1 else 'files' }} from {{ (manifest.considered or [])|length }} notes considered.</div>
+  {% if rows or manifest.considered %}
+  <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="row apply-bar">
+    <button class="primary" {% if active %}disabled title="A run is in progress"{% endif %}>Apply these ideas to the brain</button>
+    <span class="muted">Copies them into Inbox/ideas and marks the notes as checked. No new Claude call.
+      Ideas you edited since the dry run are skipped, never overwritten.</span>
+  </form>
+  {% endif %}
+{% endif %}
+
+{% for idea in rows %}
+<article class="note idea-preview">
+  <p class="meta">
+    <span class="badge {{ 'st-processed' if idea.is_update else 'st-done' }}">{{ 'update' if idea.is_update else 'new' }}</span>
+    {{ idea.support }} {{ 'source' if idea.support == 1 else 'sources' }} · {{ idea.status }} · {{ idea.updated }}
+  </p>
+  <h2>{{ idea.title }}</h2>
+  <p class="description">{{ idea.description }}</p>
+  <p>{% for src in idea.source_links %}{% if src.url %}<a class="chip" href="{{ src.url }}">{{ src.name }}</a>{% else %}<span class="chip">{{ src.name }}</span>{% endif %}{% endfor %}</p>
+  <div class="prose">{{ idea.html|safe }}</div>
+</article>
+{% else %}
+<p class="empty">No idea files were written in this dry run.</p>
+{% endfor %}
+{% endblock %}

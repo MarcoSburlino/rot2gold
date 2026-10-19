@@ -192,3 +192,10 @@ details pre { max-height: 300px; overflow: auto; background: var(--bg); padding:
 .facts dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 0.8rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.idea-cards .description { margin: 0; }
+.idea-cards .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.idea-preview { margin: 16px 0; }
+.apply-bar { margin: 12px 0 20px; }
+.idea-preview { margin-bottom: 16px; }
+.idea-preview h2 { margin: 6px 0 4px; font-size: 1.15rem; }

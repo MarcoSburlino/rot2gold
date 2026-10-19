@@ -20,8 +20,9 @@ This file replaces that per-post step with one pass that looks across sources. I
 
 ## When the pass runs
 
-- **After each Extract**, once the run's notes are committed. Input: the posts whose note has not been considered yet (`ideas_checked_at` is empty in `data/vn.sqlite`).
-- **"Rebuild ideas from all notes"**, started by hand from the app. Input: every written note, in batches of 25. Use it once to seed the ideas from the existing collection, and again only if these rules change.
+- **After each Extract**, once the run's notes are committed. Input: unchecked notes (`ideas_checked_at` is empty in `data/vn.sqlite`) marked done on or after `[ideas] since` (2026-10-19 by default).
+- **"Rebuild ideas"**, started by hand from the app or CLI. Input: unchecked notes under selected themes in `commonplace.md`, regardless of date, in batches of 25. Marco chose Mindset and self-help, Learning and memory, and Money and business on 2026-10-19. Marking only considered notes lets a stopped rebuild resume.
+- **Dry runs** write previews to `data/ideas-dry-run/run-N/`, without marking posts or committing to the brain.
 
 The app gives the agent the list of notes to consider. The agent only writes idea notes; the app runs `brain-index`, commits, and records which posts were considered.
 

@@ -34,6 +34,7 @@
 
   <div class="extract-bar">
     <label class="check"><input type="checkbox" name="write_notes" value="1" checked> Write notes</label>
+    <label class="check"><input type="checkbox" name="find_ideas" value="1" checked> Find ideas</label>
     <label>at most <input type="number" name="max_notes" min="1" placeholder="{{ notes_cfg.max_per_run }}" class="num"> notes</label>
     <span class="muted">batches of {{ notes_cfg.batch_size }} · {{ notes_cfg.backend }} · {{ notes_cfg.model }}</span>
     <button class="primary" {% if active %}disabled title="A run is in progress"{% endif %}>Extract</button>

@@ -10,7 +10,7 @@ Other docs:
 
 The brain holds the knowledge. The app reads notes from it and writes notes to it, and never keeps its own copy.
 
-**Status:** Phases 1 and 2 built (2026-10-19): connections, Extract, the lock, note-writing batches, and the Connections, Runs, Run, Videos and Video detail screens. The phases are at the end.
+**Status:** Phases 1–3 built (2026-10-19): connections, Extract, note-writing and ideas batches, and the Connections, Runs, Videos and Ideas screens. The phases are at the end.
 
 ## Goals
 
@@ -144,7 +144,7 @@ Each batch of notes is committed on its own, and Git is the review and undo tool
 
 A true "hold before commit" mode would need a staging copy of `commonplace.md` and `quotes.md`, which every batch also edits. It comes in Phase 5 as an optional setting: write the batch, show the diff, commit on approval.
 
-## Data model (schema v2)
+## Data model (schema v3)
 
 All state stays in `data/vn.sqlite`.
 
@@ -158,6 +158,7 @@ All state stays in `data/vn.sqlite`.
 - `connection_links(connection_id, url)`: post URLs pasted by hand, the fallback when listing fails. It replaces `data/links.txt`.
 - `runs(id, origin, connection_ids, backend, model, started_at, finished_at, status, error, posts_listed, posts_fetched, posts_processed, posts_noted, posts_skipped, tokens_in, tokens_out, cache_read, cache_write, cost_estimate_usd, brain_commits)`.
 - `run_events(run_id, ts, level, stage, post_id, message)`.
+- Schema v3 adds `runs.kind` (`extract`, `ideas`, `ideas-dry-run`) and `runs.ideas_created`, `runs.ideas_updated`. Existing runs default to `extract`; v2→v3 is additive and needs no backup.
 
 ### Changes to `posts`
 
@@ -211,7 +212,7 @@ For the selected connections, `extract.py`:
    3. Check every post of the batch in the database: either `done` with a `note_path` that exists, or `skipped`.
    4. Run `brain-index`, then `brain-index --check`.
    5. Stage only the paths that changed since the snapshot *and* are under `Resources/commonplace/` or are generated indexes. Commit as `agent: video notes batch (run N)`. Anything else that changed (Obsidian, another agent) stays unstaged.
-6. **Ideas pass.** One `claude -p` with `prompts/ideas.md`, over the notes not considered yet (see `ideas.md`). Then index, check, and a staged commit of `Inbox/ideas/` and the indexes: `agent: ideas pass (run N)`.
+6. **Ideas pass.** Batches of up to 25 unchecked notes marked done on or after `[ideas] since`, with `prompts/ideas.md` (see `ideas.md`). Each completed batch is indexed, checked and committed from `Inbox/ideas/` and the indexes as `agent: ideas pass N (run N)`.
 7. **Finish.** Totals the usage on the `runs` row and releases the lock.
 
 Posts that belong to no selected connection are left alone, even if they are waiting.
@@ -264,8 +265,9 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
    - **Open in Obsidian:** `obsidian://open?path=<absolute note path>`. This works without the vault name; the Flatpak Obsidian is registered for `obsidian://` links.
    - The raw OCR text and transcript, collapsed.
 4. **Ideas** (`/ideas`)
-   - The idea notes in `~/Projects/brain/Inbox/ideas/`, read from the files, so Marco's edits show up. Sorted by `support`, then `updated`, with a filter on `status`.
+   - Cards from `~/Projects/brain/Inbox/ideas/`, read from the files, so Marco's edits show up. Sorted by `support`, then `updated`, with status and text filters, source count, description and Obsidian link.
    - Each idea links its sources: video notes go to Video detail, other notes open in Obsidian.
+   - The detail page renders the full idea safely. The rebuild form selects themes, an optional limit and a dry run (on by default); `/ideas/preview/<run_id>` renders its files.
 5. **Runs** (`/runs`) and **Settings** (`/settings`)
    - Runs: the history with status, counts, usage per run and per batch, and the brain commits made.
    - Settings: backend, model, batch size, notes per run, API key (set or replace, never shown), Firefox profile.
@@ -278,11 +280,12 @@ docs/ideas.md              rules for the ideas pass
 prompts/write-notes.md     prompt for one note-writing batch
 prompts/ideas.md           prompt for the ideas pass
 src/video_notes/
-  db.py                    schema v2, migration, WAL                (changed)
+  db.py                    schema v3, migration, WAL                (changed)
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
   cli.py                   extract, ui, conn add|list|rm, lock      (changed)
   lock.py events.py errors.py
   extract.py               the Extract run
+  runs.py                  shared lock, run row and final status
   notes.py                 note-writing batches
   ideas.py                 ideas pass; reading idea notes
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
@@ -292,6 +295,7 @@ src/video_notes/
   notefile.py              reading notes (front matter, title) and rendering them with wikilinks
   web/                     app.py, templates/, static/
 tests/
+  test_core.py test_ideas.py  temporary database, brain and fake Claude checks
 ```
 
 ## Phases
@@ -302,7 +306,7 @@ tests/
    - A minimal UI: the Connections screen and the run panel.
    - Done when Marco adds a connection, presses Extract, and new posts become committed notes, as in the run of 2026-10-15.
 2. **Browse.** The Videos and Video detail screens.
-3. **Ideas.** The ideas pass in Extract, "Rebuild ideas from all notes", moving the 14 first-run ideas into `Inbox/ideas/`, and the Ideas screen.
+3. **Ideas.** The ideas pass in Extract, theme-based rebuilds, dry-run previews, and the Ideas screen. Migrating the 14 first-run idea files remains a separate brain change.
 4. **API backend.** Settings, keyring, `--bare`, budget caps, usage per run and per batch.
 5. **Extras.** Undo this run, an optional review before commit, a `.desktop` launcher, the Update downloaders button, maybe a Codex backend.
 

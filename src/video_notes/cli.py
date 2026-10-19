@@ -3,9 +3,10 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
-from . import brain, connections, db, lock
-from .config import ROOT
+from . import brain, connections, db, ideas, lock, secrets
+from .config import ROOT, load
 from .errors import VNError
 
 
@@ -145,10 +146,64 @@ def cmd_runs(args) -> None:
     con = db.connect()
     db.mark_interrupted_runs(con, (lock.holder() or {}).get("pid"))
     for r in con.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (args.n,)):
-        print(f"run {r['id']}  {r['started_at'][:16]}  {r['origin']:<8} {r['status']:<11}"
+        print(f"run {r['id']}  {r['started_at'][:16]}  {r['origin']:<8} {r['kind']:<13} {r['status']:<11}"
               f" listed {r['posts_listed']}, fetched {r['posts_fetched']}, processed {r['posts_processed']},"
               f" noted {r['posts_noted']}, skipped {r['posts_skipped']}, ~${r['cost_estimate_usd']:.2f}"
               + (f"\n      {r['error']}" if r["error"] else ""))
+
+
+def cmd_ideas(args) -> None:
+    con = db.connect()
+    if args.action == "list":
+        print(f"{'Support':>7}  {'Status':<8}  {'Name':<36}  Title")
+        for idea in ideas.list_ideas():
+            print(f"{idea['support']:>7}  {idea['status']:<8}  {idea['name']:<36}  {idea['title']}")
+        return
+    if args.action == "themes":
+        pending = {Path(r[0]).stem for r in con.execute(
+            "SELECT note_path FROM posts WHERE status = 'done' AND ideas_checked_at IS NULL"
+            " AND note_path IS NOT NULL")}
+        for theme, names in ideas.themes().items():
+            unchecked = len(set(names) & pending)
+            print(f"{theme}: {unchecked} of {len(names)} not checked")
+        return
+    from .runs import recorded_run
+    cfg = load()
+    if args.action == "apply":
+        with recorded_run("terminal", "vn ideas apply", "ideas", [], cfg) as run:
+            run.report.set_stage("ideas")
+            try:
+                done = ideas.apply_dry_run(run.con, args.run_id, run.report)
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from None
+            run.counts["ideas_created"] = len(done["copied"])
+            run.report.set_stage("done")
+        print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas copied, {len(done['skipped'])} skipped,"
+              f" {len(done['considered'])} notes marked checked; commit {done['commit'] or '-'}")
+        return
+    ids = conn_ids(args.conn) if args.action == "pass" else None
+    chosen = ([x.strip() for x in args.themes.split(",") if x.strip()] if args.themes else None)
+    try:
+        todo = ideas.candidates_new(con, ids, cfg=cfg) if args.action == "pass" else ideas.candidates_rebuild(con, chosen)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    if args.action == "rebuild" and args.limit is not None:
+        todo = todo[:max(0, args.limit)]
+    kind = "ideas-dry-run" if args.dry_run else "ideas"
+    with recorded_run(args.origin, f"vn ideas {args.action}", kind, ids, cfg) as run:
+        run.report(f"run {run.run_id}: {len(todo)} notes to consider")
+        run.report.set_stage("ideas")
+        if todo:
+            api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
+            result = ideas.run_pass(run.con, todo, cfg, run.report, run.run_id, args.dry_run, api_key)
+            run.counts["ideas_created"] = len(result["created"])
+            run.counts["ideas_updated"] = len(result["updated"])
+        run.report.set_stage("done")
+    row = run.row()
+    print(f"run {row['id']} {row['status']}: ideas created {row['ideas_created']}, updated {row['ideas_updated']}"
+          + (f"; {row['error']}" if row["error"] else ""))
+    if row["status"] == "failed":
+        raise SystemExit(1)
 
 
 def locked(command: str, fn, *a, **kw):
@@ -171,6 +226,7 @@ def main() -> None:
     sp.add_argument("--conn", help="connection ids, comma-separated (default: all)")
     sp.add_argument("--max-notes", type=int, help="write at most this many notes (default: config.toml [notes])")
     sp.add_argument("--no-notes", action="store_true", help="stop after OCR and transcription")
+    sp.add_argument("--no-ideas", action="store_true", help="skip the ideas pass")
     sp.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
     sp.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
     sp = sub.add_parser("conn", help="manage connections (collections)")
@@ -192,6 +248,20 @@ def main() -> None:
     cp.add_argument("--yes", action="store_true")
     cp = csub.add_parser("links", help="replace a connection's hand-pasted post URLs (read from stdin)")
     cp.add_argument("id", type=int)
+    sp = sub.add_parser("ideas", help="list ideas, themes, or run the ideas pass")
+    isub = sp.add_subparsers(dest="action", required=True)
+    isub.add_parser("list")
+    isub.add_parser("themes")
+    ip = isub.add_parser("apply", help="copy a reviewed dry run into the brain (no new Claude call)")
+    ip.add_argument("run_id", type=int)
+    ip = isub.add_parser("pass")
+    ip.add_argument("--conn", help="connection ids, comma-separated")
+    ip = isub.add_parser("rebuild")
+    ip.add_argument("--themes", help="comma-separated theme names")
+    ip.add_argument("--limit", type=int)
+    for ip in (isub.choices["pass"], isub.choices["rebuild"]):
+        ip.add_argument("--dry-run", action="store_true")
+        ip.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
     sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740")
     sp.add_argument("--no-browser", action="store_true")
     sp = sub.add_parser("runs", help="recent runs")
@@ -231,7 +301,7 @@ def main() -> None:
         elif args.cmd == "extract":
             from .extract import extract
             run = extract(conn_ids(args.conn), origin=args.origin, max_notes=args.max_notes,
-                          write=not args.no_notes, quiet=args.quiet)
+                          write=not args.no_notes, quiet=args.quiet, find_ideas=not args.no_ideas)
             print(f"run {run['id']} {run['status']}: listed {run['posts_listed']}, fetched {run['posts_fetched']},"
                   f" processed {run['posts_processed']}, noted {run['posts_noted']}, skipped {run['posts_skipped']}"
                   f"; ~${run['cost_estimate_usd']:.2f} API-equivalent")
@@ -240,6 +310,8 @@ def main() -> None:
         elif args.cmd == "ui":
             from .web.app import serve
             serve(open_browser=not args.no_browser)
+        elif args.cmd == "ideas":
+            cmd_ideas(args)
         else:
             {"pending": cmd_pending, "done": cmd_done, "skip": cmd_skip, "status": cmd_status,
              "conn": cmd_conn, "runs": cmd_runs}[args.cmd](args)

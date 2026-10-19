@@ -4,20 +4,23 @@
 <h1>Run {{ run.id }} <span class="status s-{{ run.status }}" id="status">{{ run.status }}</span></h1>
 <p class="meta">
   {{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}
-  · from {{ run.origin }}
+  · from {{ run.origin }} · {{ run.kind }}
   · {% for i in (run.connection_ids or '').split(',') if i %}{{ names.get(i|int, '#' ~ i) }}{% if not loop.last %}, {% endif %}{% endfor %}
   · {{ run.backend }}, {{ run.model }}
 </p>
 
 <ol class="stages" id="stages" data-stage="{{ run.stage or '' }}">
-  {% for s in ['sync', 'fetch', 'process', 'notes', 'done'] %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
+  {% for s in (['sync', 'fetch', 'process', 'notes', 'ideas', 'done'] if run.kind == 'extract' else ['ideas', 'done']) %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
 </ol>
 
 <div class="stats">
   {% for k in ['listed', 'fetched', 'processed', 'noted', 'skipped'] %}
   <div><b data-count="posts_{{ k }}">{{ run['posts_' ~ k] }}</b> {{ k }}</div>
   {% endfor %}
+  <div><b data-count="ideas_created">{{ run.ideas_created }}</b> ideas created</div>
+  <div><b data-count="ideas_updated">{{ run.ideas_updated }}</b> ideas updated</div>
 </div>
+{% if run.kind == 'ideas-dry-run' %}<p><a class="button" href="/ideas/preview/{{ run.id }}">View dry run preview</a></p>{% endif %}
 
 {% if run.cost_estimate_usd or run.cache_read %}
 <section class="usage">

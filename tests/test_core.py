@@ -44,6 +44,7 @@ def test_migration_from_v1(tmp_path, monkeypatch):
     assert conn["last_synced_at"] == "2026-10-14T22:02:00+00:00"
     assert con.execute("SELECT COUNT(*) FROM connection_posts").fetchone()[0] == 3
     assert {"platform", "ideas_checked_at"} <= db.columns(con, "posts")
+    assert {"kind", "ideas_created", "ideas_updated"} <= db.columns(con, "runs")
     backup = sqlite3.connect(tmp_path / "vn.sqlite.bak-v1")
     assert backup.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 3
     assert backup.execute("PRAGMA user_version").fetchone()[0] == 0

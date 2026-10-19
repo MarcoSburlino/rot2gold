@@ -3,11 +3,12 @@
 <h1>Runs</h1>
 {% if not runs %}<p class="empty">No runs yet. Start one from Connections with Extract, or with <code>vn extract</code> in a terminal.</p>{% else %}
 <table class="runs">
-  <thead><tr><th>Run</th><th>Started</th><th>From</th><th>Connections</th><th>Status</th><th>Listed</th><th>Fetched</th><th>Processed</th><th>Noted</th><th>Skipped</th><th>AI (API-equivalent)</th></tr></thead>
+  <thead><tr><th>Run</th><th>Kind</th><th>Started</th><th>From</th><th>Connections</th><th>Status</th><th>Listed</th><th>Fetched</th><th>Processed</th><th>Noted</th><th>Skipped</th><th>AI (API-equivalent)</th></tr></thead>
   <tbody>
   {% for r in runs %}
     <tr>
       <td><a href="/runs/{{ r.id }}">{{ r.id }}</a></td>
+      <td>{{ r.kind }}</td>
       <td>{{ r.started_at|local_time }}</td>
       <td>{{ r.origin }}</td>
       <td>{% for i in (r.connection_ids or '').split(',') if i %}{{ names.get(i|int, '#' ~ i) }}{% if not loop.last %}, {% endif %}{% endfor %}</td>

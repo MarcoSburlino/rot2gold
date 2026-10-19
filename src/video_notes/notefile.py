@@ -39,13 +39,31 @@ def read(path: Path, head_only: bool = False) -> Note:
             try:
                 meta = yaml.safe_load(text[4:end]) or {}
             except yaml.YAMLError:
-                meta = {}
+                meta = simple_front_matter(text[4:end])
             body = text[end + 4:].lstrip("\n")
     m = re.search(r"^# (.+)$", body, re.M)
     title = m.group(1).strip() if m else path.stem
     if m and not head_only:
         body = body[:m.start()] + body[m.end():]  # the page shows the title itself
     return Note(path, meta if isinstance(meta, dict) else {}, title, body)
+
+
+def simple_front_matter(text: str) -> dict:
+    """Recover plain fields and block lists when a description contains an unquoted colon."""
+    out = {}
+    key = None
+    for line in text.splitlines():
+        if line.startswith("  - ") and key is not None and isinstance(out[key], list):
+            out[key].append(unquote(line[4:].strip()))
+        elif not line.startswith(" ") and ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip()
+            out[key] = unquote(value.strip()) if value.strip() else []
+    return out
+
+
+def unquote(value: str) -> str:
+    return value[1:-1] if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'" else value
 
 
 def brain_names() -> dict[str, Path]:

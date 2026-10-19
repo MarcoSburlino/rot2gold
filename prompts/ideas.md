@@ -10,8 +10,10 @@ Read these first, fully, and follow them exactly:
 The notes to consider in this pass are these {{count}} (post id, then note path relative to ~/Projects/brain):
 {{notes}}
 
+{{mode}}
+
 Today's date is {{today}}.
 
-Write and update only files in ~/Projects/brain/Inbox/ideas/. Do NOT run brain-index or git: the app indexes and commits after the pass. Never write in a "## My notes" section. Never read ~/Private, ~/.local/share/chat-vault or any other path the global rules forbid.
+Write and update only files in {{ideas_dir}}. Create at most {{max_new}} new ideas in this pass. Do NOT run brain-index or git: the app indexes and commits after the pass. Never write in a "## My notes" section. Never read ~/Private, ~/.local/share/chat-vault or any other path the global rules forbid.
 
-When finished, return the report in the requested JSON format: the idea files you created, the idea files you updated, and the post ids you considered (including those that gave no idea; leave out only notes held back by the 5-new-ideas limit).
+When finished, return the report in the requested JSON format: the idea files you created, the idea files you updated, and the post ids you considered (including those that gave no idea; leave out only notes held back by the {{max_new}}-new-ideas limit).

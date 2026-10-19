@@ -22,8 +22,9 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import brain, connections, db, lock, notefile, sources
-from ..config import LOGS, MEDIA, ROOT, load, media_dir
+from .. import brain, connections, db, ideas, lock, notefile, sources
+from ..config import DATA, LOGS, MEDIA, ROOT, load, media_dir
+from ..errors import VNError
 
 APP_NAME = "video-notes-app"  # the project name may change: this is the only place the UI shows it
 HERE = Path(__file__).parent
@@ -139,18 +140,26 @@ def delete_connection(cid: int):
 
 
 @app.post("/extract")
-def start_extract(conn: list[int] = Form([]), max_notes: str = Form(""), write_notes: str = Form("")):
+def start_extract(conn: list[int] = Form([]), max_notes: str = Form(""), write_notes: str = Form(""),
+                  find_ideas: str = Form("")):
     if not conn:
         return back(err="Select at least one connection to extract.")
-    if info := lock.holder():
-        return back(err=f"The pipeline is already running: {lock.describe(info)}.")
-    LOGS.mkdir(parents=True, exist_ok=True)
-    log = LOGS / f"extract-{datetime.now():%Y%m%d-%H%M%S}.log"
     cmd = [sys.executable, "-m", "video_notes.cli", "extract", "--origin", "app", "--conn", ",".join(map(str, conn))]
     if max_notes.strip().isdigit():
         cmd += ["--max-notes", max_notes.strip()]
     if not write_notes:
         cmd.append("--no-notes")
+    if not find_ideas:
+        cmd.append("--no-ideas")
+    return spawn_run(cmd, "Extract")
+
+
+def spawn_run(cmd: list[str], label: str):
+    """Start an independent recorded run and wait for its lock record."""
+    if info := lock.holder():
+        return back(err=f"The pipeline is already running: {lock.describe(info)}.")
+    LOGS.mkdir(parents=True, exist_ok=True)
+    log = LOGS / f"{label.lower()}-{datetime.now():%Y%m%d-%H%M%S}.log"
     env = dict(os.environ)
     # The note-writing agent calls `vn`: make sure it's on PATH even if the app was started from a launcher.
     env["PATH"] = os.pathsep.join([str(ROOT / ".venv/bin"), str(Path.home() / ".local/bin"), env.get("PATH", "")])
@@ -165,9 +174,9 @@ def start_extract(conn: list[int] = Form([]), max_notes: str = Form(""), write_n
             return back(f"/runs/{info['run_id']}")
         if proc.poll() is not None:
             tail = log.read_text().strip().splitlines()[-3:]
-            return back(err="Extract stopped right away: " + " ".join(tail))
+            return back(err=f"{label} stopped right away: " + " ".join(tail))
         time.sleep(0.1)
-    return back(msg="Extract is starting…")
+    return back(msg=f"{label} is starting…")
 
 
 @app.post("/runs/stop")
@@ -193,6 +202,22 @@ def note_head(row) -> dict:
         return {"missing": True}
     note = notefile.read(path, head_only=True)
     return {"title": note.title, "description": note.meta.get("description", "")}
+
+
+def note_links(con):
+    """Resolve wikilinks to video pages or Obsidian, leaving unknown names as text."""
+    names = notefile.brain_names()
+    videos_by_note = {Path(r["note_path"]).stem: r["id"] for r in
+                      con.execute("SELECT id, note_path FROM posts WHERE note_path IS NOT NULL")}
+
+    def link_for(name):
+        if name not in names:
+            return None
+        if name in videos_by_note:
+            return f"/videos/{videos_by_note[name]}"
+        return notefile.obsidian_link(names[name])
+
+    return link_for
 
 
 @app.get("/videos", response_class=HTMLResponse)
@@ -246,16 +271,7 @@ def video(request: Request, post_id: str):
     note = note_html = obsidian = None
     if post["note_path"] and (path := brain.note_file(post["note_path"])).is_file():
         note = notefile.read(path)
-        names = notefile.brain_names()
-        videos_by_note = {Path(r["note_path"]).stem: r["id"] for r in
-                          con.execute("SELECT id, note_path FROM posts WHERE note_path IS NOT NULL")}
-
-        def link_for(name):
-            if name in videos_by_note:
-                return f"/videos/{videos_by_note[name]}"
-            return notefile.obsidian_link(names[name]) if name in names else None
-
-        note_html = notefile.render(note.body, link_for)
+        note_html = notefile.render(note.body, note_links(con))
         obsidian = notefile.obsidian_link(path)
     return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
                 note=note, note_html=note_html, obsidian=obsidian)
@@ -268,6 +284,89 @@ def media(post_id: str, name: str):
     if not path.is_relative_to(MEDIA.resolve()) or not path.is_file():
         return HTMLResponse("Not found", status_code=404)
     return FileResponse(path)
+
+
+def idea_rows(con, folder=None):
+    link_for = note_links(con)
+    return [item | {"source_links": [{"name": name, "url": link_for(name)} for name in item["sources"]],
+                    "obsidian": notefile.obsidian_link(item["path"]) if folder is None else None}
+            for item in ideas.list_ideas(folder)]
+
+
+@app.get("/ideas", response_class=HTMLResponse)
+def idea_index(request: Request, status: str = "all", q: str = ""):
+    con = db.connect()
+    rows = idea_rows(con)
+    if status in ("new", "trying", "kept", "dropped"):
+        rows = [r for r in rows if r["status"] == status]
+    if q.strip():
+        rows = [r for r in rows if q.strip().lower() in
+                " ".join(str(r[k]) for k in ("title", "description", "name")).lower()]
+    pending = {Path(r["note_path"]).stem for r in con.execute(
+        "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
+    themes = [{"name": name, "total": len(names), "unchecked": len(set(names) & pending)}
+              for name, names in ideas.themes().items()]
+    return page(request, "ideas.html", rows=rows, themes=themes, status=status, q=q)
+
+
+@app.post("/ideas/rebuild")
+def start_ideas_rebuild(themes: list[str] = Form([]), dry_run: str = Form(""), limit: str = Form("")):
+    cmd = [sys.executable, "-m", "video_notes.cli", "ideas", "rebuild", "--origin", "app"]
+    if themes:
+        cmd += ["--themes", ",".join(themes)]
+    if dry_run:
+        cmd.append("--dry-run")
+    if limit.strip().isdigit():
+        cmd += ["--limit", limit.strip()]
+    return spawn_run(cmd, "Ideas")
+
+
+@app.get("/ideas/preview/{run_id}", response_class=HTMLResponse)
+def idea_preview(request: Request, run_id: int):
+    con = db.connect()
+    run = con.execute("SELECT kind FROM runs WHERE id = ?", (run_id,)).fetchone()
+    if not run or run["kind"] != "ideas-dry-run":
+        return HTMLResponse("Not found", status_code=404)
+    root = (DATA / "ideas-dry-run").resolve()
+    folder = (root / f"run-{run_id}").resolve()
+    if not folder.is_relative_to(root):
+        return HTMLResponse("Not found", status_code=404)
+    rows = idea_rows(con, folder) if folder.is_dir() else []
+    for item in rows:
+        note = notefile.read(item["path"])
+        item["html"] = notefile.render(note.body, note_links(con))
+        item["is_update"] = (ideas.ideas_dir() / item["path"].name).is_file()
+    manifest = ideas.read_manifest(folder) if folder.is_dir() else {}
+    return page(request, "idea-preview.html", rows=rows, run_id=run_id, manifest=manifest)
+
+
+@app.post("/ideas/preview/{run_id}/apply")
+def apply_preview(run_id: int):
+    """Quick (no AI): runs in the request, but still under the pipeline lock."""
+    from ..runs import recorded_run
+    try:
+        with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
+            run.report.set_stage("ideas")
+            done = ideas.apply_dry_run(run.con, run_id, run.report)
+            run.counts["ideas_created"] = len(done["copied"])
+            run.report.set_stage("done")
+    except (ValueError, VNError) as exc:
+        return back(f"/ideas/preview/{run_id}", err=str(exc))
+    return back("/ideas", msg=f"Applied dry run {run_id}: {len(done['copied'])} ideas written to the brain"
+                + (f", {len(done['skipped'])} skipped because you changed them since" if done["skipped"] else "")
+                + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
+
+
+@app.get("/ideas/{name}", response_class=HTMLResponse)
+def idea_detail(request: Request, name: str):
+    if not name.startswith("idea-") or Path(name).name != name:
+        return HTMLResponse("Not found", status_code=404)
+    con = db.connect()
+    item = next((r for r in idea_rows(con) if r["name"] == name), None)
+    if not item:
+        return HTMLResponse("Not found", status_code=404)
+    note = notefile.read(item["path"])
+    return page(request, "idea.html", idea=item, html=notefile.render(note.body, note_links(con)))
 
 
 @app.get("/runs", response_class=HTMLResponse)

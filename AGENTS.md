@@ -5,7 +5,7 @@ Turns the posts Marco saves on TikTok into notes in his brain (`~/Projects/brain
 Two parts, one repo:
 
 - **The pipeline, `vn`** (built, working): lists a collection, downloads each post, runs OCR (Tesseract) and speech-to-text (faster-whisper), and stores everything in SQLite. An agent then writes one note per post.
-- **The app** (Phases 1–2 built): a local web UI where Marco adds connections (collections), presses Extract, and the whole pipeline runs, including note writing; then browses every post and reads its note. Next: the ideas pass (`docs/app-spec.md` → "Phases").
+- **The app** (Phases 1–3 built): a local web UI where Marco adds connections, runs Extract through note writing and the ideas pass, then browses posts, notes and ideas (`docs/app-spec.md` → "Phases").
 
 ## Docs
 
@@ -31,7 +31,11 @@ Two parts, one repo:
 
 ```
 vn ui             # the app at http://127.0.0.1:8740 (Ctrl+C stops the server, not a running Extract)
-vn extract        # the whole pipeline for every connection, as one run; --conn 1,2  --max-notes N  --no-notes
+vn extract        # the whole pipeline for every connection, as one run; --conn 1,2  --max-notes N  --no-notes  --no-ideas
+vn ideas list     # idea notes by support, status, name and title
+vn ideas themes   # themes with total and unchecked note counts
+vn ideas pass     # new unchecked notes; --conn 1,2  --dry-run
+vn ideas rebuild  # unchecked notes under themes; --themes "Name,Other"  --limit N  --dry-run
 vn conn list      # connections; add <url> [--name N] | edit <id> | rm <id> | links <id> < urls.txt
 vn runs           # recent runs with counts and AI usage
 vn run 25         # sync + fetch + process up to 25 posts, without note writing

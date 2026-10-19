@@ -1,7 +1,6 @@
 """SQLite state. Each stage reads posts in its input status and commits after every post.
 
-Schema v2 (2026-10-19) adds connections (collections), the many-to-many link between
-connections and posts, and runs with their events. See docs/app-spec.md → "Data model".
+Schema v3 adds ideas run counts to the v2 connections and runs. See docs/app-spec.md.
 """
 
 import sqlite3
@@ -9,7 +8,7 @@ from datetime import datetime, timezone
 
 from .config import DATA, DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -141,11 +140,12 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """v1 → v2. Backs the database up first, once, as <name>.bak-v1."""
+    """Add v2 and v3 fields; back up an existing v1 database only once."""
+    version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
     backup = path.with_name(path.name + ".bak-v1")
-    if has_posts and not backup.exists():
+    if version < 2 and has_posts and not backup.exists():
         with sqlite3.connect(backup) as dst:
             con.backup(dst)
     con.executescript(SCHEMA_V2)
@@ -154,8 +154,14 @@ def migrate(con, path) -> None:
         con.execute("ALTER TABLE posts ADD COLUMN platform TEXT NOT NULL DEFAULT 'tiktok'")
     if "ideas_checked_at" not in cols:
         con.execute("ALTER TABLE posts ADD COLUMN ideas_checked_at TEXT")
+    run_cols = columns(con, "runs")
+    for name, decl in (("kind", "TEXT NOT NULL DEFAULT 'extract'"),
+                       ("ideas_created", "INTEGER NOT NULL DEFAULT 0"),
+                       ("ideas_updated", "INTEGER NOT NULL DEFAULT 0")):
+        if name not in run_cols:
+            con.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
     # The single collection of v1 becomes the first connection, with every existing post in it.
-    url = load().get("collection_url")
+    url = load().get("collection_url") if version < 2 else None
     if url and not con.execute("SELECT 1 FROM connections").fetchone():
         cookies = (con.execute("SELECT value FROM meta WHERE key = 'cookies'").fetchone() or ["0"])[0] == "1"
         src = (con.execute("SELECT value FROM meta WHERE key = 'sync_source'").fetchone() or [None])[0]
