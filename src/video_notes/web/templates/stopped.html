@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ APP_NAME }} stopped</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
+</head>
+<body>
+  <main class="stopped">
+    <h1>The app has stopped</h1>
+    <p>{% if running %}The run in progress keeps going in the background. {% endif %}Open it again from the GNOME menu (<strong>{{ APP_NAME }}</strong>) or with <code>vn ui</code> in a terminal.</p>
+    <p class="muted">You can close this tab.</p>
+  </main>
+</body>
+</html>

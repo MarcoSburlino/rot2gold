@@ -1,39 +1,55 @@
+{% from "_macros.html" import icon %}
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/app.js" defer>
-    </script>
-  </head>
-  <body>
-    <div class="app-shell">
-      <div class="mobile-bar">
-        <a class="brand" href="/ideas">{{ APP_NAME }}</a>
-        <span>{{ 'Ideas' if request.url.path.startswith('/ideas') else 'Videos' if request.url.path.startswith('/videos') else 'Runs' }}</span>
-        <button type="button" data-dialog="sidebar" aria-label="Open collections">Collections</button>
-      </div>
-      {% include '_sidebar.html' %}
-      <main class="main">
-        <div class="main-inner">
-          {% if err %}
-            <div class="banner error" role="alert">{{ err }}</div>
-          {% endif %}
-          {% if msg %}
-            <div class="banner">{{ msg }}</div>
-          {% endif %}
-          {% block main %}
-          {% endblock %}
-        </div>
-      </main>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
+  <script src="/static/app.js?v={{ asset_version() }}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  {% include "_icons.html" %}
+
+  <div class="shell">
+    {# Phones: a top bar; the sidebar opens as a drawer over the page. #}
+    <header class="topbar">
+      <a class="brand" href="/ideas">{{ APP_NAME }}</a>
+      <button type="button" class="button" data-open-sidebar aria-controls="sidebar" aria-expanded="false">
+        {{ icon('menu') }} Menu
+      </button>
+    </header>
+
+    {% include "_sidebar.html" %}
+    <div class="scrim" data-close-sidebar hidden></div>
+
+    <main id="main" class="main" tabindex="-1">
+      {# After a Settings form, its message shows inside the reopened card instead (see app.js). #}
+      {% if not request.query_params.get('settings') %}
+        {% if err %}<p class="banner banner-alert" role="alert">{{ err }}</p>{% endif %}
+        {% if msg %}<p class="banner" role="status">{{ msg }}</p>{% endif %}
+      {% endif %}
+      {% block main %}{% endblock %}
+    </main>
+  </div>
+
+  {% include "_dialogs.html" %}
+  {% block dialogs %}{% endblock %}
+
+  {# Only a Settings form's result is shown inside the card (it reopens with ?settings=<tab>). #}
+  {% set settings_result = request.query_params.get('settings') %}
+  <dialog id="settings" class="dialog dialog-wide" aria-labelledby="settings-title"
+          data-msg="{{ msg if settings_result and msg else '' }}" data-err="{{ err if settings_result and err else '' }}">
+    <div class="dialog-head">
+      <h2 id="settings-title">Settings</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close settings">{{ icon('x') }}</button>
     </div>
-    {% include '_dialogs.html' %}
-    <dialog id="settings-dialog" class="card-dialog" aria-label="Settings">
-      <div id="settings-content">
-        <p>Loading settings…</p>
-      </div>
-    </dialog>
-  </body>
+    <div class="dialog-body" data-settings-body>
+      <p class="muted">Loading settings…</p>
+    </div>
+  </dialog>
+</body>
 </html>

@@ -1,111 +1,150 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, run_pill %}
 {% block title %}Run {{ run.id }} · {{ APP_NAME }}{% endblock %}
+
 {% block main %}
-  <a class="back-link" href="{{ '/runs?conn=' ~ run.connection_ids.split(',')[0] if run.connection_ids else '/runs?kind=ideas' if run.kind.startswith('ideas') else '/runs' }}">← {{ 'Collection runs' if run.connection_ids else 'Idea runs' if run.kind.startswith('ideas') else 'All runs' }}</a>
-  <h1>Run {{ run.id }} <span class="status s-{{ run.status }}" id="status">{{ run.status }}</span></h1>
-  <p class="meta">
-  {{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}
-  · from {{ run.origin }} · {{ run.kind }}
-  · {% for i in (run.connection_ids or '').split(',') if i %}<a class="chip" href="/runs?conn={{ i }}">{{ names.get(i|int, '#' ~ i) }}</a>{% endfor %}
-  · {{ run.backend }}, {{ run.model }}
-</p>
-  <ol class="stages" id="stages" data-stage="{{ run.stage or '' }}">
-    {% for s in stages %}
-      <li data-s="{{ s }}">{{ s }}</li>
-    {% endfor %}
-  </ol>
-  <div class="stats">
-    {% for k in ['listed', 'fetched', 'processed', 'noted', 'skipped'] %}
-      <div><b data-count="posts_{{ k }}">{{ run['posts_' ~ k] }}</b> {{ k }}</div>
-    {% endfor %}
-    <div><b data-count="ideas_created">{{ run.ideas_created }}</b> ideas created</div>
-    <div><b data-count="ideas_updated">{{ run.ideas_updated }}</b> ideas updated</div>
-  </div>
-  {% if run.kind == 'ideas-dry-run' %}
-    <p><a class="button" href="/ideas/preview/{{ run.id }}">View dry run preview</a></p>
+  {% set conn_ids = (run.connection_ids or '').split(',')|select|list %}
+  {% if conn_ids|length == 1 and names.get(conn_ids[0]|int) %}
+    <a class="back-link back-link-page" href="/runs?conn={{ conn_ids[0] }}">{{ icon('back') }} Runs · {{ names[conn_ids[0]|int] }}</a>
+  {% elif run.kind.startswith('ideas') %}
+    <a class="back-link back-link-page" href="/runs?kind=ideas">{{ icon('back') }} Idea runs</a>
+  {% else %}
+    <a class="back-link back-link-page" href="/runs">{{ icon('back') }} All runs</a>
   {% endif %}
-  {% if run.cost_estimate_usd or run.cache_read %}
-    <section class="usage">
-      <h2>AI usage</h2>
-      <p>{{ '%.1f'|format(run.cache_read / 1e6) }} M cache-read · {{ '%.0f'|format(run.cache_write / 1e3) }} k cache-write ·
-     {{ '%.0f'|format(run.tokens_out / 1e3) }} k output tokens · ~${{ '%.2f'|format(run.cost_estimate_usd) }}
-     <span class="muted">{% if run.backend == 'subscription' %}what this would cost on the API — your plan is not charged per run{% else %}estimated API cost{% endif %}</span></p>
+
+  <header class="page-head">
+    <div>
+      <h1>Run {{ run.id }} <span data-run-status>{{ run_pill(run.status) }}</span></h1>
+      <p class="meta-line">
+        <span>{{ run.kind|replace('-', ' ')|capitalize }}</span>
+        <span>{{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}</span>
+        <span>from the {{ 'app' if run.origin == 'app' else 'terminal' }}</span>
+        {% if run.backend %}<span>{{ run.backend }}, {{ run.model }}</span>{% endif %}
+      </p>
+      {% if conn_ids %}
+        <p class="chips chips-inline">
+          {% for i in conn_ids %}{% if names.get(i|int) %}<a class="chip" href="/videos?conn={{ i }}">{{ names[i|int] }}</a>{% endif %}{% endfor %}
+        </p>
+      {% endif %}
+    </div>
+    <div class="page-actions">
+      {% if run.status == 'running' %}
+        <form method="post" action="/runs/stop"><button type="submit" class="button">{{ icon('stop') }} Stop</button></form>
+      {% elif run.brain_commits and not run.undone_at %}
+        <button type="button" class="button" data-dialog="undo">Undo this run</button>
+      {% endif %}
+      {% if run.kind == 'ideas-dry-run' %}
+        <a class="button button-primary" href="/ideas/preview/{{ run.id }}">Review the proposals</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if run.undone_at %}<p class="banner">This run was undone {{ run.undone_at|relative_time }}.</p>{% endif %}
+  {% if run.error %}<div class="banner {{ 'banner-alert' if run.status == 'failed' else '' }}" role="status"><pre>{{ run.error }}</pre></div>{% endif %}
+
+  <ol class="stages" data-stages data-stage="{{ run.stage or '' }}" data-status="{{ run.status }}">
+    {% for s in stages %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
+  </ol>
+
+  <dl class="stats">
+    {% if run.kind == 'extract' %}
+      {% for key, label in [('posts_listed', 'listed'), ('posts_fetched', 'fetched'), ('posts_processed', 'processed'), ('posts_noted', 'noted'), ('posts_skipped', 'skipped')] %}
+        <div><dt>{{ label }}</dt><dd class="num" data-count="{{ key }}">{{ run[key] }}</dd></div>
+      {% endfor %}
+    {% endif %}
+    {% if run.kind == 'extract' or run.kind.startswith('ideas') %}
+      <div><dt>ideas new</dt><dd class="num" data-count="ideas_created">{{ run.ideas_created }}</dd></div>
+      <div><dt>ideas updated</dt><dd class="num" data-count="ideas_updated">{{ run.ideas_updated }}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if run.cost_estimate_usd or run.cache_read or run.plan_usage %}
+    <section class="section">
+      <h2 class="section-title">AI usage</h2>
+      <p>
+        <span class="num">{{ '%.1f'|format(run.cache_read / 1e6) }} M</span> cache-read ·
+        <span class="num">{{ '%.0f'|format(run.cache_write / 1e3) }} k</span> cache-write ·
+        <span class="num">{{ '%.0f'|format(run.tokens_out / 1e3) }} k</span> output tokens ·
+        <span class="num">${{ '%.2f'|format(run.cost_estimate_usd) }}</span>
+        <span class="muted">{{ 'API value; not charged on your subscription' if run.backend == 'subscription' else 'estimated API cost' }}</span>
+      </p>
       {% for w in plan_windows(run.plan_usage) %}
         <div class="meter">
-          <span>Plan {{ w.name }}</span>
-          <progress max="1" value="{{ w.used }}">
-          </progress>
-          <span>{{ '%.0f'|format(w.used * 100) }}% used{% if w.resets %}, resets {{ w.resets }}{% endif %}</span>
+          <div class="meter-head"><span>Plan {{ w.name }}</span><span class="num">{{ '%.0f'|format(w.used * 100) }}%{% if w.resets %} · resets {{ w.resets }}{% endif %}</span></div>
+          <progress max="1" value="{{ w.used }}" aria-label="Plan {{ w.name }} used">{{ '%.0f'|format(w.used * 100) }}%</progress>
         </div>
       {% endfor %}
     </section>
   {% endif %}
-  {% if run.error %}
-    <div class="banner {{ 'error' if run.status == 'failed' else 'warn' }}">
-      <pre>{{ run.error }}</pre>
-    </div>
-  {% endif %}
-  {% if run.brain_commits %}
-    <p class="meta">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code> {% endfor %}</p>
-  {% endif %}
-  {% if run.undone_at %}
-    <div class="banner ok">Undone at {{ run.undone_at|local_time }}.</div>
-  {% elif run.brain_commits and run.status != 'running' %}
-    <p><button type="button" class="danger-outline" data-dialog="undo-dialog">Undo this run</button> <a class="quiet-link" href="/runs/{{ run.id }}/undo">Open confirmation page</a></p>
-  {% endif %}
+
   {% if batches %}
-    <h2>Batches</h2>
-    <div class="table-wrap">
-      <table class="runs">
-        <thead>
-          <tr>
-            <th>N</th>
-            <th>Kind</th>
-            <th>Posts</th>
-            <th>Turns</th>
-            <th>Minutes</th>
-            <th>M cache-read</th>
-            <th>k output</th>
-            <th>~$</th>
-            <th>5-hour window</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for b in batches %}
+    <section class="section">
+      <h2 class="section-title">Batches</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
             <tr>
-              <td>{{ b.n }}</td>
-              <td>{{ b.kind }}</td>
-              <td>{{ b.post_ids or '—' }}</td>
-              <td>{{ b.turns if b.turns is not none else '—' }}</td>
-              <td>{{ '%.1f'|format(b.duration_ms / 60000) if b.duration_ms is not none else '—' }}</td>
-              <td>{{ '%.1f'|format(b.cache_read / 1e6) if b.cache_read is not none else '—' }}</td>
-              <td>{{ '%.0f'|format(b.tokens_out / 1e3) if b.tokens_out is not none else '—' }}</td>
-              <td>{{ '%.2f'|format(b.cost_usd) if b.cost_usd is not none else '—' }}</td>
-              <td>{{ '%.0f%%'|format(b.five_hour * 100) if b.five_hour is not none else '—' }}</td>
-              <td>{{ 'ok' if b.ok else (b.error or 'incomplete') }}</td>
+              <th scope="col">Batch</th><th scope="col">Posts</th><th scope="col" class="num">Turns</th>
+              <th scope="col" class="num">Minutes</th><th scope="col" class="num">Cache-read</th>
+              <th scope="col" class="num">Output</th><th scope="col" class="num">API value</th>
+              <th scope="col" class="num">5-hour</th><th scope="col">Result</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% endif %}
-  <h2>Log</h2>
-  <ol class="log" id="log" data-run-id="{{ run.id }}" data-after="{{ last_event }}" data-running="{{ 'true' if run.status == 'running' else 'false' }}">
-    {% for e in events %}
-      <li class="lv-{{ e.level }}"><time>{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>
-    {% endfor %}
-  </ol>
-  {% if run.brain_commits and run.status != 'running' and not run.undone_at %}
-    <dialog id="undo-dialog" class="card-dialog">
-      <div class="dialog-head">
-        <h2>Undo run {{ run.id }}?</h2>
-        <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+          </thead>
+          <tbody>
+            {% for b in batches %}
+              <tr>
+                <td>{{ b.kind }} {{ b.n }}</td>
+                <td class="num">{{ (b.post_ids or '').split()|length if b.kind != 'apply' else '—' }}</td>
+                <td class="num">{{ b.turns or '—' }}</td>
+                <td class="num">{{ '%.1f'|format((b.duration_ms or 0) / 60000) }}</td>
+                <td class="num">{{ '%.1f M'|format((b.cache_read or 0) / 1e6) }}</td>
+                <td class="num">{{ '%.0f k'|format((b.tokens_out or 0) / 1e3) }}</td>
+                <td class="num">{{ '$%.2f'|format(b.cost_usd) if b.cost_usd else '—' }}</td>
+                <td class="num">{{ '%.0f%%'|format(b.five_hour * 100) if b.five_hour is not none else '—' }}</td>
+                <td>{% if b.ok %}{{ icon('check') }} ok{% else %}<span class="alert-text">{{ b.error or 'failed' }}</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      <p>This reverts its brain commits and reopens noted posts when their notes are removed.</p>
-      <form method="post" action="/runs/{{ run.id }}/undo" class="dialog-actions">
-        <button type="button" data-close>Cancel</button>
-        <button class="danger">Undo this run</button>
+    </section>
+  {% endif %}
+
+  {% if run.brain_commits %}
+    <p class="muted">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+
+  <section class="section">
+    <h2 class="section-title">Log</h2>
+    <ol class="log" data-log {% if run.status == 'running' %}data-follow-run="{{ run.id }}" data-after="{{ last_event }}"{% endif %}>
+      {% for e in events %}
+        <li class="log-{{ e.level }}"><time datetime="{{ e.ts }}">{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>
+      {% else %}
+        <li class="muted">No log lines yet.</li>
+      {% endfor %}
+    </ol>
+  </section>
+{% endblock %}
+
+{% block dialogs %}
+  {% if run.brain_commits and not run.undone_at and run.status != 'running' %}
+    <dialog id="undo" class="dialog" aria-labelledby="undo-title">
+      <form method="post" action="/runs/{{ run.id }}/undo" class="dialog-form">
+        <div class="dialog-head">
+          <h2 id="undo-title">Undo run {{ run.id }}?</h2>
+          <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+        </div>
+        <div class="dialog-body stack">
+          <p>This reverts the run's brain {{ 'commit' if run.brain_commits.split()|length == 1 else 'commits' }}
+            {% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+            with a new commit, so nothing is lost from Git's history.</p>
+          <p>Notes it wrote go back in the queue for the next Extract, and the notes it checked for ideas will be checked again.</p>
+          <p class="muted">If you've edited the same files since, the undo stops and changes nothing.</p>
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="button" data-close>Cancel</button>
+          <button type="submit" class="button button-danger">Undo run {{ run.id }}</button>
+        </div>
       </form>
     </dialog>
   {% endif %}

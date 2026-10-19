@@ -1,66 +1,65 @@
-{% extends 'base.html' %}
-{% block title %}Runs · {{ APP_NAME }}{% endblock %}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, run_pill %}
+{% set conn_name = names.get(conn|int) if conn and conn.isdigit() else None %}
+{% set heading = 'Runs · ' ~ conn_name if conn_name else 'Idea runs' if kind == 'ideas' else 'All runs' %}
+{% block title %}{{ heading }} · {{ APP_NAME }}{% endblock %}
+
 {% block main %}
   <header class="page-head">
     <div>
-      <h1>{{ 'Idea runs' if kind == 'ideas' else 'Runs · ' ~ names[conn|int] if conn and conn|int in names else 'All runs' }}</h1>
-      <p class="muted">A record of each extraction and ideas pass</p>
+      <h1>{{ heading }}</h1>
+      <p class="lede">
+        {% if conn_name %}Every Extract that read {{ conn_name }}.
+        {% elif kind == 'ideas' %}Ideas passes, dry runs and applied previews.
+        {% else %}Every Extract, ideas pass, undo and update.{% endif %}
+      </p>
+    </div>
+    <div class="page-actions">
+      {% if conn_name or kind %}<a class="button button-quiet" href="/runs">All runs</a>{% endif %}
     </div>
   </header>
-  {% if conn %}
-    <p><a class="chip removable" href="/runs">In {{ names.get(conn|int, '#' ~ conn) }} ×</a></p>
-  {% endif %}
+
   {% if runs %}
     <div class="table-wrap">
-      <table class="data-table">
+      <table class="table">
         <thead>
           <tr>
-            <th>Run</th>
-            <th>Started</th>
-            <th>From</th>
-            <th>Collections</th>
-            <th>Status</th>
-            <th>Listed</th>
-            <th>Fetched</th>
-            <th>Processed</th>
-            <th>Noted</th>
-            <th>Skipped</th>
-            <th>Ideas new / updated</th>
-            <th>~$</th>
-            <th>Commits</th>
+            <th scope="col">Run</th>
+            <th scope="col">Started</th>
+            <th scope="col">Status</th>
+            <th scope="col">Collections</th>
+            <th scope="col" class="num">Listed</th>
+            <th scope="col" class="num">Fetched</th>
+            <th scope="col" class="num">Noted</th>
+            <th scope="col" class="num">Skipped</th>
+            <th scope="col" class="num">Ideas new / updated</th>
+            <th scope="col" class="num">API value</th>
           </tr>
         </thead>
         <tbody>
           {% for r in runs %}
             <tr>
-              <td>
-                <a href="/runs/{{ r.id }}">{{ r.id }}</a>
-                <small>{{ r.kind }}</small>
-              </td>
+              <td><a href="/runs/{{ r.id }}">Run {{ r.id }}</a><br><span class="muted">{{ r.kind|replace('-', ' ') }}{% if r.origin == 'terminal' %} · terminal{% endif %}</span></td>
               <td>{{ r.started_at|relative_time }}</td>
-              <td>{{ r.origin }}</td>
+              <td>{{ run_pill(r.status) }}{% if r.undone_at %}<br><span class="muted">undone</span>{% endif %}</td>
               <td>
                 {% for i in (r.connection_ids or '').split(',') if i %}
-                  <a class="chip" href="/runs?conn={{ i }}">{{ names.get(i|int, '#' ~ i) }}</a>
-                {% endfor %}
+                  {% if names.get(i|int) %}<a class="chip" href="/runs?conn={{ i }}">{{ names[i|int] }}</a>{% else %}<span class="muted">deleted</span>{% endif %}
+                {% else %}<span class="muted">—</span>{% endfor %}
               </td>
-              <td>
-                <span class="status-pill {{ r.status }}">{{ r.status }}</span>
-              </td>
-              <td>{{ r.posts_listed }}</td>
-              <td>{{ r.posts_fetched }}</td>
-              <td>{{ r.posts_processed }}</td>
-              <td>{{ r.posts_noted }}</td>
-              <td>{{ r.posts_skipped }}</td>
-              <td>{{ r.ideas_created }} / {{ r.ideas_updated }}</td>
-              <td>{% if r.cost_estimate_usd %}{{ '%.2f'|format(r.cost_estimate_usd) }}{% else %}—{% endif %}</td>
-              <td>{{ r.brain_commits.split()|length if r.brain_commits else 0 }}</td>
+              <td class="num">{{ r.posts_listed }}</td>
+              <td class="num">{{ r.posts_fetched }}</td>
+              <td class="num">{{ r.posts_noted }}</td>
+              <td class="num">{{ r.posts_skipped }}</td>
+              <td class="num">{{ r.ideas_created }} / {{ r.ideas_updated }}</td>
+              <td class="num">{{ '$%.2f'|format(r.cost_estimate_usd) if r.cost_estimate_usd else '—' }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <p class="muted table-note">API value: what the AI work would have cost on the API. On your subscription it isn't charged per run.</p>
   {% else %}
-    <p class="empty">No runs yet. Select a collection and extract it.</p>
+    <div class="empty"><p>No runs here yet.{% if conn_name %} Select {{ conn_name }} in the sidebar and press Extract.{% endif %}</p></div>
   {% endif %}
 {% endblock %}

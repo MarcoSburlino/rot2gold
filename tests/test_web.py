@@ -89,3 +89,42 @@ def test_pages_and_links(sample):
             denied = await client.post("/extract", data={"conn": "1"}, headers={"Origin": "https://elsewhere.example"})
             assert denied.status_code == 403
     asyncio.run(check())
+
+
+def test_actions_return_to_the_page_they_came_from(sample):
+    """Bugs fixed in the 2026-10-19 UI rebuild: actions used to jump back to Ideas, a filtered-out idea
+    gave 'Not found', and deleting a collection left its filter in the address."""
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/videos?conn=1&status=done&err=old"}
+
+            bad = await client.post("/connections", data={"platform": "tiktok", "url": "https://example.com/x"},
+                                    headers=here, follow_redirects=False)
+            location = bad.headers["location"]
+            assert location.startswith("/videos?") and "conn=1" in location and "status=done" in location
+            assert "err=" in location and "old" not in location  # the stale message is replaced, not repeated
+
+            none = await client.post("/extract", data={}, headers=here, follow_redirects=False)
+            assert none.headers["location"].startswith("/videos?") and "err=" in none.headers["location"]
+
+            deleted = await client.post("/connections/11/delete", headers={**here, "Referer": "http://127.0.0.1:8740/videos?conn=11"},
+                                        follow_redirects=False)
+            assert deleted.headers["location"].startswith("/videos") and "conn=" not in deleted.headers["location"]
+
+            elsewhere = await client.post("/connections", data={"platform": "tiktok", "url": "x"},
+                                          headers={"Origin": "http://127.0.0.1:8740", "Referer": "http://evil.example/videos"},
+                                          follow_redirects=False)
+            assert elsewhere.headers["location"].startswith("/ideas")  # never redirect to another site's path
+
+            hidden = await client.get("/ideas/idea-one?status=kept")  # idea-one is "new", so the filter hides it
+            assert hidden.status_code == 200 and "Try this idea" in hidden.text
+
+            missing = await client.get("/ideas/idea-gone", follow_redirects=False)
+            assert missing.status_code == 303 and "err=" in missing.headers["location"]
+
+            undo = await client.post("/runs/1/undo", headers=here, follow_redirects=False)
+            assert undo.headers["location"].startswith("/runs/1?") and "err=" in undo.headers["location"]
+
+            page = (await client.get("/ideas?msg=Saved")).text
+            assert 'data-msg=""' in page  # an ordinary message never leaks into the Settings card
+    asyncio.run(check())

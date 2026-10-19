@@ -90,10 +90,15 @@ def plan_windows(plan_json: str | None) -> list[dict]:
     return out
 
 
+def asset_version() -> str:
+    """Changes whenever style.css or app.js changes, so browsers never keep a stale copy."""
+    return str(int(max((HERE / "static" / name).stat().st_mtime for name in ("style.css", "app.js"))))
+
+
 templates.env.filters["local_time"] = local_time
 templates.env.filters["relative_time"] = relative_time
 templates.env.globals.update(APP_NAME=APP_NAME, LABELS=connections.LABELS, STATUSES=connections.STATUSES,
-                             plan_windows=plan_windows)
+                             plan_windows=plan_windows, asset_version=asset_version)
 
 
 def active_run(con) -> dict | None:
@@ -106,7 +111,10 @@ def active_run(con) -> dict | None:
     if info is None:
         return None
     row = con.execute("SELECT * FROM runs WHERE id = ?", (info.get("run_id"),)).fetchone() if info.get("run_id") else None
-    return {"lock": info, "who": lock.describe(info), "run": dict(row) if row else None}
+    last = con.execute("SELECT id, message FROM run_events WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+                       (info.get("run_id"),)).fetchone() if row else None
+    return {"lock": info, "who": lock.describe(info), "run": dict(row) if row else None,
+            "last_event": last["id"] if last else 0, "last_line": last["message"] if last else ""}
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -136,16 +144,27 @@ def back(path: str = "/", **params) -> RedirectResponse:
     return RedirectResponse(path + ("?" + urlencode(params) if params else ""), status_code=303)
 
 
-def settings_back(request: Request, tab: str, **params) -> RedirectResponse:
-    source = urlsplit(request.headers.get("referer", ""))
-    allowed = {f"127.0.0.1:{load()['app']['port']}", f"localhost:{load()['app']['port']}"}
-    path = source.path if source.scheme == "http" and source.netloc.lower() in allowed else "/ideas"
-    if not path.startswith("/") or path.startswith("//") or path == "/settings/panel":
-        path = "/ideas"
+def back_to(request: Request, fallback: str = "/ideas", drop: tuple = (), **params) -> RedirectResponse:
+    """Redirect to the page the request came from (same origin only), with new msg/err params.
+
+    `drop` removes query params that no longer make sense, e.g. the filter of a deleted collection.
+    """
     from urllib.parse import parse_qsl
-    query = {k: v for k, v in parse_qsl(source.query) if k not in ("settings", "msg", "err")}
-    query.update({k: v for k, v in (params | {"settings": tab}).items() if v})
+    source = urlsplit(request.headers.get("referer", ""))
+    port = load()["app"]["port"]
+    same_origin = source.scheme == "http" and source.netloc.lower() in {f"127.0.0.1:{port}", f"localhost:{port}"}
+    path = source.path if same_origin else fallback
+    if not path.startswith("/") or path.startswith("//") or path in ("/settings/panel", "/quit"):
+        path = fallback
+    stale = {"settings", "msg", "err", "added", *drop}
+    query = {k: v for k, v in parse_qsl(source.query) if k not in stale} if same_origin else {}
+    query.update({k: v for k, v in params.items() if v})
     return back(path, **query)
+
+
+def settings_back(request: Request, tab: str, **params) -> RedirectResponse:
+    """Back to the page with the Settings card reopened on `tab`, showing the result."""
+    return back_to(request, settings=tab, **params)
 
 
 @app.get("/healthz")
@@ -223,8 +242,8 @@ def test_key(request: Request):
 
 
 @app.post("/update-downloaders")
-def start_update():
-    return spawn_run([sys.executable, "-m", "video_notes.cli", "update-downloaders", "--origin", "app"], "Update")
+def start_update(request: Request):
+    return spawn_run(request, [sys.executable, "-m", "video_notes.cli", "update-downloaders", "--origin", "app"], "Update")
 
 
 @app.get("/")
@@ -233,25 +252,25 @@ async def home(request: Request):
 
 
 @app.post("/connections")
-def add_connection(platform: str = Form(...), url: str = Form(...), name: str = Form(""),
+def add_connection(request: Request, platform: str = Form(...), url: str = Form(...), name: str = Form(""),
                    cookies_mode: str = Form("auto")):
     try:
         cid = connections.add(db.connect(), platform, url, name, cookies_mode)
     except ValueError as exc:
-        return back(err=str(exc))
-    return back(msg=f"Connection added. Select it and press Extract.", added=cid)
+        return back_to(request, err=str(exc))
+    return back_to(request, msg="Collection added. It's selected in the sidebar: press Extract to read it.", added=cid)
 
 
 @app.post("/connections/{cid}")
-def edit_connection(cid: int, name: str = Form(""), url: str = Form(""), cookies_mode: str = Form("auto"),
-                    firefox_profile: str = Form(""), links: str = Form("")):
+def edit_connection(request: Request, cid: int, name: str = Form(""), url: str = Form(""),
+                    cookies_mode: str = Form("auto"), firefox_profile: str = Form(""), links: str = Form("")):
     con = db.connect()
     try:
         connections.update(con, cid, name=name, url=url, cookies_mode=cookies_mode, firefox_profile=firefox_profile)
         kept = connections.set_links(con, cid, links)
     except ValueError as exc:
-        return back(err=str(exc))
-    return back(msg="Connection saved." + (f" {kept} post URLs saved for when listing fails." if kept else ""))
+        return back_to(request, err=str(exc))
+    return back_to(request, msg="Collection saved." + (f" {kept} post URLs kept for when listing fails." if kept else ""))
 
 
 @app.get("/connections/{cid}/delete", response_class=HTMLResponse)
@@ -265,19 +284,21 @@ async def confirm_delete(request: Request, cid: int):
 
 
 @app.post("/connections/{cid}/delete")
-def delete_connection(cid: int):
+def delete_connection(request: Request, cid: int):
     try:
         connections.delete(db.connect(), cid)
     except ValueError as exc:
-        return back(err=str(exc))
-    return back(msg="Connection deleted. Its posts, media and notes are still there.")
+        return back_to(request, err=str(exc))
+    if request.headers.get("referer", "").split("?")[0].endswith("/runs"):
+        return back("/ideas", msg="Collection deleted. Its posts, media and notes are still there.")
+    return back_to(request, drop=("conn",), msg="Collection deleted. Its posts, media and notes are still there.")
 
 
 @app.post("/extract")
-def start_extract(conn: list[int] = Form([]), max_notes: str = Form(""), write_notes: str = Form(""),
+def start_extract(request: Request, conn: list[int] = Form([]), max_notes: str = Form(""), write_notes: str = Form(""),
                   find_ideas: str = Form("")):
     if not conn:
-        return back(err="Select at least one connection to extract.")
+        return back_to(request, err="Select at least one collection to extract.")
     cmd = [sys.executable, "-m", "video_notes.cli", "extract", "--origin", "app", "--conn", ",".join(map(str, conn))]
     if max_notes.strip().isdigit():
         cmd += ["--max-notes", max_notes.strip()]
@@ -285,13 +306,13 @@ def start_extract(conn: list[int] = Form([]), max_notes: str = Form(""), write_n
         cmd.append("--no-notes")
     if not find_ideas:
         cmd.append("--no-ideas")
-    return spawn_run(cmd, "Extract")
+    return spawn_run(request, cmd, "Extract")
 
 
-def spawn_run(cmd: list[str], label: str):
+def spawn_run(request: Request, cmd: list[str], label: str):
     """Start an independent recorded run and wait for its lock record."""
     if info := lock.holder():
-        return back(err=f"The pipeline is already running: {lock.describe(info)}.")
+        return back_to(request, err=f"The pipeline is already running: {lock.describe(info)}.")
     LOGS.mkdir(parents=True, exist_ok=True)
     log = LOGS / f"{label.lower()}-{datetime.now():%Y%m%d-%H%M%S}.log"
     env = dict(os.environ)
@@ -311,22 +332,22 @@ def spawn_run(cmd: list[str], label: str):
             if finished:
                 return back(f"/runs/{finished['id']}")
             tail = log.read_text().strip().splitlines()[-3:]
-            return back(err=f"{label} stopped right away: " + " ".join(tail))
+            return back_to(request, err=f"{label} stopped right away: " + " ".join(tail))
         time.sleep(0.1)
-    return back(msg=f"{label} is starting…")
+    return back_to(request, msg=f"{label} is starting…")
 
 
 @app.post("/runs/stop")
-def stop_run():
+def stop_run(request: Request):
     info = lock.holder()
     if not info:
-        return back(msg="Nothing is running.")
+        return back_to(request, msg="Nothing is running.")
     try:
         # SIGINT is the polite "please stop" (like Ctrl+C): downloads stop after the current post,
         # claude ends its turn, and the run records what it finished.
         os.killpg(os.getpgid(info["pid"]), signal.SIGINT)
     except ProcessLookupError:
-        return back(msg="The run had already ended.")
+        return back_to(request, msg="The run had already ended.")
     return back(f"/runs/{info['run_id']}" if info.get("run_id") else "/", msg="Stopping… the current step finishes first.")
 
 
@@ -421,9 +442,24 @@ async def videos(request: Request, conn: str = "", status: str = "", type: str =
     for item in rows:
         item["thumbnail"] = thumbs.get(item["id"])
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections ORDER BY id")}
-    return page(request, "videos.html", rows=rows, counts=counts, names=names,
-                type_counts=type_counts,
-                f={"conn": conn, "status": status, "type": type, "q": q})
+    current = {"conn": conn if conn.isdigit() and int(conn) in names else "",
+               "status": status if status in connections.STATUSES else "",
+               "type": type if type in ("video", "slideshow") else "", "q": q.strip()}
+
+    def link(**change):
+        """This page's address with some filters changed; the others are kept."""
+        params = {k: v for k, v in (current | change).items() if v}
+        return "/videos" + ("?" + urlencode(params) if params else "")
+
+    status_chips = [{"label": "All", "href": link(status=""), "count": sum(counts.values()), "current": not current["status"]}] + [
+        {"label": connections.LABELS[s].capitalize(), "href": link(status=s), "count": counts[s], "current": current["status"] == s}
+        for s in connections.STATUSES]
+    type_chips = [{"label": "All types", "href": link(type=""), "current": not current["type"]}] + [
+        {"label": t.capitalize(), "href": link(type=t), "count": type_counts[t], "current": current["type"] == t}
+        for t in ("video", "slideshow")]
+    conn_filter = {"name": names[int(current["conn"])], "clear": link(conn="")} if current["conn"] else None
+    return page(request, "videos.html", rows=rows, names=names, status_chips=status_chips, type_chips=type_chips,
+                conn_filter=conn_filter, f=current)
 
 
 @app.get("/videos/{post_id}", response_class=HTMLResponse)
@@ -473,9 +509,9 @@ def idea_view(request, name=None, status="all", q=""):
                 " ".join(str(r[k]) for k in ("title", "description", "name")).lower()]
     counts = {s: sum(r["status"] == s for r in searched) for s in ("new", "trying", "kept", "dropped")}
     rows = [r for r in searched if status not in counts or r["status"] == status]
-    selected = next((r for r in rows if r["name"] == name), None) if name else (rows[0] if rows else None)
+    selected = next((r for r in all_rows if r["name"] == name), None) if name else (rows[0] if rows else None)
     if name and not selected:
-        return HTMLResponse("Not found", status_code=404)
+        return back("/ideas", err=f"No idea named {name}. It may have been renamed or moved in Obsidian.")
     html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
     pending = {Path(r["note_path"]).stem for r in con.execute(
         "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
@@ -488,8 +524,15 @@ def idea_view(request, name=None, status="all", q=""):
             if count:
                 dry_run = {"id": run["id"], "count": count}
                 break
-    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes,
-                counts=counts, total=len(searched), status=status, q=q, dry_run=dry_run, detail_page=bool(name))
+    def query(**params):
+        params = {k: v for k, v in params.items() if v and v != "all"}
+        return "?" + urlencode(params) if params else ""
+
+    chips = [{"label": label, "href": "/ideas" + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
+              "current": status == key or (key == "all" and status not in counts)}
+             for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))]
+    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes, chips=chips,
+                keep=query(status=status, q=q), status=status, q=q, dry_run=dry_run, detail_page=bool(name))
 
 
 @app.get("/ideas", response_class=HTMLResponse)
@@ -498,7 +541,9 @@ async def idea_index(request: Request, status: str = "all", q: str = ""):
 
 
 @app.post("/ideas/rebuild")
-def start_ideas_rebuild(themes: list[str] = Form([]), dry_run: str = Form(""), limit: str = Form("")):
+def start_ideas_rebuild(request: Request, themes: list[str] = Form([]), dry_run: str = Form(""), limit: str = Form("")):
+    if not themes:
+        return back_to(request, err="Choose at least one theme to look for ideas in.")
     cmd = [sys.executable, "-m", "video_notes.cli", "ideas", "rebuild", "--origin", "app"]
     if themes:
         cmd += ["--themes", ",".join(themes)]
@@ -506,7 +551,7 @@ def start_ideas_rebuild(themes: list[str] = Form([]), dry_run: str = Form(""), l
         cmd.append("--dry-run")
     if limit.strip().isdigit():
         cmd += ["--limit", limit.strip()]
-    return spawn_run(cmd, "Ideas")
+    return spawn_run(request, cmd, "Ideas")
 
 
 @app.get("/ideas/preview/{run_id}", response_class=HTMLResponse)
@@ -532,14 +577,18 @@ async def idea_preview(request: Request, run_id: int):
 def apply_preview(run_id: int):
     """Quick (no AI): runs in the request, but still under the pipeline lock."""
     from ..runs import recorded_run
+    done = None
     try:
         with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
             run.report.set_stage("ideas")
             done = ideas.apply_dry_run(run.con, run_id, run.report, run.run_id)
             run.counts["ideas_created"] = len(done["copied"])
             run.report.set_stage("done")
-    except (ValueError, VNError) as exc:
+    except (ValueError, VNError) as exc:  # e.g. the lock is held: no run was recorded
         return back(f"/ideas/preview/{run_id}", err=str(exc))
+    # recorded_run stores a failure in the run's history instead of raising it: check how it ended.
+    if done is None:
+        return back(f"/ideas/preview/{run_id}", err=run_failure(run))
     return back("/ideas", msg=f"Applied dry run {run_id}: {len(done['copied'])} ideas written to the brain"
                 + (f", {len(done['skipped'])} skipped because you changed them since" if done["skipped"] else "")
                 + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
@@ -596,14 +645,25 @@ async def confirm_undo(request: Request, run_id: int):
 @app.post("/runs/{run_id}/undo")
 def perform_undo(run_id: int):
     from ..runs import recorded_run
+    undone = False
     try:
         with recorded_run("app", f"vn undo {run_id}", "undo", [], load()) as run:
             run.report.set_stage("undo")
             undo.undo_run(run.con, run_id, run.report)
+            undone = True
             run.report.set_stage("done")
-    except (ValueError, VNError) as exc:
-        return back(f"/runs/{run_id}/undo", err=str(exc))
-    return back(f"/runs/{run.run_id}")
+    except (ValueError, VNError) as exc:  # e.g. the lock is held: no run was recorded
+        return back(f"/runs/{run_id}", err=str(exc))
+    # recorded_run stores a failure in the run's history instead of raising it: check how it ended.
+    if not undone:
+        return back(f"/runs/{run_id}", err=run_failure(run))
+    return back(f"/runs/{run.run_id}", msg=f"Run {run_id} was undone.")
+
+
+def run_failure(run) -> str:
+    """The error a recorded run ended with, without the hint line meant for the terminal."""
+    error = (run.row().get("error") or "It failed; see the run log.").split("\n")[0]
+    return error.replace("ValueError: ", "")
 
 
 @app.get("/runs/{run_id}/events")
@@ -637,10 +697,10 @@ def run_events(run_id: int, after: int = 0):
 
 
 @app.post("/quit", response_class=HTMLResponse)
-def quit_app():
+def quit_app(request: Request):
     if server is not None:
         threading.Timer(0.3, lambda: setattr(server, "should_exit", True)).start()
-    return HTMLResponse("<h1>The app has stopped.</h1><p>A running Extract keeps going.</p>")
+    return templates.TemplateResponse(request, "stopped.html", {"running": lock.holder() is not None})
 
 
 def serve(open_browser: bool = True) -> None:

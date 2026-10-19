@@ -1,19 +1,17 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
 {% block title %}Undo run {{ run.id }} · {{ APP_NAME }}{% endblock %}
 {% block main %}
-  <a class="back-link" href="/runs/{{ run.id }}">← Run {{ run.id }}</a>
-  <article class="reading-pane">
-    <h1>Undo run {{ run.id }}?</h1>
-    <p>This reverts its brain commits, reopens noted posts when their notes are removed, and clears ideas checks.</p>
-    <ul>
-      {% for sha in commits %}
-        <li><code>{{ sha }}</code></li>
-      {% endfor %}
-    </ul>
-    <p>Later edits to these files can stop the undo.</p>
-    <form method="post" action="/runs/{{ run.id }}/undo" class="actions">
-      <button class="danger" {% if active %}disabled{% endif %}>Undo this run</button>
-      <a href="/runs/{{ run.id }}">Cancel</a>
+  <a class="back-link back-link-page" href="/runs/{{ run.id }}">{{ icon('back') }} Run {{ run.id }}</a>
+  <header class="page-head"><div><h1>Undo run {{ run.id }}?</h1></div></header>
+  <div class="sheet narrow stack">
+    <p>This reverts the run's brain {{ 'commit' if commits|length == 1 else 'commits' }}
+      {% for c in commits %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %} with a new commit.</p>
+    <p>Notes it wrote go back in the queue, and the notes it checked for ideas will be checked again.</p>
+    <p class="muted">If you've edited the same files since, the undo stops and changes nothing.</p>
+    <form method="post" action="/runs/{{ run.id }}/undo" class="form-foot form-foot-start">
+      <a class="button" href="/runs/{{ run.id }}">Cancel</a>
+      <button type="submit" class="button button-danger">Undo run {{ run.id }}</button>
     </form>
-  </article>
+  </div>
 {% endblock %}

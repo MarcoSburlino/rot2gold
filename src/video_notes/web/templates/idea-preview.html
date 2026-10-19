@@ -1,33 +1,51 @@
-{% extends 'base.html' %}
-{% block title %}Ideas preview · {{ APP_NAME }}{% endblock %}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, idea_pill, source_strip, distinct %}
+{% block title %}Dry run {{ run_id }} · {{ APP_NAME }}{% endblock %}
+
 {% block main %}
-  <a class="back-link" href="/runs/{{ run_id }}">← Run {{ run_id }}</a>
+  {% set new_count = rows|rejectattr('is_update')|list|length %}
+  {% set update_count = rows|selectattr('is_update')|list|length %}
+  <a class="back-link back-link-page" href="/ideas">{{ icon('back') }} Ideas</a>
+
   <header class="page-head">
-    <h1>Ideas preview</h1>
+    <div>
+      <h1>Dry run {{ run_id }}</h1>
+      <p class="lede">
+        {{ new_count }} new {{ 'idea' if new_count == 1 else 'ideas' }} and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
+        from {{ (manifest.considered or [])|length }} notes.
+        {% if not manifest.applied %}Nothing is in your brain yet.{% endif %}
+      </p>
+    </div>
+    <div class="page-actions">
+      <a class="button button-quiet" href="/runs/{{ run_id }}">Run log</a>
+    </div>
   </header>
+
   {% if manifest.applied %}
-    <div class="banner">Dry run {{ run_id }} was applied to the brain.</div>
-  {% else %}
-    <div class="banner pending">Dry run {{ run_id }} proposes {{ rows|length }} ideas from {{ (manifest.considered or [])|length }} notes.</div>
-    {% if rows or manifest.considered %}
-      <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
-        <button class="primary" {% if active %}disabled{% endif %}>Apply {{ rows|length }} ideas to the brain</button>
-        <p class="muted">Ideas edited since the dry run are skipped.</p>
-      </form>
-    {% endif %}
+    <p class="banner">Applied to your brain ({{ manifest.applied }}).</p>
+  {% elif rows or manifest.considered %}
+    <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
+      <p>Apply copies these into <code>Inbox/ideas/</code> and marks the notes as checked, without calling Claude again. Ideas you edited since the dry run are skipped, never overwritten.</p>
+      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>
+        Apply {{ rows|length }} {{ 'idea' if rows|length == 1 else 'ideas' }} to the brain
+      </button>
+    </form>
   {% endif %}
-  <div class="preview-list">
-    {% for idea in rows %}
-      <article class="reading-pane">
-        <p class="meta"><span class="status-pill {{ idea.status }}">{{ 'update' if idea.is_update else 'new' }}</span> {{ idea.support }} sources · {{ idea.updated }}</p>
-        <h2>{{ idea.title }}</h2>
-        <p class="description">{{ idea.description }}</p>
-        {% set large = true %}
-        {% include '_source_strip.html' %}
-        <div class="prose">{{ idea.html|safe }}</div>
-      </article>
-    {% else %}
-      <p class="empty">No idea files were written in this dry run.</p>
-    {% endfor %}
-  </div>
+
+  {% for idea in rows %}
+    <article class="reading-pane proposal" aria-labelledby="proposal-{{ loop.index }}">
+      <p class="meta-line">
+        <span class="pill {{ 'pill-mark' if not idea.is_update }}">{{ 'update' if idea.is_update else 'new' }}</span>
+        {{ idea_pill(idea.status) if idea.status != 'new' }}
+        <span>updated {{ idea.updated or 'unknown' }}</span>
+      </p>
+      <h2 id="proposal-{{ loop.index }}" class="reading-title">{{ idea.title }}</h2>
+      {{ source_strip(idea, open=True) }}
+      {% set d = distinct(idea.description, idea.title) %}
+      {% if d %}<p class="description">{{ d }}</p>{% endif %}
+      <div class="prose">{{ idea.html|safe }}</div>
+    </article>
+  {% else %}
+    <div class="empty"><p>This dry run didn't propose any ideas.</p></div>
+  {% endfor %}
 {% endblock %}

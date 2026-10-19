@@ -1,96 +1,101 @@
-{% extends 'base.html' %}
-{% block title %}{{ note.title if note else post.id }} · {{ APP_NAME }}{% endblock %}
+{% extends "base.html" %}
+{% from "_macros.html" import icon, post_pill, idea_pill, thumb %}
+{% set title = note.title if note else ('@' ~ post.creator if post.creator else 'Post ' ~ post.id) %}
+{% block title %}{{ title }} · {{ APP_NAME }}{% endblock %}
+
 {% block main %}
-  <a class="back-link" href="/videos">← Videos</a>
-  <header class="video-header reading-pane">
-    <span class="thumb hero-thumb">{% if images %}<img src="{{ images[0].url }}" alt="Thumbnail for {{ note.title if note else post.id }}">{% else %}▶{% endif %}</span>
-    <div>
-      <h1>{{ note.title if note else ('@' ~ post.creator if post.creator else post.id) }}</h1>
-      <p class="meta"><span class="status-pill {{ 'noted' if post.status == 'done' else 'listed' if post.status == 'new' else post.status }}">{{ LABELS[post.status] }}</span> {% if post.creator %}@{{ post.creator }} · {% endif %}{{ post.upload_date or 'date unknown' }} · {{ post.type or 'unknown type' }}</p>
-      <p class="chips">{% for c in conns %}<a class="chip" href="/videos?conn={{ c.id }}">{{ c.name }}</a>{% endfor %}</p>
-      <div class="actions">
-        {% if obsidian %}
-          <a class="button primary" href="{{ obsidian }}">Open in Obsidian</a>
-        {% endif %}
-        <a class="button" href="{{ post.url }}" target="_blank" rel="noreferrer">Open on TikTok</a>
+  <a class="back-link back-link-page" href="/videos">{{ icon('back') }} Videos</a>
+
+  <header class="video-head">
+    {{ thumb(images[0].url if images else None, 'hero') }}
+    <div class="video-head-text">
+      <h1 class="reading-title">{{ title }}</h1>
+      <p class="meta-line">
+        {{ post_pill(post.status) }}
+        {% if post.creator %}<span>@{{ post.creator }}</span>{% endif %}
+        <span>{{ post.upload_date or 'date unknown' }}</span>
+        <span>{{ post.type or 'type unknown' }}</span>
+        {% if post.language %}<span>speech: {{ post.language }}</span>{% endif %}
+      </p>
+      {% if conns %}
+        <p class="chips chips-inline">
+          {% for c in conns %}<a class="chip" href="/videos?conn={{ c.id }}">{{ c.name }}</a>{% endfor %}
+        </p>
+      {% endif %}
+      <div class="reading-actions">
+        {% if obsidian %}<a class="button button-primary" href="{{ obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
+        <a class="button" href="{{ post.url }}" target="_blank" rel="noreferrer">{{ icon('external') }} Open on {{ {'tiktok': 'TikTok'}.get(post.platform, post.platform|capitalize) }}</a>
       </div>
     </div>
   </header>
-  <div class="video-grid">
-    <article class="reading-pane">
+
+  <div class="video-layout">
+    <article class="reading-pane" aria-label="Note">
       {% if note %}
-        {% if note.meta.description %}
-          <p class="description">{{ note.meta.description }}</p>
-        {% endif %}
+        {% if note.meta.description %}<p class="description">{{ note.meta.description }}</p>{% endif %}
         <div class="prose">{{ note_html|safe }}</div>
       {% elif post.status == 'skipped' %}
-        <p>Skipped: {{ post.skip_reason }}</p>
+        <p class="banner">Skipped: {{ post.skip_reason }}</p>
       {% elif post.status == 'done' %}
-        <div class="banner error">The note {{ post.note_path }} is missing from the brain.</div>
+        <p class="banner banner-alert">The note <code>{{ post.note_path }}</code> is missing from your brain. It may have been moved or renamed in Obsidian.</p>
       {% else %}
-        <p class="empty">No note yet. Extract this collection to finish it.</p>
+        <p class="empty-note">No note yet: this post is {{ LABELS[post.status] }}. Extract one of its collections to finish it.</p>
       {% endif %}
     </article>
-    <aside class="right-rail">
+
+    <aside class="rail" aria-label="About this video">
       {% if images %}
-        <section class="sheet">
-          <h2>{{ 'Frame' if post.type == 'video' else 'Slides' }}</h2>
-          <div class="gallery">
+        <section class="rail-section">
+          <h2 class="rail-title">{{ 'Frame at 0.5 s' if post.type == 'video' else 'Slides (' ~ images|length ~ ')' }}</h2>
+          <div class="gallery{% if images|length == 1 %} gallery-single{% endif %}">
             {% for i in images %}
-              <a href="{{ i.url }}" target="_blank"><img src="{{ i.url }}" alt="{{ i.kind }} {{ i.idx }}" loading="lazy"></a>
+              <a href="{{ i.url }}" target="_blank" rel="noreferrer">
+                <img src="{{ i.url }}" alt="{{ 'Video frame' if i.kind == 'frame' else 'Slide ' ~ i.idx }}">
+              </a>
             {% endfor %}
           </div>
         </section>
       {% endif %}
-      <section class="sheet">
-        <h2>Ideas from this video</h2>
-        {% for idea in related_ideas %}
-          <a class="small-row" href="/ideas/{{ idea.name }}">{{ idea.title }} <span class="status-pill {{ idea.status }}">{{ idea.status }}</span></a>
+
+      <section class="rail-section">
+        <h2 class="rail-title">Ideas from this video</h2>
+        {% if related_ideas %}
+          <ul class="mini-list">
+            {% for idea in related_ideas %}
+              <li><a href="/ideas/{{ idea.name }}">{{ idea.title }}</a> {{ idea_pill(idea.status) }}</li>
+            {% endfor %}
+          </ul>
         {% else %}
-          <p class="muted">No ideas cite this note yet.</p>
-        {% endfor %}
+          <p class="muted">None yet.</p>
+        {% endif %}
       </section>
+
       {% if images or segments %}
-        <section class="sheet">
-          <h2>Raw extraction</h2>
+        <section class="rail-section">
+          <h2 class="rail-title">Raw extraction</h2>
           {% for i in images %}
-            <details>
-              <summary>OCR {{ i.kind }} {{ i.idx }}</summary>
-              <pre>{{ i.ocr_text or '(no text)' }}</pre>
+            <details class="raw">
+              <summary>Text read from {{ 'the frame' if i.kind == 'frame' else 'slide ' ~ i.idx }}{% if i.ocr_conf is not none %} <span class="muted num">{{ '%.0f'|format(i.ocr_conf) }}%</span>{% endif %}</summary>
+              <pre>{{ i.ocr_text or '(no text found)' }}</pre>
             </details>
           {% endfor %}
           {% if post.type == 'video' %}
-            <details>
-              <summary>Transcript · {{ segments|length }} segments</summary>
+            <details class="raw">
+              <summary>Transcript <span class="muted num">{{ segments|length }} {{ 'segment' if segments|length == 1 else 'segments' }}</span></summary>
               <pre>{% for s in segments %}[{{ '%d:%04.1f'|format(s.start // 60, s.start % 60) }}] {{ s.text }}
 {% else %}(no speech){% endfor %}</pre>
             </details>
           {% endif %}
         </section>
       {% endif %}
-      <section class="sheet facts">
-        <h2>Post facts</h2>
-        <dl>
-          <dt>Id</dt>
-          <dd>
-            <code>{{ post.id }}</code>
-          </dd>
-          <dt>Added</dt>
-          <dd>{{ post.added_at|local_time }}</dd>
-          {% if post.language %}
-            <dt>Speech</dt>
-            <dd>{{ post.language }}</dd>
-          {% endif %}
-          {% if post.note_path %}
-            <dt>Note</dt>
-            <dd>
-              <code>{{ post.note_path }}</code>
-            </dd>
-          {% endif %}
-          {% if post.last_error %}
-            <dt>Error</dt>
-            <dd class="error-text">{{ post.last_error }}</dd>
-          {% endif %}
+
+      <section class="rail-section">
+        <h2 class="rail-title">Post</h2>
+        <dl class="facts">
+          <dt>Id</dt><dd><code>{{ post.id }}</code></dd>
+          <dt>Added</dt><dd>{{ post.added_at|local_time }}</dd>
+          {% if post.note_path %}<dt>Note</dt><dd><code>{{ post.note_path }}</code></dd>{% endif %}
+          {% if post.last_error %}<dt>Last error</dt><dd class="alert-text">{{ post.last_error }}</dd>{% endif %}
         </dl>
       </section>
     </aside>

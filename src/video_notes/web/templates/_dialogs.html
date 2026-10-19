@@ -1,75 +1,121 @@
-{% from '_icons.html' import icon %}
-<form id="update-downloaders-form" method="post" action="/update-downloaders">
-</form>
-<dialog id="add-connection" class="card-dialog">
-  <div class="dialog-head">
-    <h2>Add connection</h2>
-    <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
-  </div>
-  <form method="post" action="/connections" class="stack">
-    <fieldset>
-      <legend>Platform</legend>
-      {% for key, src in source_types.items() %}
-        <label><input type="radio" name="platform" value="{{ key }}" {% if loop.first %}checked{% endif %}> {{ src.label }}</label>
-      {% endfor %}
-    </fieldset>
-    <label>Collection URL<input name="url" required placeholder="{{ (source_types.values()|first).url_hint }}"></label>
-    <label>Name<input name="name" placeholder="Name from URL if empty"></label>
-    <label>Firefox cookies<select name="cookies_mode"><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
-    <div class="dialog-actions">
-      <button type="button" data-close>Cancel</button>
-      <button class="primary">Save connection</button>
+{% from "_macros.html" import icon %}
+{% set cookie_help = {'auto': 'Only if reading without them fails', 'always': 'Always use Firefox cookies', 'never': 'Never use cookies'} %}
+
+{# ── Add a collection ─────────────────────────────────────────── #}
+<dialog id="add-collection" class="dialog" aria-labelledby="add-collection-title">
+  <form method="post" action="/connections" class="dialog-form">
+    <div class="dialog-head">
+      <h2 id="add-collection-title">Add a collection</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body stack">
+      <fieldset class="choice-group">
+        <legend>Platform</legend>
+        {% for key, src in source_types.items() %}
+          <label class="choice"><input type="radio" name="platform" value="{{ key }}" {% if loop.first %}checked{% endif %}> {{ src.label }}</label>
+        {% endfor %}
+        <span class="choice choice-later">Instagram and YouTube later</span>
+      </fieldset>
+      <label class="field">
+        <span>Collection link</span>
+        <input type="url" name="url" required autofocus placeholder="{{ (source_types.values()|first).url_hint }}" autocomplete="off">
+        <small>Open the collection on TikTok and copy the address.</small>
+      </label>
+      <label class="field">
+        <span>Name</span>
+        <input type="text" name="name" placeholder="Taken from the link if empty" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Firefox cookies</span>
+        <select name="cookies_mode">
+          {% for m in cookie_modes %}<option value="{{ m }}">{{ cookie_help[m] }}</option>{% endfor %}
+        </select>
+        <small>Cookies are needed only for private collections.</small>
+      </label>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="submit" class="button button-primary">Add collection</button>
     </div>
   </form>
 </dialog>
+
+{# ── One card per collection: edit, history, delete ───────────── #}
 {% for c in sidebar_conns %}
-  <dialog id="edit-{{ c.id }}" class="card-dialog">
-    <div class="dialog-head">
-      <h2>{{ c.name }}</h2>
-      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
-    </div>
-    <form method="post" action="/connections/{{ c.id }}" class="stack">
-      <label>Name<input name="name" value="{{ c.name }}" required></label>
-      <label>Collection URL<input name="url" value="{{ c.url }}" required></label>
-      <label>Firefox cookies<select name="cookies_mode">{% for mode in cookie_modes %}<option value="{{ mode }}" {% if mode == c.cookies_mode %}selected{% endif %}>{{ mode|capitalize }}</option>{% endfor %}</select></label>
-      <label>Firefox profile folder<input name="firefox_profile" value="{{ c.firefox_profile or '' }}" list="firefox-profiles" placeholder="Automatic"></label>
-      <label>Post URLs, one per line<textarea name="links" rows="4">{{ sidebar_links[c.id] }}</textarea></label>
-      <div class="dialog-actions">
-        <button type="button" data-close>Cancel</button>
-        <button class="primary">Save connection</button>
-      </div>
-    </form>
-    <p><a href="/runs?conn={{ c.id }}">Run history</a></p>
-    <div class="delete-section">
-      <p>{{ c.only_here }} posts belong only here; notes and media stay.</p>
-      <button type="button" class="danger-outline" data-dialog="delete-{{ c.id }}">Delete collection</button>
-    </div>
-  </dialog>
-  <dialog id="delete-{{ c.id }}" class="card-dialog">
-    <div class="dialog-head">
-      <h2>Delete {{ c.name }}?</h2>
-      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
-    </div>
-    <p>{{ c.only_here }} posts belong only here; notes and media stay.</p>
-    <form method="post" action="/connections/{{ c.id }}/delete" class="dialog-actions">
-      <button type="button" data-close>Cancel</button>
-      <button class="danger">Delete connection</button>
-    </form>
-  </dialog>
-{% endfor %}
-<datalist id="firefox-profiles">
-  {% for profile in firefox_profiles %}
-    <option value="{{ profile.path }}">{{ profile.name }}</option>
-  {% endfor %}
-</datalist>
-<dialog id="quit-dialog" class="card-dialog">
+<dialog id="collection-{{ c.id }}" class="dialog" aria-labelledby="collection-{{ c.id }}-title">
   <div class="dialog-head">
-    <h2>Quit the app?</h2>
+    <h2 id="collection-{{ c.id }}-title">{{ c.name }}</h2>
     <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
   </div>
-  <p>A running Extract keeps going.</p>
-  <form method="post" action="/quit" class="dialog-actions">
-    <button type="button" data-close>Cancel</button>
-    <button class="primary">Quit</button>
+  <div class="dialog-body">
+    <p class="dialog-links">
+      <a href="/videos?conn={{ c.id }}">Its videos</a>
+      <a href="/runs?conn={{ c.id }}">Run history</a>
+      <a href="{{ c.url }}" target="_blank" rel="noreferrer">Open on TikTok {{ icon('external') }}</a>
+    </p>
+
+    <form method="post" action="/connections/{{ c.id }}" class="stack" id="edit-{{ c.id }}">
+      <label class="field">
+        <span>Name</span>
+        <input type="text" name="name" value="{{ c.name }}" required autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Collection link</span>
+        <input type="url" name="url" value="{{ c.url }}" required autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Firefox cookies</span>
+        <select name="cookies_mode">
+          {% for m in cookie_modes %}<option value="{{ m }}" {% if m == c.cookies_mode %}selected{% endif %}>{{ cookie_help[m] }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>Firefox profile</span>
+        <select name="firefox_profile">
+          <option value="">Automatic (the profile used last)</option>
+          {% for p in firefox_profiles %}
+            <option value="{{ p.path }}" {% if p.path == c.firefox_profile %}selected{% endif %}>{{ p.name }}{% if p.default %} (default){% endif %}{% if not p.has_cookies %} — no cookies{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>Post links, one per line</span>
+        <textarea name="links" rows="3" placeholder="https://www.tiktok.com/@creator/video/123…">{{ sidebar_links[c.id] }}</textarea>
+        <small>Used only when the collection itself can't be read.</small>
+      </label>
+    </form>
+
+    <details class="danger-zone">
+      <summary>Delete this collection</summary>
+      <form method="post" action="/connections/{{ c.id }}/delete" class="stack">
+        <p>
+          Removes the collection from the app. {{ c.only_here }} of its {{ c.counts.total }} posts belong to no other
+          collection. <strong>Their notes, ideas and media stay.</strong>
+        </p>
+        <button type="submit" class="button button-danger">Delete {{ c.name }}</button>
+      </form>
+    </details>
+  </div>
+  <div class="dialog-foot">
+    <button type="button" class="button" data-close>Cancel</button>
+    <button type="submit" form="edit-{{ c.id }}" class="button button-primary">Save changes</button>
+  </div>
+</dialog>
+{% endfor %}
+
+{# ── Quit ─────────────────────────────────────────────────────── #}
+<dialog id="quit" class="dialog dialog-small" aria-labelledby="quit-title">
+  <form method="post" action="/quit" class="dialog-form">
+    <div class="dialog-head">
+      <h2 id="quit-title">Quit the app?</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body">
+      <p>This closes the app. A run in progress keeps going, and you can open the app again from the GNOME menu or with <code>vn ui</code>.</p>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="submit" class="button button-primary">Quit</button>
+    </div>
   </form>
 </dialog>

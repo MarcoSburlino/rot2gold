@@ -1,0 +1,53 @@
+{# Small building blocks shared by every page. #}
+
+{% macro icon(name, label=None) -%}
+  <svg class="icon" focusable="false" {% if label %}role="img" aria-label="{{ label }}"{% else %}aria-hidden="true"{% endif %}><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{# Status words keep their meaning without colour; colour only adds emphasis.
+   tone "mark" = highlighter (needs attention or is happening now), "alert" = went wrong. #}
+{% macro pill(text, tone='') -%}
+  <span class="pill{% if tone %} pill-{{ tone }}{% endif %}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro post_pill(status) -%}{{ pill(LABELS[status], 'mark' if status in ('new', 'fetched', 'processed') else '') }}{%- endmacro %}
+{% macro idea_pill(status) -%}{{ pill(status, 'mark' if status == 'new' else '') }}{%- endmacro %}
+{% macro run_pill(status) -%}{{ pill(status, 'mark' if status == 'running' else 'alert' if status in ('failed', 'interrupted') else '') }}{%- endmacro %}
+
+{% macro thumb(url, size="row") -%}
+  <span class="thumb thumb-{{ size }}">
+    {%- if url %}<img src="{{ url }}" alt="" decoding="async">{% else %}{{ icon('play') }}{% endif -%}
+  </span>
+{%- endmacro %}
+
+{# The signature: the videos behind an idea, as tiny 9:16 frames.
+   In list rows the whole row is a link, so tiles are plain (no links inside links).
+   In the reading pane (open=true) every tile links to its video or note. #}
+{% macro source_strip(idea, open=False) -%}
+  {%- set tiles = idea.source_tiles or [] -%}
+  <div class="strip{% if open %} strip-open{% endif %}">
+    <div class="strip-tiles">
+      {%- for src in tiles[:6] %}
+        {%- set inner -%}
+          {%- if src.thumbnail %}<img src="{{ src.thumbnail }}" alt="" decoding="async">
+          {%- elif src.kind == 'note' %}{{ icon('note') }}
+          {%- else %}<span aria-hidden="true">?</span>{% endif -%}
+        {%- endset -%}
+        {%- if open and src.url %}
+          <a class="tile tile-{{ src.kind }}" href="{{ src.url }}" title="{{ src.title }}" aria-label="{{ src.title }}">{{ inner }}</a>
+        {%- else %}
+          <span class="tile tile-{{ src.kind }}" title="{{ src.title }}">{{ inner }}</span>
+        {%- endif %}
+      {%- endfor %}
+      {%- if tiles|length > 6 %}<span class="tile tile-more" title="{{ tiles|length - 6 }} more sources">+{{ tiles|length - 6 }}</span>{% endif %}
+    </div>
+    <span class="support">{{ idea.support }} {{ 'source' if idea.support == 1 else 'sources' }}</span>
+  </div>
+{%- endmacro %}
+
+{# Hide a description that only repeats the title (the first-run ideas were migrated that way). #}
+{% macro distinct(description, title) -%}
+  {%- set a = (description or '')|lower|replace('"', "'")|trim -%}
+  {%- set b = (title or '')|lower|replace('"', "'")|trim -%}
+  {{- description if description and a != b else '' -}}
+{%- endmacro %}
