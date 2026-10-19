@@ -37,7 +37,7 @@ class Blocked(VNError):
 
 
 class UsageLimit(VNError):
-    hint = "Everything finished so far is saved. Run Extract again after the reset time."
+    hint = "Everything finished so far is saved. Run it again after the reset time."
 
 
 class AgentFailed(VNError):
