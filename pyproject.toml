@@ -1,7 +1,7 @@
 [project]
-name = "video-notes"
+name = "video-notes-app"
 version = "0.1.0"
-description = "Turn a TikTok collection into notes in Marco's brain"
+description = "Turn saved TikTok posts into notes and ideas in Marco's brain"
 requires-python = ">=3.12"
 dependencies = [
   "yt-dlp[default,curl-cffi]",

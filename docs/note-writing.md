@@ -8,16 +8,17 @@ Read the brain's rules first: `~/Projects/brain/AGENTS.md`, especially "Writing 
 
 1. Get work: `vn pending 10` prints up to 10 posts waiting for a note: id, URL, creator, date, type, speech language, each image with its OCR text, confidence and path, and the transcript with timestamps. `vn pending --id <id>` shows one post; add `--json` for JSON.
 2. For each post:
-   1. Read the OCR text, then check it against the image. **Always open a video's frame image** (one per video, cheap): frame OCR often misses small text or reads picture texture as words (in testing it read "1300" where the frame said "ARE"). **Open a slide image when its OCR confidence is below 85, its text looks garbled, or it seems to miss text.** The image is the source; OCR is only a draft.
-   2. Search the brain for related notes: `rg -il "<term>" ~/Projects/brain`. Read `Resources/commonplace/commonplace.md` for the themes and topic tags in use.
-   3. Write the note (format below), with web searches for the "Checked" claims.
-   4. Update the hub, quotes and Inbox (see "After each note").
-   5. `vn done <id> Resources/commonplace/videos/video-<slug>.md`, or `vn skip <id> "<reason>"` if the content turns out to be useless (e.g. "music only; on-screen text is a single word"). Don't write a note for a skipped post.
-3. After the batch, in `~/Projects/brain`:
+   1. Check whether a note already exists for it (an earlier run may have been stopped mid-post): `rg -l 'post_id: "<id>"' ~/Projects/brain/Resources/commonplace/videos`. If one exists, finish or replace that file instead of creating a new name.
+   2. Read the OCR text, then check it against the image. **Always open a video's frame image** (one per video, cheap): frame OCR often misses small text or reads picture texture as words (in testing it read "1300" where the frame said "ARE"). **Open a slide image when its OCR confidence is below 85, its text looks garbled, or it seems to miss text.** The image is the source; OCR is only a draft.
+   3. Search the brain for related notes: `rg -il "<term>" ~/Projects/brain`. Read `Resources/commonplace/commonplace.md` for the themes and topic tags in use.
+   4. Write the note (format below), with web searches for the "Checked" claims.
+   5. Update the hub and quotes (see "After each note").
+   6. `vn done <id> Resources/commonplace/videos/video-<slug>.md`, or `vn skip <id> "<reason>"` if the content turns out to be useless (e.g. "music only; on-screen text is a single word"). Don't write a note for a skipped post.
+3. After the batch, in `~/Projects/brain`. Skip this step when the app runs the batch (`vn extract` or the Extract button): the app indexes and commits.
    1. `brain-index`, then `brain-index --check` must exit 0.
    2. Commit by staging only the paths you changed, plus the regenerated indexes. Never `git add -A`; other agents may be working there:
       ```
-      git -C ~/Projects/brain add Resources/commonplace Resources/resources-index.md index.md <each new Inbox note> Inbox/inbox-index.md
+      git -C ~/Projects/brain add Resources/commonplace Resources/resources-index.md index.md
       git -C ~/Projects/brain commit -m "agent: video notes batch"
       ```
       If brain-index retagged someone else's note, leave that note unstaged.
@@ -86,18 +87,13 @@ Everything outside Content is in English.
 - **quotes.md**: add 1–3 standout lines from the Content (original language, verbatim from your cleaned text), at the bottom:
   `- "<line>" — @<creator>, [[video-<slug>]]`
   Skip this if nothing stands out.
-- **Inbox**: if the post contains an idea Marco could act on (a practice to try, a tool, a book to read, a business idea), add a short note `~/Projects/brain/Inbox/idea-<slug>.md` (unique name, no front matter needed):
-  ```
-  # <The idea, as an action>
-
-  <1–3 lines: what to try and why, from the post>. From [[video-<slug>]].
-  ```
+- **Ideas**: don't write idea notes or touch `Inbox/`. Ideas are found across notes by a separate pass, with its own rules in `docs/ideas.md` (until 2026-10-19 each note writer added a one-source idea to `Inbox/` here).
 - **commonplace.md**: list the post under its theme in `## Posts by theme`, as `- [[video-<slug>]] — <short description>` under a `### <Theme>` heading. Reuse an existing theme where it fits; themes are broad (e.g. "Philosophy and meaning", "Money and business", "AI and work"). Add any new topic tags to `## Topic tags in use`.
 - Run `vn done <id> Resources/commonplace/videos/video-<slug>.md`.
 
 ## Working rules (learned on the first full run)
 
-- Finish each post completely before starting the next: note, quotes, hub, Inbox, `vn done`. If you are interrupted, nothing is left half-registered.
+- Finish each post completely before starting the next: note, quotes, hub, `vn done`. If you are interrupted, nothing is left half-registered.
 - Edit files in place; never make backup copies. Git tracks the brain.
 - Many posts are quote slideshows from the same few accounts. Before checking a quote, `rg` the existing notes: if it was already checked, link that note and reuse its verdict.
 - If you identify an unnamed speaker only by face or voice, say it is unconfirmed ("appears to be … [?]").

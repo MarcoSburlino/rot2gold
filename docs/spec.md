@@ -1,11 +1,13 @@
-# video-notes — spec and decisions
+# Pipeline spec and decisions
 
 ## Purpose
 
 Turn every post in Marco's TikTok collection "Material" into a note in his brain (`~/Projects/brain/Resources/commonplace/videos/`). Two halves:
 
 1. **`vn`, a local pipeline** that lists the posts, downloads media, runs OCR and speech-to-text, and stores everything in SQLite. It uses no AI reasoning: only local utility models (Tesseract, Whisper).
-2. **Note writing**, done by an agent (Claude Code or Codex, on Marco's subscriptions) following `docs/note-writing.md`. No pay-per-use API keys, no local LLMs.
+2. **Note writing**, done by an agent following `docs/note-writing.md`: Claude Code on Marco's subscription by default, or with an API key through the app (`docs/app-spec.md`). No local LLMs.
+
+The app that drives both halves, with connections, Extract and an ideas pass, is specified in `docs/app-spec.md`.
 
 Everything runs locally. Captions, hashtags and comments are never fetched into the database or the notes.
 
@@ -94,6 +96,8 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
 
   medium was the most accurate and never hallucinated. At ~0.3× real time, the whole collection (~80 min of audio) transcribes in under half an hour.
 - **Type detection costs one metadata request per new post at sync time.** The alternative, detecting it at fetch time, would leave `type` empty in `vn status` until download.
+- **Pipeline and app in one project (2026-10-19).** The folder `~/Projects/video-notes` was renamed `~/Projects/video-notes-app`, which keeps the Git history and `data/`. The app is specified in `app-spec.md`. Its main decisions: connections replace the single collection URL, Extract runs every stage plus note writing and an ideas pass, and an Anthropic API key is allowed as an alternative to Marco's subscription (this project only).
+- **Ideas moved out of note writing (2026-10-19).** Note writers no longer add one-source idea notes to `Inbox/`. The app runs a separate ideas pass across notes (`ideas.md`). `note-writing.md` also gained a resume rule: look for an existing note with the same `post_id` before writing.
 - **Note-writing review (5 test posts, 2026-10-15).** These rules were added to `note-writing.md`:
   - always open the video frame;
   - only short italic labels may be added to Content;
