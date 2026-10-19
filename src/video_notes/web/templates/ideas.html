@@ -1,7 +1,87 @@
-{% extends 'base.html' %}{% block title %}Ideas · {{ APP_NAME }}{% endblock %}{% block main %}
-<header class="page-head"><div><h1>Ideas</h1><p class="muted">Thoughts gathered from your notes</p></div><div class="head-actions"><button type="button" data-dialog="find-ideas">Find ideas in older notes</button><a class="quiet-link" href="/runs?kind=ideas">Idea runs</a></div></header>
-{% if dry_run %}<div class="banner pending">Dry run {{ dry_run.id }} proposes {{ dry_run.count }} ideas — <a href="/ideas/preview/{{ dry_run.id }}">Review</a></div>{% endif %}
-<div class="filters"><nav class="chips" aria-label="Idea status">{% for s in ['all','new','trying','kept','dropped'] %}<a class="chip" href="?{{ {'status':s,'q':q}|urlencode }}" {% if status == s %}aria-current="true"{% endif %}>{{ s|capitalize }} <span>{{ total if s == 'all' else counts[s] }}</span></a>{% endfor %}</nav><form method="get" class="search"><input type="hidden" name="status" value="{{ status }}"><input type="search" name="q" value="{{ q }}" placeholder="Search ideas" aria-label="Search ideas"><button>Search</button></form></div>
-{% if rows %}<div class="master-detail {% if detail_page %}detail-page{% endif %}"><section class="list-sheet" aria-label="Ideas"><div class="list-heading">{{ rows|length }} ideas</div>{% for idea in rows %}{% set row_index = loop.index %}{% set large = false %}<a class="idea-row list-row" href="/ideas/{{ idea.name }}?{{ {'status':status,'q':q}|urlencode }}" {% if selected and selected.name == idea.name %}aria-current="true"{% endif %}><div class="row-top"><strong>{{ idea.title }}</strong><span class="status-pill {{ idea.status }}">{{ idea.status }}</span></div>{% include '_source_strip.html' %}{% set same = idea.description|lower|replace('"', "'") == idea.title|lower|replace('"', "'") %}<div class="row-meta">{% if idea.description and not same %}{{ idea.description }} · {% endif %}updated {{ idea.updated or 'unknown' }}</div></a>{% endfor %}</section>{% if selected %}<article class="reading-pane idea-detail"><a class="back-link" href="/ideas?{{ {'status':status,'q':q}|urlencode }}">← Ideas</a><h2>{{ selected.title }}</h2><p class="meta"><span class="status-pill {{ selected.status }}">{{ selected.status }}</span> {{ selected.support }} {{ 'source' if selected.support == 1 else 'sources' }} · created {{ selected.created or 'unknown' }} · updated {{ selected.updated or 'unknown' }}</p>{% set idea = selected %}{% set large = true %}{% include '_source_strip.html' %}<div class="actions"><a class="button primary" href="{{ selected.obsidian }}">Open in Obsidian</a></div>{% set same = selected.description|lower|replace('"', "'") == selected.title|lower|replace('"', "'") %}{% if selected.description and not same %}<p class="description">{{ selected.description }}</p>{% endif %}<div class="prose">{{ html|safe }}</div></article>{% endif %}</div>{% else %}<p class="empty">No ideas yet. Extract a collection, or find ideas in older notes.</p>{% endif %}
-<dialog id="find-ideas" class="card-dialog"><div class="dialog-head"><h2>Find ideas in older notes</h2><button type="button" class="icon-button" data-close aria-label="Close">×</button></div><form method="post" action="/ideas/rebuild" class="stack"><p class="muted">Choose themes with unchecked notes.</p>{% for theme in themes %}<label class="check"><input type="checkbox" name="themes" value="{{ theme.name }}"> <span>{{ theme.name }}<small>{{ theme.unchecked }} of {{ theme.total }} notes not checked yet</small></span></label>{% endfor %}<label class="check"><input type="checkbox" name="dry_run" value="1" checked> Dry run first</label><label>Limit<input type="number" name="limit" min="1" placeholder="All notes"></label><div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" {% if active %}disabled{% endif %}>Find ideas</button></div></form></dialog>
+{% extends 'base.html' %}
+{% block title %}Ideas · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <header class="page-head">
+    <div>
+      <h1>Ideas</h1>
+      <p class="muted">Thoughts gathered from your notes</p>
+    </div>
+    <div class="head-actions">
+      <button type="button" data-dialog="find-ideas">Find ideas in older notes</button>
+      <a class="quiet-link" href="/runs?kind=ideas">Idea runs</a>
+    </div>
+  </header>
+  {% if dry_run %}
+    <div class="banner pending">Dry run {{ dry_run.id }} proposes {{ dry_run.count }} ideas — <a href="/ideas/preview/{{ dry_run.id }}">Review</a></div>
+  {% endif %}
+  <div class="filters">
+    <nav class="chips" aria-label="Idea status">
+      {% for s in ['all','new','trying','kept','dropped'] %}
+        <a class="chip" href="?{{ {'status':s,'q':q}|urlencode }}" {% if status == s %}aria-current="true"{% endif %}>{{ s|capitalize }} <span>{{ total if s == 'all' else counts[s] }}</span></a>
+      {% endfor %}
+    </nav>
+    <form method="get" class="search">
+      <input type="hidden" name="status" value="{{ status }}">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search ideas" aria-label="Search ideas">
+      <button>Search</button>
+    </form>
+  </div>
+  {% if rows %}
+    <div class="master-detail {% if detail_page %}detail-page{% endif %}">
+      <section class="list-sheet" aria-label="Ideas">
+        <div class="list-heading">{{ rows|length }} ideas</div>
+        {% for idea in rows %}
+          {% set row_index = loop.index %}
+          {% set large = false %}
+          <a class="idea-row list-row" href="/ideas/{{ idea.name }}?{{ {'status':status,'q':q}|urlencode }}" {% if selected and selected.name == idea.name %}aria-current="true"{% endif %}>
+            <div class="row-top">
+              <strong>{{ idea.title }}</strong>
+              <span class="status-pill {{ idea.status }}">{{ idea.status }}</span>
+            </div>
+            {% include '_source_strip.html' %}
+            {% set same = idea.description|lower|replace('"', "'") == idea.title|lower|replace('"', "'") %}
+            <div class="row-meta">{% if idea.description and not same %}{{ idea.description }} · {% endif %}updated {{ idea.updated or 'unknown' }}</div>
+          </a>
+        {% endfor %}
+      </section>
+      {% if selected %}
+        <article class="reading-pane idea-detail">
+          <a class="back-link" href="/ideas?{{ {'status':status,'q':q}|urlencode }}">← Ideas</a>
+          <h2>{{ selected.title }}</h2>
+          <p class="meta"><span class="status-pill {{ selected.status }}">{{ selected.status }}</span> {{ selected.support }} {{ 'source' if selected.support == 1 else 'sources' }} · created {{ selected.created or 'unknown' }} · updated {{ selected.updated or 'unknown' }}</p>
+          {% set idea = selected %}
+          {% set large = true %}
+          {% include '_source_strip.html' %}
+          <div class="actions">
+            <a class="button primary" href="{{ selected.obsidian }}">Open in Obsidian</a>
+          </div>
+          {% set same = selected.description|lower|replace('"', "'") == selected.title|lower|replace('"', "'") %}
+          {% if selected.description and not same %}
+            <p class="description">{{ selected.description }}</p>
+          {% endif %}
+          <div class="prose">{{ html|safe }}</div>
+        </article>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty">No ideas yet. Extract a collection, or find ideas in older notes.</p>
+  {% endif %}
+  <dialog id="find-ideas" class="card-dialog">
+    <div class="dialog-head">
+      <h2>Find ideas in older notes</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+    </div>
+    <form method="post" action="/ideas/rebuild" class="stack">
+      <p class="muted">Choose themes with unchecked notes.</p>
+      {% for theme in themes %}
+        <label class="check"><input type="checkbox" name="themes" value="{{ theme.name }}"> <span>{{ theme.name }}<small>{{ theme.unchecked }} of {{ theme.total }} notes not checked yet</small></span></label>
+      {% endfor %}
+      <label class="check"><input type="checkbox" name="dry_run" value="1" checked> Dry run first</label>
+      <label>Limit<input type="number" name="limit" min="1" placeholder="All notes"></label>
+      <div class="dialog-actions">
+        <button type="button" data-close>Cancel</button>
+        <button class="primary" {% if active %}disabled{% endif %}>Find ideas</button>
+      </div>
+    </form>
+  </dialog>
 {% endblock %}

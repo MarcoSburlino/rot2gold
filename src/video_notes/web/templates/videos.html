@@ -1,5 +1,42 @@
-{% extends 'base.html' %}{% block title %}Videos · {{ APP_NAME }}{% endblock %}{% block main %}
-<header class="page-head"><div><h1>Videos</h1><p class="muted">Posts and the notes made from them</p></div></header>
-{% if f.conn and f.conn|int in names %}<p><a class="chip removable" href="/videos?{{ {'status':f.status,'type':f.type,'q':f.q}|urlencode }}">In {{ names[f.conn|int] }} ×</a></p>{% endif %}
-<div class="filters"><nav class="chips" aria-label="Video status"><a class="chip" href="?{{ {'conn':f.conn,'type':f.type,'q':f.q}|urlencode }}" {% if not f.status %}aria-current="true"{% endif %}>All <span>{{ counts.values()|sum }}</span></a>{% for s in STATUSES %}<a class="chip" href="?{{ {'conn':f.conn,'type':f.type,'q':f.q,'status':s}|urlencode }}" {% if f.status == s %}aria-current="true"{% endif %}>{{ LABELS[s]|capitalize }} <span>{{ counts[s] }}</span></a>{% endfor %}</nav><nav class="chips" aria-label="Video type">{% for t in ['all','video','slideshow'] %}<a class="chip" href="?{{ {'conn':f.conn,'status':f.status,'q':f.q,'type':'' if t == 'all' else t}|urlencode }}" {% if (not f.type and t == 'all') or f.type == t %}aria-current="true"{% endif %}>{{ t|capitalize }}{% if t != 'all' %} <span>{{ type_counts[t] }}</span>{% endif %}</a>{% endfor %}</nav><form method="get" class="search"><input type="hidden" name="conn" value="{{ f.conn }}"><input type="hidden" name="status" value="{{ f.status }}"><input type="hidden" name="type" value="{{ f.type }}"><input type="search" name="q" value="{{ f.q }}" placeholder="Search videos" aria-label="Search videos"><button>Search</button></form></div>
-{% if rows %}<div class="list-sheet">{% for r in rows %}<a class="video-row list-row" href="/videos/{{ r.id }}"><span class="thumb list-thumb">{% if r.thumbnail %}<img src="{{ r.thumbnail }}" alt=""{% if loop.index > 12 %} loading="lazy"{% endif %}>{% else %}▶{% endif %}</span><span class="video-row-copy"><strong>{{ r.title or ('@' ~ r.creator if r.creator else r.id) }}</strong><span class="desc">{{ 'Skipped: ' ~ r.skip_reason if r.status == 'skipped' else r.description or '' }}</span><span class="row-meta">{% if r.creator %}@{{ r.creator }} · {% endif %}{{ r.upload_date or 'date unknown' }} · {{ r.type or 'unknown type' }}</span></span><span class="status-pill {{ 'noted' if r.status == 'done' else 'listed' if r.status == 'new' else r.status }}">{{ LABELS[r.status] }}</span></a>{% endfor %}</div>{% else %}<p class="empty">No videos match these filters.</p>{% endif %}{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Videos · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <header class="page-head">
+    <div>
+      <h1>Videos</h1>
+      <p class="muted">Posts and the notes made from them</p>
+    </div>
+  </header>
+  {% if f.conn and f.conn|int in names %}
+    <p><a class="chip removable" href="/videos?{{ {'status':f.status,'type':f.type,'q':f.q}|urlencode }}">In {{ names[f.conn|int] }} ×</a></p>
+  {% endif %}
+  <div class="filters">
+    <nav class="chips" aria-label="Video status">
+      <a class="chip" href="?{{ {'conn':f.conn,'type':f.type,'q':f.q}|urlencode }}" {% if not f.status %}aria-current="true"{% endif %}>All <span>{{ counts.values()|sum }}</span></a>
+      {% for s in STATUSES %}
+        <a class="chip" href="?{{ {'conn':f.conn,'type':f.type,'q':f.q,'status':s}|urlencode }}" {% if f.status == s %}aria-current="true"{% endif %}>{{ LABELS[s]|capitalize }} <span>{{ counts[s] }}</span></a>
+      {% endfor %}
+    </nav>
+    <nav class="chips" aria-label="Video type">
+      {% for t in ['all','video','slideshow'] %}
+        <a class="chip" href="?{{ {'conn':f.conn,'status':f.status,'q':f.q,'type':'' if t == 'all' else t}|urlencode }}" {% if (not f.type and t == 'all') or f.type == t %}aria-current="true"{% endif %}>{{ t|capitalize }}{% if t != 'all' %} <span>{{ type_counts[t] }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+    <form method="get" class="search">
+      <input type="hidden" name="conn" value="{{ f.conn }}">
+      <input type="hidden" name="status" value="{{ f.status }}">
+      <input type="hidden" name="type" value="{{ f.type }}">
+      <input type="search" name="q" value="{{ f.q }}" placeholder="Search videos" aria-label="Search videos">
+      <button>Search</button>
+    </form>
+  </div>
+  {% if rows %}
+    <div class="list-sheet">
+      {% for r in rows %}
+        <a class="video-row list-row" href="/videos/{{ r.id }}"><span class="thumb list-thumb">{% if r.thumbnail %}<img src="{{ r.thumbnail }}" alt=""{% if loop.index > 12 %} loading="lazy"{% endif %}>{% else %}▶{% endif %}</span><span class="video-row-copy"><strong>{{ r.title or ('@' ~ r.creator if r.creator else r.id) }}</strong><span class="desc">{{ 'Skipped: ' ~ r.skip_reason if r.status == 'skipped' else r.description or '' }}</span><span class="row-meta">{% if r.creator %}@{{ r.creator }} · {% endif %}{{ r.upload_date or 'date unknown' }} · {{ r.type or 'unknown type' }}</span></span><span class="status-pill {{ 'noted' if r.status == 'done' else 'listed' if r.status == 'new' else r.status }}">{{ LABELS[r.status] }}</span></a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">No videos match these filters.</p>
+  {% endif %}
+{% endblock %}

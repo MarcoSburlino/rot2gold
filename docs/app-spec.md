@@ -257,27 +257,21 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 
 ## Screens
 
-1. **Connections** (`/`)
-   - One card per connection: platform, name, URL, post counts by status, last sync time and source, last error.
-   - "Add connection": pick the platform, then a card asks for the URL and a name. The source validates the URL. Each card can be edited or deleted (with a confirmation).
-   - Checkboxes and an **Extract** button. A run panel shows the stages, a live event log, AI usage so far, and a Stop button.
-   - A banner whenever a run is active, including one started in a terminal.
-2. **Videos** (`/videos`)
-   - Every post, filtered by connection and status: creator, posted date, type, status, skip reason.
-   - A post in several connections shows each one as a chip.
-3. **Video detail** (`/videos/<id>`)
-   - The note, rendered from its markdown file in the brain (`notefile.py`). Front matter is shown as a header, and `[[wikilinks]]` link to app pages where they resolve.
-   - Rendering has raw HTML switched off: notes contain text from posts and the web, so `<script>` in a note shows as text and never runs.
-   - The frame or slide images from `data/media/`.
-   - **Open in Obsidian:** `obsidian://open?path=<absolute note path>`. This works without the vault name; the Flatpak Obsidian is registered for `obsidian://` links.
-   - The raw OCR text and transcript, collapsed.
-4. **Ideas** (`/ideas`)
-   - Cards from `~/Projects/brain/Inbox/ideas/`, read from the files, so Marco's edits show up. Sorted by `support`, then `updated`, with status and text filters, source count, description and Obsidian link.
-   - Each idea links its sources: video notes go to Video detail, other notes open in Obsidian.
-   - The detail page renders the full idea safely. The rebuild form selects themes, an optional limit and a dry run (on by default); `/ideas/preview/<run_id>` renders its files.
-5. **Runs** (`/runs`) and **Settings** (`/settings`)
-   - Runs: the history with status, counts, usage per run and per batch, brain commits, and an Undo confirmation for eligible runs.
-   - Settings: editable backend, models and batch limits; API key status, set, clear and test; plan usage, downloader versions and update; brain path, app address and Firefox profiles.
+Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, collections in a sidebar, Settings as a card, runs linked to collections). Visual rules: `.claude/skills/design-system/` — read it before any UI change.
+
+**App shell.** A sidebar on every page (a top bar plus drawer under 768 px):
+- Ideas and Videos, with counts.
+- **Collections**: one row per connection with a checkbox, its name (→ its videos), "N posts · M waiting", and its last run (status, time, notes and ideas, → the run). The ⋯ button opens a card to edit it, see its run history (`/runs?conn=<id>`) or delete it; + adds one (platform, then URL and name).
+- **Extract**: the button names what it will do ("Extract 2 collections"); ▾ holds Write notes, Find ideas and Max notes.
+- A live run widget while a run holds the lock (from the app or a terminal): stage, last log line, Log and Stop.
+- ⚙ **Settings** opens a card with tabs: Notes & ideas, API key (status only, never the key), Usage (plan windows), About (downloader versions and update, brain path, Firefox profiles). Settings forms return to the page you were on with the card reopened. `/settings` renders the same panel as a page without JavaScript.
+- Quit.
+
+**Ideas** (`/`, `/ideas`, `/ideas/<name>`): the home page. Status chips and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. A banner offers to review an unapplied dry run; "Find ideas in older notes" opens the theme/dry-run card; "Idea runs" lists `/runs?kind=ideas`. Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up.
+
+**Videos** (`/videos`): rows with a 9:16 thumbnail, title, description, creator, date, type and status; chips for status and type, search, and a removable "In <collection>" filter. **Video detail** (`/videos/<id>`): header with thumbnail, title, collections, Open in Obsidian and Open on TikTok; the note (rendered with raw HTML switched off, wikilinks to app pages or Obsidian); a rail with frames or slides, **Ideas from this video**, OCR and transcript, and post facts.
+
+**Runs** (`/runs`, `/runs?conn=<id>`, `/runs?kind=ideas`, `/runs/<id>`): not in the main navigation; reached from each collection's last run and run history, or from Ideas. A run page shows its collections (linked), stages, counts, usage and plan windows, the batches table, errors, brain commits, Undo (as a confirmation card), and the live log.
 
 ## Files
 

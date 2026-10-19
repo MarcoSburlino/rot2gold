@@ -23,6 +23,7 @@ Two parts, one repo:
 - Connection (collection) URLs live only in the database (`data/vn.sqlite`, `vn conn list`), never in Git.
 - One pipeline run at a time: every command that runs the pipeline takes the lock `data/vn.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
 - The web UI listens on `127.0.0.1:8740` only, never `0.0.0.0`.
+- UI work follows the design system in `.claude/skills/design-system/` (colours, type, spacing, components, motion). Keep templates and CSS readable: one element or rule per line.
 - Brain writes follow `~/Projects/brain/AGENTS.md`: `brain-index` and `brain-index --check` after changes; commits start `agent: ` and stage only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the brain.
 - `data/` (media, database, tools) and `.venv/` are gitignored. Secrets never go into notes or Git.
 - App settings live in `data/settings.json`; tracked `config.toml` holds defaults only and is never written by the app.

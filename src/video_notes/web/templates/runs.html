@@ -1,3 +1,66 @@
-{% extends 'base.html' %}{% block title %}Runs · {{ APP_NAME }}{% endblock %}{% block main %}
-<header class="page-head"><div><h1>{{ 'Idea runs' if kind == 'ideas' else 'Runs · ' ~ names[conn|int] if conn and conn|int in names else 'All runs' }}</h1><p class="muted">A record of each extraction and ideas pass</p></div></header>{% if conn %}<p><a class="chip removable" href="/runs">In {{ names.get(conn|int, '#' ~ conn) }} ×</a></p>{% endif %}
-{% if runs %}<div class="table-wrap"><table class="data-table"><thead><tr><th>Run</th><th>Started</th><th>From</th><th>Collections</th><th>Status</th><th>Listed</th><th>Fetched</th><th>Processed</th><th>Noted</th><th>Skipped</th><th>Ideas new / updated</th><th>~$</th><th>Commits</th></tr></thead><tbody>{% for r in runs %}<tr><td><a href="/runs/{{ r.id }}">{{ r.id }}</a> <small>{{ r.kind }}</small></td><td>{{ r.started_at|relative_time }}</td><td>{{ r.origin }}</td><td>{% for i in (r.connection_ids or '').split(',') if i %}<a class="chip" href="/runs?conn={{ i }}">{{ names.get(i|int, '#' ~ i) }}</a>{% endfor %}</td><td><span class="status-pill {{ r.status }}">{{ r.status }}</span></td><td>{{ r.posts_listed }}</td><td>{{ r.posts_fetched }}</td><td>{{ r.posts_processed }}</td><td>{{ r.posts_noted }}</td><td>{{ r.posts_skipped }}</td><td>{{ r.ideas_created }} / {{ r.ideas_updated }}</td><td>{% if r.cost_estimate_usd %}{{ '%.2f'|format(r.cost_estimate_usd) }}{% else %}—{% endif %}</td><td>{{ r.brain_commits.split()|length if r.brain_commits else 0 }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">No runs yet. Select a collection and extract it.</p>{% endif %}{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Runs · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <header class="page-head">
+    <div>
+      <h1>{{ 'Idea runs' if kind == 'ideas' else 'Runs · ' ~ names[conn|int] if conn and conn|int in names else 'All runs' }}</h1>
+      <p class="muted">A record of each extraction and ideas pass</p>
+    </div>
+  </header>
+  {% if conn %}
+    <p><a class="chip removable" href="/runs">In {{ names.get(conn|int, '#' ~ conn) }} ×</a></p>
+  {% endif %}
+  {% if runs %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Started</th>
+            <th>From</th>
+            <th>Collections</th>
+            <th>Status</th>
+            <th>Listed</th>
+            <th>Fetched</th>
+            <th>Processed</th>
+            <th>Noted</th>
+            <th>Skipped</th>
+            <th>Ideas new / updated</th>
+            <th>~$</th>
+            <th>Commits</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in runs %}
+            <tr>
+              <td>
+                <a href="/runs/{{ r.id }}">{{ r.id }}</a>
+                <small>{{ r.kind }}</small>
+              </td>
+              <td>{{ r.started_at|relative_time }}</td>
+              <td>{{ r.origin }}</td>
+              <td>
+                {% for i in (r.connection_ids or '').split(',') if i %}
+                  <a class="chip" href="/runs?conn={{ i }}">{{ names.get(i|int, '#' ~ i) }}</a>
+                {% endfor %}
+              </td>
+              <td>
+                <span class="status-pill {{ r.status }}">{{ r.status }}</span>
+              </td>
+              <td>{{ r.posts_listed }}</td>
+              <td>{{ r.posts_fetched }}</td>
+              <td>{{ r.posts_processed }}</td>
+              <td>{{ r.posts_noted }}</td>
+              <td>{{ r.posts_skipped }}</td>
+              <td>{{ r.ideas_created }} / {{ r.ideas_updated }}</td>
+              <td>{% if r.cost_estimate_usd %}{{ '%.2f'|format(r.cost_estimate_usd) }}{% else %}—{% endif %}</td>
+              <td>{{ r.brain_commits.split()|length if r.brain_commits else 0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty">No runs yet. Select a collection and extract it.</p>
+  {% endif %}
+{% endblock %}

@@ -1,1 +1,19 @@
-{% extends 'base.html' %}{% block title %}Undo run {{ run.id }} · {{ APP_NAME }}{% endblock %}{% block main %}<a class="back-link" href="/runs/{{ run.id }}">← Run {{ run.id }}</a><article class="reading-pane"><h1>Undo run {{ run.id }}?</h1><p>This reverts its brain commits, reopens noted posts when their notes are removed, and clears ideas checks.</p><ul>{% for sha in commits %}<li><code>{{ sha }}</code></li>{% endfor %}</ul><p>Later edits to these files can stop the undo.</p><form method="post" action="/runs/{{ run.id }}/undo" class="actions"><button class="danger" {% if active %}disabled{% endif %}>Undo this run</button><a href="/runs/{{ run.id }}">Cancel</a></form></article>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Undo run {{ run.id }} · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <a class="back-link" href="/runs/{{ run.id }}">← Run {{ run.id }}</a>
+  <article class="reading-pane">
+    <h1>Undo run {{ run.id }}?</h1>
+    <p>This reverts its brain commits, reopens noted posts when their notes are removed, and clears ideas checks.</p>
+    <ul>
+      {% for sha in commits %}
+        <li><code>{{ sha }}</code></li>
+      {% endfor %}
+    </ul>
+    <p>Later edits to these files can stop the undo.</p>
+    <form method="post" action="/runs/{{ run.id }}/undo" class="actions">
+      <button class="danger" {% if active %}disabled{% endif %}>Undo this run</button>
+      <a href="/runs/{{ run.id }}">Cancel</a>
+    </form>
+  </article>
+{% endblock %}

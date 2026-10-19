@@ -1,7 +1,39 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}{{ APP_NAME }}{% endblock %}</title><link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script></head>
-<body><div class="app-shell">
-  <div class="mobile-bar"><a class="brand" href="/ideas">{{ APP_NAME }}</a><span>{{ 'Ideas' if request.url.path.startswith('/ideas') else 'Videos' if request.url.path.startswith('/videos') else 'Runs' }}</span><button type="button" data-dialog="sidebar" aria-label="Open collections">Collections</button></div>
-  {% include '_sidebar.html' %}
-  <main class="main"><div class="main-inner">{% if err %}<div class="banner error" role="alert">{{ err }}</div>{% endif %}{% if msg %}<div class="banner">{{ msg }}</div>{% endif %}{% block main %}{% endblock %}</div></main>
-</div>{% include '_dialogs.html' %}<dialog id="settings-dialog" class="card-dialog" aria-label="Settings"><div id="settings-content"><p>Loading settings…</p></div></dialog></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/app.js" defer>
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="mobile-bar">
+        <a class="brand" href="/ideas">{{ APP_NAME }}</a>
+        <span>{{ 'Ideas' if request.url.path.startswith('/ideas') else 'Videos' if request.url.path.startswith('/videos') else 'Runs' }}</span>
+        <button type="button" data-dialog="sidebar" aria-label="Open collections">Collections</button>
+      </div>
+      {% include '_sidebar.html' %}
+      <main class="main">
+        <div class="main-inner">
+          {% if err %}
+            <div class="banner error" role="alert">{{ err }}</div>
+          {% endif %}
+          {% if msg %}
+            <div class="banner">{{ msg }}</div>
+          {% endif %}
+          {% block main %}
+          {% endblock %}
+        </div>
+      </main>
+    </div>
+    {% include '_dialogs.html' %}
+    <dialog id="settings-dialog" class="card-dialog" aria-label="Settings">
+      <div id="settings-content">
+        <p>Loading settings…</p>
+      </div>
+    </dialog>
+  </body>
+</html>

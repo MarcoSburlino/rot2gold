@@ -1,1 +1,10 @@
-{% extends 'base.html' %}{% block title %}Settings · {{ APP_NAME }}{% endblock %}{% block main %}<noscript><style>.settings-page [data-panel][hidden]{display:block!important}.settings-page .settings-tabs{display:none}</style></noscript><div class="reading-pane settings-page">{% include '_settings_panel.html' %}</div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Settings · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <noscript>
+    <style>.settings-page [data-panel][hidden]{display:block!important}.settings-page .settings-tabs{display:none}</style>
+  </noscript>
+  <div class="reading-pane settings-page">
+    {% include '_settings_panel.html' %}
+  </div>
+{% endblock %}

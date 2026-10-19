@@ -1,1 +1,33 @@
-{% extends 'base.html' %}{% block title %}Ideas preview · {{ APP_NAME }}{% endblock %}{% block main %}<a class="back-link" href="/runs/{{ run_id }}">← Run {{ run_id }}</a><header class="page-head"><h1>Ideas preview</h1></header>{% if manifest.applied %}<div class="banner">Dry run {{ run_id }} was applied to the brain.</div>{% else %}<div class="banner pending">Dry run {{ run_id }} proposes {{ rows|length }} ideas from {{ (manifest.considered or [])|length }} notes.</div>{% if rows or manifest.considered %}<form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar"><button class="primary" {% if active %}disabled{% endif %}>Apply {{ rows|length }} ideas to the brain</button><p class="muted">Ideas edited since the dry run are skipped.</p></form>{% endif %}{% endif %}<div class="preview-list">{% for idea in rows %}<article class="reading-pane"><p class="meta"><span class="status-pill {{ idea.status }}">{{ 'update' if idea.is_update else 'new' }}</span> {{ idea.support }} sources · {{ idea.updated }}</p><h2>{{ idea.title }}</h2><p class="description">{{ idea.description }}</p>{% set large = true %}{% include '_source_strip.html' %}<div class="prose">{{ idea.html|safe }}</div></article>{% else %}<p class="empty">No idea files were written in this dry run.</p>{% endfor %}</div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Ideas preview · {{ APP_NAME }}{% endblock %}
+{% block main %}
+  <a class="back-link" href="/runs/{{ run_id }}">← Run {{ run_id }}</a>
+  <header class="page-head">
+    <h1>Ideas preview</h1>
+  </header>
+  {% if manifest.applied %}
+    <div class="banner">Dry run {{ run_id }} was applied to the brain.</div>
+  {% else %}
+    <div class="banner pending">Dry run {{ run_id }} proposes {{ rows|length }} ideas from {{ (manifest.considered or [])|length }} notes.</div>
+    {% if rows or manifest.considered %}
+      <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
+        <button class="primary" {% if active %}disabled{% endif %}>Apply {{ rows|length }} ideas to the brain</button>
+        <p class="muted">Ideas edited since the dry run are skipped.</p>
+      </form>
+    {% endif %}
+  {% endif %}
+  <div class="preview-list">
+    {% for idea in rows %}
+      <article class="reading-pane">
+        <p class="meta"><span class="status-pill {{ idea.status }}">{{ 'update' if idea.is_update else 'new' }}</span> {{ idea.support }} sources · {{ idea.updated }}</p>
+        <h2>{{ idea.title }}</h2>
+        <p class="description">{{ idea.description }}</p>
+        {% set large = true %}
+        {% include '_source_strip.html' %}
+        <div class="prose">{{ idea.html|safe }}</div>
+      </article>
+    {% else %}
+      <p class="empty">No idea files were written in this dry run.</p>
+    {% endfor %}
+  </div>
+{% endblock %}
