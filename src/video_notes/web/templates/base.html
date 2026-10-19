@@ -1,40 +1,7 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-  <header class="top">
-    <a class="brand" href="/">{{ APP_NAME }}</a>
-    <nav>
-      <a href="/" {% if request.url.path == '/' %}aria-current="page"{% endif %}>Connections</a>
-      <a href="/runs" {% if request.url.path.startswith('/runs') %}aria-current="page"{% endif %}>Runs</a>
-      <a href="/videos" {% if request.url.path.startswith('/videos') %}aria-current="page"{% endif %}>Videos</a>
-      <a href="/ideas" {% if request.url.path.startswith('/ideas') %}aria-current="page"{% endif %}>Ideas</a>
-      <a href="/settings" {% if request.url.path == '/settings' %}aria-current="page"{% endif %}>Settings</a>
-    </nav>
-    <form method="post" action="/quit" class="quit"><button class="small">Quit</button></form>
-  </header>
-
-  {% if active %}
-  <div class="banner running">
-    <span class="dot"></span>
-    {% if active.run %}
-      Running: <a href="/runs/{{ active.run.id }}">run {{ active.run.id }}</a>
-      {% if active.run.stage %}— {{ active.run.stage }}{% endif %}
-      <span class="muted">· {{ active.who }}</span>
-    {% else %}
-      Running: {{ active.who }}
-    {% endif %}
-    <form method="post" action="/runs/stop" class="inline"><button class="small">Stop</button></form>
-  </div>
-  {% endif %}
-  {% if err %}<div class="banner error">{{ err }}</div>{% endif %}
-  {% if msg %}<div class="banner ok">{{ msg }}</div>{% endif %}
-
-  <main>{% block main %}{% endblock %}</main>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}{{ APP_NAME }}{% endblock %}</title><link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script></head>
+<body><div class="app-shell">
+  <div class="mobile-bar"><a class="brand" href="/ideas">{{ APP_NAME }}</a><span>{{ 'Ideas' if request.url.path.startswith('/ideas') else 'Videos' if request.url.path.startswith('/videos') else 'Runs' }}</span><button type="button" data-dialog="sidebar" aria-label="Open collections">Collections</button></div>
+  {% include '_sidebar.html' %}
+  <main class="main"><div class="main-inner">{% if err %}<div class="banner error" role="alert">{{ err }}</div>{% endif %}{% if msg %}<div class="banner">{{ msg }}</div>{% endif %}{% block main %}{% endblock %}</div></main>
+</div>{% include '_dialogs.html' %}<dialog id="settings-dialog" class="card-dialog" aria-label="Settings"><div id="settings-content"><p>Loading settings…</p></div></dialog></body></html>

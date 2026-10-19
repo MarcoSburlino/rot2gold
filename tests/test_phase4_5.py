@@ -79,6 +79,7 @@ def test_claude_backends_and_key_test(monkeypatch):
 
 def test_web_local_requests_and_settings_key(tmp_path, monkeypatch, con):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vn.sqlite")
+    monkeypatch.setattr(web.ideas, "brain_dir", lambda cfg=None: tmp_path)
     monkeypatch.setattr(web.lock, "DATA", tmp_path)
     monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "vn.lock")
     monkeypatch.setattr(web.secrets, "get_api_key", lambda: "top-secret-value")

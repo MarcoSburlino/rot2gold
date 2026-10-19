@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Run {{ run.id }} · {{ APP_NAME }}{% endblock %}
 {% block main %}
+<a class="back-link" href="{{ '/runs?conn=' ~ run.connection_ids.split(',')[0] if run.connection_ids else '/runs?kind=ideas' if run.kind.startswith('ideas') else '/runs' }}">← {{ 'Collection runs' if run.connection_ids else 'Idea runs' if run.kind.startswith('ideas') else 'All runs' }}</a>
 <h1>Run {{ run.id }} <span class="status s-{{ run.status }}" id="status">{{ run.status }}</span></h1>
 <p class="meta">
   {{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}
   · from {{ run.origin }} · {{ run.kind }}
-  · {% for i in (run.connection_ids or '').split(',') if i %}{{ names.get(i|int, '#' ~ i) }}{% if not loop.last %}, {% endif %}{% endfor %}
+  · {% for i in (run.connection_ids or '').split(',') if i %}<a class="chip" href="/runs?conn={{ i }}">{{ names.get(i|int, '#' ~ i) }}</a>{% endfor %}
   · {{ run.backend }}, {{ run.model }}
 </p>
 
@@ -37,11 +38,11 @@
 {% if run.error %}<div class="banner {{ 'error' if run.status == 'failed' else 'warn' }}"><pre>{{ run.error }}</pre></div>{% endif %}
 {% if run.brain_commits %}<p class="meta">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code> {% endfor %}</p>{% endif %}
 {% if run.undone_at %}<div class="banner ok">Undone at {{ run.undone_at|local_time }}.</div>
-{% elif run.brain_commits and run.status != 'running' %}<p><a class="button" href="/runs/{{ run.id }}/undo">Undo this run</a></p>{% endif %}
+{% elif run.brain_commits and run.status != 'running' %}<p><button type="button" class="danger-outline" data-dialog="undo-dialog">Undo this run</button> <a class="quiet-link" href="/runs/{{ run.id }}/undo">Open confirmation page</a></p>{% endif %}
 
 {% if batches %}
 <h2>Batches</h2>
-<table class="runs">
+<div class="table-wrap"><table class="runs">
   <thead><tr><th>N</th><th>Kind</th><th>Posts</th><th>Turns</th><th>Minutes</th><th>M cache-read</th><th>k output</th><th>~$</th><th>5-hour window</th><th>Result</th></tr></thead>
   <tbody>{% for b in batches %}<tr>
     <td>{{ b.n }}</td><td>{{ b.kind }}</td><td>{{ b.post_ids or '—' }}</td><td>{{ b.turns if b.turns is not none else '—' }}</td>
@@ -52,46 +53,13 @@
     <td>{{ '%.0f%%'|format(b.five_hour * 100) if b.five_hour is not none else '—' }}</td>
     <td>{{ 'ok' if b.ok else (b.error or 'incomplete') }}</td>
   </tr>{% endfor %}</tbody>
-</table>
+</table></div>
 {% endif %}
 
 <h2>Log</h2>
-<ol class="log" id="log">
+<ol class="log" id="log" data-run-id="{{ run.id }}" data-after="{{ last_event }}" data-running="{{ 'true' if run.status == 'running' else 'false' }}">
   {% for e in events %}<li class="lv-{{ e.level }}"><time>{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>{% endfor %}
 </ol>
 
-<script>
-  (() => {
-    const log = document.getElementById('log');
-    const stages = document.getElementById('stages');
-    const order = [...stages.children].map(li => li.dataset.s);
-    const mark = stage => {
-      const at = order.indexOf(stage);
-      stages.querySelectorAll('li').forEach((li, i) => {
-        li.classList.toggle('done', at >= 0 && (i < at || stage === 'done'));
-        li.classList.toggle('now', i === at && stage !== 'done');
-      });
-    };
-    mark(stages.dataset.stage);
-    if ({{ 'true' if run.status == 'running' else 'false' }} === false) return;
-    const fmt = ts => new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-    const es = new EventSource('/runs/{{ run.id }}/events?after={{ last_event }}');
-    es.onmessage = m => {
-      const e = JSON.parse(m.data);
-      const li = document.createElement('li');
-      li.className = 'lv-' + e.level;
-      const t = document.createElement('time'); t.textContent = fmt(e.ts);
-      li.append(t, document.createTextNode(e.message));
-      log.append(li);
-      if (e.stage) mark(e.stage);
-      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 200) li.scrollIntoView({block: 'end'});
-    };
-    es.addEventListener('run', m => {
-      const r = JSON.parse(m.data);
-      document.querySelectorAll('[data-count]').forEach(b => { b.textContent = r[b.dataset.count]; });
-      if (r.stage) mark(r.stage);
-    });
-    es.addEventListener('end', () => { es.close(); setTimeout(() => location.reload(), 500); });
-  })();
-</script>
+{% if run.brain_commits and run.status != 'running' and not run.undone_at %}<dialog id="undo-dialog" class="card-dialog"><div class="dialog-head"><h2>Undo run {{ run.id }}?</h2><button type="button" class="icon-button" data-close aria-label="Close">×</button></div><p>This reverts its brain commits and reopens noted posts when their notes are removed.</p><form method="post" action="/runs/{{ run.id }}/undo" class="dialog-actions"><button type="button" data-close>Cancel</button><button class="danger">Undo this run</button></form></dialog>{% endif %}
 {% endblock %}

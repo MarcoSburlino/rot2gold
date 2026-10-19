@@ -61,6 +61,21 @@ def local_time(iso: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     return datetime.fromisoformat(iso).astimezone().strftime(fmt)
 
 
+def relative_time(iso: str | None) -> str:
+    if not iso:
+        return ""
+    try:
+        day = datetime.fromisoformat(iso).astimezone().date()
+        today = datetime.now().astimezone().date()
+        if day == today:
+            return "today " + local_time(iso, "%H:%M")
+        if (today - day).days == 1:
+            return "yesterday"
+        return local_time(iso, "%d %b %Y")
+    except ValueError:
+        return iso
+
+
 def plan_windows(plan_json: str | None) -> list[dict]:
     """[{name, used, resets}] from a run's stored rate_limit_info."""
     if not plan_json:
@@ -76,6 +91,7 @@ def plan_windows(plan_json: str | None) -> list[dict]:
 
 
 templates.env.filters["local_time"] = local_time
+templates.env.filters["relative_time"] = relative_time
 templates.env.globals.update(APP_NAME=APP_NAME, LABELS=connections.LABELS, STATUSES=connections.STATUSES,
                              plan_windows=plan_windows)
 
@@ -96,6 +112,21 @@ def active_run(con) -> dict | None:
 def page(request: Request, name: str, **ctx) -> HTMLResponse:
     con = db.connect()
     ctx.setdefault("active", active_run(con))
+    conns = connections.all_with_counts(con)
+    last_runs = {}
+    for run in con.execute("SELECT id, connection_ids, started_at, status, posts_noted, ideas_created, stage "
+                           "FROM runs WHERE kind = 'extract' ORDER BY id DESC"):
+        for raw_id in (run["connection_ids"] or "").split(","):
+            if raw_id.isdigit() and int(raw_id) not in last_runs:
+                last_runs[int(raw_id)] = dict(run)
+    for item in conns:
+        item["last_run"] = last_runs.get(item["id"])
+        item["waiting"] = sum(item["counts"][s] for s in ("new", "fetched", "processed"))
+    from ..sources.firefox import profiles
+    ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
+            "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES,
+            "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
+            "idea_count": len(ideas.list_ideas()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
     ctx |= {"msg": request.query_params.get("msg"), "err": request.query_params.get("err")}
     return templates.TemplateResponse(request, name, ctx)
 
@@ -105,13 +136,24 @@ def back(path: str = "/", **params) -> RedirectResponse:
     return RedirectResponse(path + ("?" + urlencode(params) if params else ""), status_code=303)
 
 
+def settings_back(request: Request, tab: str, **params) -> RedirectResponse:
+    source = urlsplit(request.headers.get("referer", ""))
+    allowed = {f"127.0.0.1:{load()['app']['port']}", f"localhost:{load()['app']['port']}"}
+    path = source.path if source.scheme == "http" and source.netloc.lower() in allowed else "/ideas"
+    if not path.startswith("/") or path.startswith("//") or path == "/settings/panel":
+        path = "/ideas"
+    from urllib.parse import parse_qsl
+    query = {k: v for k, v in parse_qsl(source.query) if k not in ("settings", "msg", "err")}
+    query.update({k: v for k, v in (params | {"settings": tab}).items() if v})
+    return back(path, **query)
+
+
 @app.get("/healthz")
 async def healthz():
     return {"app": APP_NAME}
 
 
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
+def settings_context():
     cfg = load()
     con = db.connect()
     latest = con.execute("SELECT plan_usage FROM runs WHERE plan_usage IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
@@ -120,9 +162,19 @@ async def settings_page(request: Request):
     except VNError as exc:
         key_set, key_error = False, str(exc)
     from ..sources.firefox import profiles
-    return page(request, "settings.html", fields=settings.EDITABLE, cfg=cfg, key_set=key_set,
-                key_error=key_error, windows=plan_windows(latest[0] if latest else None),
-                versions=downloaders.versions(), brain_path=brain_dir(cfg), port=cfg["app"]["port"], profiles=profiles())
+    return dict(fields=settings.EDITABLE, cfg=cfg, key_set=key_set, key_error=key_error,
+                windows=plan_windows(latest[0] if latest else None), versions=downloaders.versions(),
+                brain_path=brain_dir(cfg), port=cfg["app"]["port"], profiles=profiles())
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    return page(request, "settings.html", **settings_context())
+
+
+@app.get("/settings/panel", response_class=HTMLResponse)
+async def settings_panel(request: Request):
+    return templates.TemplateResponse(request, "_settings_panel.html", settings_context() | {"active": active_run(db.connect())})
 
 
 @app.post("/settings")
@@ -130,44 +182,44 @@ async def save_settings(request: Request):
     form = await request.form()
     values = {f"{f['section']}.{f['key']}": form.get(f"{f['section']}.{f['key']}", "") for f in settings.EDITABLE}
     if values["notes.backend"] == "api" and not secrets.has_api_key():
-        return back("/settings", err="Set an API key before selecting the API backend.")
+        return settings_back(request, "notes", err="Set an API key before selecting the API backend.")
     errors = settings.save(values)
-    return back("/settings", err="; ".join(errors)) if errors else back("/settings", msg="Settings saved.")
+    return settings_back(request, "notes", err="; ".join(errors)) if errors else settings_back(request, "notes", msg="Settings saved.")
 
 
 @app.post("/settings/key")
-def set_key(key: str = Form("")):
+def set_key(request: Request, key: str = Form("")):
     if not key.strip():
-        return back("/settings", err="Enter an API key.")
+        return settings_back(request, "key", err="Enter an API key.")
     try:
         secrets.set_api_key(key)
     except VNError:
-        return back("/settings", err="Could not store the API key in the keyring.")
-    return back("/settings", msg="API key stored.")
+        return settings_back(request, "key", err="Could not store the API key in the keyring.")
+    return settings_back(request, "key", msg="API key stored.")
 
 
 @app.post("/settings/key/clear")
-def clear_key():
+def clear_key(request: Request):
     try:
         secrets.delete_api_key()
     except VNError:
-        return back("/settings", err="Could not clear the API key.")
-    return back("/settings", msg="API key cleared.")
+        return settings_back(request, "key", err="Could not clear the API key.")
+    return settings_back(request, "key", msg="API key cleared.")
 
 
 @app.post("/settings/key/test")
-def test_key():
+def test_key(request: Request):
     try:
         key = secrets.get_api_key()
         if not key:
-            return back("/settings", err="No API key is stored.")
+            return settings_back(request, "key", err="No API key is stored.")
         result = claude_cli.test_key(key)
         if result.ok and (result.structured or {}).get("ok") is True:
-            return back("/settings", msg=f"API key works. Cost: ${result.cost_usd:.4f}.")
+            return settings_back(request, "key", msg=f"API key works. Cost: ${result.cost_usd:.4f}.")
         error = (result.error or "The test did not return ok.").replace(key, "[key hidden]")
-        return back("/settings", err=error)
+        return settings_back(request, "key", err=error)
     except VNError as exc:
-        return back("/settings", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
+        return settings_back(request, "key", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
 
 
 @app.post("/update-downloaders")
@@ -175,15 +227,9 @@ def start_update():
     return spawn_run([sys.executable, "-m", "video_notes.cli", "update-downloaders", "--origin", "app"], "Update")
 
 
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    con = db.connect()
-    cfg = load()
-    last = con.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
-    return page(request, "connections.html", conns=connections.all_with_counts(con), sources=sources.SOURCES,
-                cookie_modes=connections.COOKIE_MODES, notes_cfg=cfg["notes"], last=dict(last) if last else None,
-                links={c["id"]: "\n".join(connections.links(con, c["id"]))
-                       for c in con.execute("SELECT id FROM connections")})
+@app.get("/")
+async def home(request: Request):
+    return back("/ideas")
 
 
 @app.post("/connections")
@@ -209,14 +255,13 @@ def edit_connection(cid: int, name: str = Form(""), url: str = Form(""), cookies
 
 
 @app.get("/connections/{cid}/delete", response_class=HTMLResponse)
-def confirm_delete(request: Request, cid: int):
+async def confirm_delete(request: Request, cid: int):
     con = db.connect()
     try:
         conn = dict(connections.get(con, cid))
     except ValueError as exc:
         return back(err=str(exc))
-    return page(request, "delete.html", conn=conn, counts=connections.counts(con, cid),
-                only_here=connections.only_here(con, cid))
+    return back("/ideas", err=f"Open the {conn['name']} collection menu to delete it.")
 
 
 @app.post("/connections/{cid}/delete")
@@ -312,25 +357,52 @@ def note_links(con):
     return link_for
 
 
+def thumbnails(con) -> dict[str, str]:
+    """First available image for each post, in a single database read."""
+    return {r["post_id"]: f"/media/{r['post_id']}/{Path(r['path']).name}" for r in con.execute(
+        "SELECT i.post_id, i.path FROM images i WHERE i.idx = "
+        "(SELECT MIN(j.idx) FROM images j WHERE j.post_id = i.post_id)")}
+
+
+def source_lookup(con, wanted: set[str]) -> dict[str, dict]:
+    if not wanted:
+        return {}
+    found = {}
+    for row in con.execute("SELECT p.id, p.note_path, i.path AS image_path FROM posts p "
+                           "LEFT JOIN images i ON i.post_id = p.id AND i.idx = "
+                           "(SELECT MIN(j.idx) FROM images j WHERE j.post_id = p.id) "
+                           "WHERE p.note_path IS NOT NULL"):
+        name = Path(row["note_path"]).stem
+        if name not in wanted:
+            continue
+        path = brain.note_file(row["note_path"])
+        title = notefile.read(path, head_only=True).title if path.is_file() else name
+        thumb = f"/media/{row['id']}/{Path(row['image_path']).name}" if row["image_path"] else None
+        found[name] = {"name": name, "url": f"/videos/{row['id']}", "thumbnail": thumb, "title": title, "kind": "video"}
+    for name, path in notefile.brain_names().items():
+        if name in wanted:
+            found.setdefault(name, {"name": name, "url": notefile.obsidian_link(path), "title": name, "kind": "note"})
+    return found
+
+
+def decorate_ideas(rows: list[dict], lookup: dict) -> list[dict]:
+    for item in rows:
+        item["source_tiles"] = [lookup.get(name, {"name": name, "title": name, "kind": "missing"}) for name in item["sources"]]
+    return rows
+
+
 @app.get("/videos", response_class=HTMLResponse)
-def videos(request: Request, conn: str = "", status: str = "", type: str = "", q: str = ""):
+async def videos(request: Request, conn: str = "", status: str = "", type: str = "", q: str = ""):
     con = db.connect()
     where, args = [], []
     if conn.isdigit():
         where.append("EXISTS (SELECT 1 FROM connection_posts x WHERE x.post_id = p.id AND x.connection_id = ?)")
         args.append(int(conn))
-    base_where, base_args = list(where), list(args)  # status counts ignore the status filter itself
-    if status in connections.STATUSES:
-        where.append("p.status = ?")
-        args.append(status)
-    if type in ("video", "slideshow"):
-        where.append("p.type = ?")
-        args.append(type)
     sql = ("SELECT p.*, GROUP_CONCAT(cp.connection_id) AS conns FROM posts p"
            " LEFT JOIN connection_posts cp ON cp.post_id = p.id"
            + (" WHERE " + " AND ".join(where) if where else "") +
            " GROUP BY p.id ORDER BY COALESCE(p.upload_date, '') DESC, p.rowid DESC")
-    rows = []
+    matching = []
     needle = q.strip().lower()
     for r in con.execute(sql, args):
         item = dict(r) | note_head(r)
@@ -338,18 +410,24 @@ def videos(request: Request, conn: str = "", status: str = "", type: str = "", q
         if needle and needle not in " ".join(str(item.get(k) or "") for k in
                                              ("id", "creator", "title", "description", "skip_reason")).lower():
             continue
-        rows.append(item)
-    counts = dict.fromkeys(connections.STATUSES, 0)
-    for r in con.execute("SELECT p.status, COUNT(*) n FROM posts p" + (" WHERE " + " AND ".join(base_where) if base_where else "")
-                         + " GROUP BY p.status", base_args):
-        counts[r["status"]] = r["n"]
+        matching.append(item)
+    counts = {s: sum(r["status"] == s for r in matching if type not in ("video", "slideshow") or r["type"] == type)
+              for s in connections.STATUSES}
+    type_counts = {t: sum(r["type"] == t for r in matching if status not in connections.STATUSES or r["status"] == status)
+                   for t in ("video", "slideshow")}
+    rows = [r for r in matching if (status not in connections.STATUSES or r["status"] == status) and
+            (type not in ("video", "slideshow") or r["type"] == type)]
+    thumbs = thumbnails(con)
+    for item in rows:
+        item["thumbnail"] = thumbs.get(item["id"])
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections ORDER BY id")}
     return page(request, "videos.html", rows=rows, counts=counts, names=names,
+                type_counts=type_counts,
                 f={"conn": conn, "status": status, "type": type, "q": q})
 
 
 @app.get("/videos/{post_id}", response_class=HTMLResponse)
-def video(request: Request, post_id: str):
+async def video(request: Request, post_id: str):
     con = db.connect()
     row = con.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
     if not row:
@@ -365,8 +443,9 @@ def video(request: Request, post_id: str):
         note = notefile.read(path)
         note_html = notefile.render(note.body, note_links(con))
         obsidian = notefile.obsidian_link(path)
+    related = [r for r in ideas.list_ideas() if post["note_path"] and Path(post["note_path"]).stem in r["sources"]]
     return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
-                note=note, note_html=note_html, obsidian=obsidian)
+                note=note, note_html=note_html, obsidian=obsidian, related_ideas=related)
 
 
 @app.get("/media/{post_id}/{name}")
@@ -379,26 +458,43 @@ def media(post_id: str, name: str):
 
 
 def idea_rows(con, folder=None):
-    link_for = note_links(con)
-    return [item | {"source_links": [{"name": name, "url": link_for(name)} for name in item["sources"]],
+    items = ideas.list_ideas(folder)
+    wanted = {name for item in items for name in item["sources"]}
+    lookup = source_lookup(con, wanted)
+    return decorate_ideas([item | {"source_links": [{"name": name, "url": lookup.get(name, {}).get("url")} for name in item["sources"]],
                     "obsidian": notefile.obsidian_link(item["path"]) if folder is None else None}
-            for item in ideas.list_ideas(folder)]
+            for item in items], lookup)
+
+
+def idea_view(request, name=None, status="all", q=""):
+    con = db.connect()
+    all_rows = idea_rows(con)
+    searched = [r for r in all_rows if not q.strip() or q.strip().lower() in
+                " ".join(str(r[k]) for k in ("title", "description", "name")).lower()]
+    counts = {s: sum(r["status"] == s for r in searched) for s in ("new", "trying", "kept", "dropped")}
+    rows = [r for r in searched if status not in counts or r["status"] == status]
+    selected = next((r for r in rows if r["name"] == name), None) if name else (rows[0] if rows else None)
+    if name and not selected:
+        return HTMLResponse("Not found", status_code=404)
+    html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
+    pending = {Path(r["note_path"]).stem for r in con.execute(
+        "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
+    themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
+    dry_run = None
+    for run in con.execute("SELECT id FROM runs WHERE kind = 'ideas-dry-run' ORDER BY id DESC LIMIT 20"):
+        folder = ideas.dry_run_dir(run["id"])
+        if folder.is_dir() and not ideas.read_manifest(folder).get("applied"):
+            count = len(list(folder.glob("idea-*.md")))
+            if count:
+                dry_run = {"id": run["id"], "count": count}
+                break
+    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes,
+                counts=counts, total=len(searched), status=status, q=q, dry_run=dry_run, detail_page=bool(name))
 
 
 @app.get("/ideas", response_class=HTMLResponse)
-def idea_index(request: Request, status: str = "all", q: str = ""):
-    con = db.connect()
-    rows = idea_rows(con)
-    if status in ("new", "trying", "kept", "dropped"):
-        rows = [r for r in rows if r["status"] == status]
-    if q.strip():
-        rows = [r for r in rows if q.strip().lower() in
-                " ".join(str(r[k]) for k in ("title", "description", "name")).lower()]
-    pending = {Path(r["note_path"]).stem for r in con.execute(
-        "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
-    themes = [{"name": name, "total": len(names), "unchecked": len(set(names) & pending)}
-              for name, names in ideas.themes().items()]
-    return page(request, "ideas.html", rows=rows, themes=themes, status=status, q=q)
+async def idea_index(request: Request, status: str = "all", q: str = ""):
+    return idea_view(request, status=status, q=q)
 
 
 @app.post("/ideas/rebuild")
@@ -414,7 +510,7 @@ def start_ideas_rebuild(themes: list[str] = Form([]), dry_run: str = Form(""), l
 
 
 @app.get("/ideas/preview/{run_id}", response_class=HTMLResponse)
-def idea_preview(request: Request, run_id: int):
+async def idea_preview(request: Request, run_id: int):
     con = db.connect()
     run = con.execute("SELECT kind FROM runs WHERE id = ?", (run_id,)).fetchone()
     if not run or run["kind"] != "ideas-dry-run":
@@ -450,28 +546,30 @@ def apply_preview(run_id: int):
 
 
 @app.get("/ideas/{name}", response_class=HTMLResponse)
-def idea_detail(request: Request, name: str):
+async def idea_detail(request: Request, name: str, status: str = "all", q: str = ""):
     if not name.startswith("idea-") or Path(name).name != name:
         return HTMLResponse("Not found", status_code=404)
-    con = db.connect()
-    item = next((r for r in idea_rows(con) if r["name"] == name), None)
-    if not item:
-        return HTMLResponse("Not found", status_code=404)
-    note = notefile.read(item["path"])
-    return page(request, "idea.html", idea=item, html=notefile.render(note.body, note_links(con)))
+    return idea_view(request, name, status, q)
 
 
 @app.get("/runs", response_class=HTMLResponse)
-def runs(request: Request):
+async def runs(request: Request, conn: str = "", kind: str = ""):
     con = db.connect()
     active = active_run(con)
-    rows = [dict(r) for r in con.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 50")]
+    where, args = [], []
+    if conn.isdigit():
+        where.append("',' || connection_ids || ',' LIKE '%,' || ? || ',%'")
+        args.append(conn)
+    if kind == "ideas":
+        where.append("kind LIKE 'ideas%'")
+    rows = [dict(r) for r in con.execute("SELECT * FROM runs" + (" WHERE " + " AND ".join(where) if where else "") +
+                                         " ORDER BY id DESC LIMIT 50", args)]
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections")}
-    return page(request, "runs.html", runs=rows, names=names, active=active)
+    return page(request, "runs.html", runs=rows, names=names, active=active, conn=conn, kind=kind)
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
-def run_page(request: Request, run_id: int):
+async def run_page(request: Request, run_id: int):
     con = db.connect()
     active = active_run(con)
     row = con.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -488,7 +586,7 @@ def run_page(request: Request, run_id: int):
 
 
 @app.get("/runs/{run_id}/undo", response_class=HTMLResponse)
-def confirm_undo(request: Request, run_id: int):
+async def confirm_undo(request: Request, run_id: int):
     row = db.connect().execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
     if not row or row["status"] == "running" or row["undone_at"] or not row["brain_commits"]:
         return back("/runs", err="This run cannot be undone.")
