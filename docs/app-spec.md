@@ -10,7 +10,7 @@ Other docs:
 
 The brain holds the knowledge. The app reads notes from it and writes notes to it, and never keeps its own copy.
 
-**Status:** approved plan (2026-10-19), not built yet. The phases are at the end.
+**Status:** Phase 1 built (2026-10-19): connections, Extract, the lock, note-writing batches and the Connections, Runs and Run screens. The phases are at the end.
 
 ## Goals
 
@@ -49,8 +49,7 @@ The pipeline and the app live in one repo, `~/Projects/video-notes-app` (Marco, 
 
 - **Stack:**
   - FastAPI and uvicorn, with HTML rendered on the server by Jinja2.
-  - htmx for buttons and forms that update part of a page. htmx is one JavaScript file kept in `src/video_notes/web/static/`, not loaded from a CDN, so the app works offline.
-  - Server-Sent Events (SSE) for live run progress.
+  - Plain HTML forms, plus a few lines of JavaScript for live run progress, which arrives over Server-Sent Events (SSE). Phase 1 needed nothing more, so htmx (planned) isn't used; add it, saved locally rather than from a CDN, only if a later screen needs it.
 - **Why a web UI:**
   - It's the same Python as the pipeline, so the app calls the pipeline's functions directly.
   - There is no Node build step and nothing to package.
@@ -223,7 +222,8 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 
 - **5 posts per batch.** The agent's context grows with every post, and every turn re-reads it, so tokens per post grow with batch length. Smaller batches start fresh more often.
 - **At most 20 notes per Extract**, by default. The rest wait for the next Extract ("20 of 63 noted — run again").
-- **Usage limit.** When `claude -p` reports a rate limit (an `api_retry` event with `error: rate_limit`, or an error result), the run stops cleanly with "Usage limit reached — Extract again later". Everything finished so far is already committed.
+- **Usage limit.** When `claude -p` reports a rate limit (a `rate_limit_event` whose status isn't `allowed`, three `api_retry` events with `error: rate_limit`, or an error result), the run stops cleanly with "Claude usage limit reached (resets HH:MM)". Everything finished so far is already committed.
+- **Stop before the limit.** Every `claude -p` call reports the plan's usage in a `rate_limit_event`: the share of the 5-hour and 7-day windows already used, and when each resets. On the subscription, the run doesn't start another batch once the 5-hour window is 90% used (`config.toml` `[notes] stop_at_plan_usage`). The Run page shows both windows.
 - **Usage shown.** Tokens and the cost estimate from each result event, per batch and per run.
   - On a subscription, the dollar figure is what the run would have cost on the API, not a charge.
   - The real remaining limit is at claude.ai → Settings → Usage.
@@ -239,7 +239,7 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 
 - **Cookies needed.**
   - If anonymous listing fails and `cookies_mode` allows it, sync retries with Firefox cookies.
-  - Firefox 158 keeps its profiles in `~/.config/mozilla/firefox/`, so the profile is passed to yt-dlp explicitly. The Settings page lists the profiles from `profiles.ini`.
+  - Firefox 158 keeps its profiles in `~/.config/mozilla/firefox/`. yt-dlp 2026.08 already looks there and picks the profile whose cookies were used last, so no setup is needed. A connection can name a profile folder (Edit → Firefox profile); `sources/firefox.py` lists them from `profiles.ini` for the Settings page.
   - If that fails too, the connection card says: open Firefox, log into TikTok, then Extract again.
 - **Blocked or broken yt-dlp.**
   - Triggered by five failures in a row, or by a listing that fails in every mode.

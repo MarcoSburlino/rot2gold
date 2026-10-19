@@ -1,129 +1,140 @@
-"""vn sync: list the collection and add new posts.
+"""vn sync: list each connection and add new posts.
 
-Sources, in order: yt-dlp anonymously, yt-dlp with Firefox cookies, data/links.txt.
-Only id, URL, creator, upload date and type are stored: never captions, hashtags or comments.
+Sources per connection, in order: anonymously, with Firefox cookies (if its cookies_mode allows),
+then URLs pasted into the connection by hand. Every listed post is linked to the connection,
+so a post saved in two collections is stored once and linked twice.
 """
 
 import random
-import re
 import time
-from datetime import datetime, timezone
 
-import yt_dlp
+from . import db, sources
+from .errors import CookiesNeeded, ListingFailed
+from .events import echo
+from .sources import Access
 
-from . import db
-from .config import LINKS, load
-
-URL_RE = re.compile(r"tiktok\.com/@([^/?#]+)/(?:video|photo)/(\d+)")
-
-
-def ydl_opts(cookies: bool = False, **extra) -> dict:
-    opts = {"quiet": True, "no_warnings": True, "noprogress": True}
-    if cookies:
-        opts["cookiesfrombrowser"] = ("firefox",)
-    opts.update(extra)
-    return opts
-
-
-def list_with_ytdlp(url: str, cookies: bool) -> list[dict]:
-    with yt_dlp.YoutubeDL(ydl_opts(cookies, extract_flat="in_playlist")) as ydl:
-        info = ydl.extract_info(url, download=False)
-    posts = []
-    for e in info.get("entries") or []:
-        if not e or not e.get("id"):
-            continue
-        m = URL_RE.search(e.get("url") or "")
-        posts.append({
-            "id": e["id"],
-            "url": e.get("url") or e.get("webpage_url"),
-            "creator": e.get("uploader") or (m.group(1) if m else None),
-            "upload_date": to_date(e.get("timestamp")),
-        })
-    if not posts:
-        raise RuntimeError("yt-dlp returned an empty collection")
-    return posts
-
-
-def list_from_links() -> list[dict]:
-    if not LINKS.exists():
-        return []
-    posts = []
-    for line in LINKS.read_text().splitlines():
-        m = URL_RE.search(line)
-        if m:
-            posts.append({"id": m.group(2), "url": line.strip(), "creator": m.group(1), "upload_date": None})
-    return posts
-
-
-def to_date(ts) -> str | None:
-    if not ts:
-        return None
-    return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d")
-
-
-def post_info(url: str, cookies: bool = False) -> dict:
-    """Full metadata for one post (no download)."""
-    with yt_dlp.YoutubeDL(ydl_opts(cookies)) as ydl:
-        return ydl.extract_info(url, download=False)
-
-
-def is_slideshow(info: dict) -> bool:
-    # TikTok photo posts expose only their background audio as a format.
-    formats = info.get("formats") or []
-    return bool(formats) and all((f.get("vcodec") in (None, "none")) for f in formats)
-
-
-def detect_type(con, cookies: bool) -> None:
-    """Fill in type (and missing creator/date) for posts that don't have one yet."""
-    rows = con.execute("SELECT id, url FROM posts WHERE type IS NULL AND status = 'new'").fetchall()
-    for i, row in enumerate(rows):
-        try:
-            info = post_info(row["url"], cookies)
-        except Exception as exc:  # leave type NULL; fetch retries it
-            print(f"  {row['id']}: metadata failed: {short(exc)}")
-            continue
-        con.execute(
-            "UPDATE posts SET type = ?, creator = COALESCE(creator, ?), upload_date = COALESCE(upload_date, ?),"
-            " updated_at = ? WHERE id = ?",
-            ("slideshow" if is_slideshow(info) else "video", info.get("uploader"),
-             to_date(info.get("timestamp")), db.now(), row["id"]),
-        )
-        con.commit()
-        print(f"  {row['id']}: {'slideshow' if is_slideshow(info) else 'video'}")
-        if i < len(rows) - 1:
-            time.sleep(random.uniform(1, 3))
+COOKIE_WORDS = ("cookie", "login", "log in", "private", "firefox")
 
 
 def short(exc: Exception) -> str:
     return str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__
 
 
-def sync() -> None:
-    url = load()["collection_url"]
-    con = db.connect()
-    posts, source = None, None
-    for cookies in (False, True):
-        label = "yt-dlp + firefox cookies" if cookies else "yt-dlp anonymous"
-        try:
-            posts, source = list_with_ytdlp(url, cookies), label
-            break
-        except Exception as exc:
-            print(f"{label} failed: {short(exc)}")
-    if posts is None:
-        posts, source = list_from_links(), "data/links.txt"
-        if not posts:
-            raise SystemExit("Could not list the collection. Put one post URL per line in data/links.txt and rerun.")
-    db.set_meta(con, "sync_source", source)
-    db.set_meta(con, "cookies", "1" if source.endswith("cookies") else "0")
+def access_for(conn, cookies: bool) -> Access:
+    return Access(cookies=cookies, firefox_profile=conn["firefox_profile"])
 
-    new = 0
+
+def list_connection(con, conn, src, report=echo) -> tuple[list[sources.ListedPost], str]:
+    """(posts, source used) where source is anonymous | cookies | links."""
+    modes = {"auto": (False, True), "always": (True,), "never": (False,)}[conn["cookies_mode"]]
+    errors = []
+    for cookies in modes:
+        label = "cookies" if cookies else "anonymous"
+        try:
+            return src.list_posts(conn["url"], access_for(conn, cookies)), label
+        except Exception as exc:
+            errors.append(short(exc))
+            report(f"{conn['name']}: listing {'with Firefox cookies' if cookies else 'anonymously'} failed: {short(exc)}",
+                   level="warn")
+    links = [r[0] for r in con.execute("SELECT url FROM connection_links WHERE connection_id = ?", (conn["id"],))]
+    posts = [p for p in map(src.parse_post_url, links) if p]
+    if posts:
+        return posts, "links"
+    detail = "; ".join(errors)
+    if conn["cookies_mode"] == "never" or any(w in detail.lower() for w in COOKIE_WORDS):
+        raise CookiesNeeded(f"Could not list {conn['name']!r}: {detail}")
+    raise ListingFailed(f"Could not list {conn['name']!r}: {detail}")
+
+
+def add_posts(con, conn_id: int, platform: str, posts) -> list[str]:
+    """Store listed posts and link them to the connection. Returns the ids that are new."""
+    new = []
     for p in posts:
         cur = con.execute(
-            "INSERT OR IGNORE INTO posts (id, url, creator, upload_date, added_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (p["id"], p["url"], p["creator"], p["upload_date"], db.now(), db.now()),
+            "INSERT OR IGNORE INTO posts (id, url, creator, upload_date, platform, added_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (p.id, p.url, p.creator, p.upload_date, platform, db.now(), db.now()),
         )
-        new += cur.rowcount
+        if cur.rowcount:
+            new.append(p.id)
+        con.execute("INSERT OR IGNORE INTO connection_posts VALUES (?, ?, ?)", (conn_id, p.id, db.now()))
     con.commit()
-    print(f"sync: {len(posts)} posts in the collection via {source}, {new} new")
-    detect_type(con, cookies=source.endswith("cookies"))
+    return new
+
+
+def detect_types(con, conn, src, access: Access, report=echo) -> None:
+    """Fill in type (and missing creator/date) for this connection's new posts that have none yet.
+
+    The flat listing doesn't say whether a post is a slideshow, so each new post's metadata is read once.
+    """
+    rows = con.execute(
+        "SELECT p.id, p.url FROM posts p JOIN connection_posts cp ON cp.post_id = p.id"
+        " WHERE cp.connection_id = ? AND p.type IS NULL AND p.status = 'new' ORDER BY p.rowid", (conn["id"],)
+    ).fetchall()
+    for i, row in enumerate(rows):
+        try:
+            kind, meta = src.detect_type(row["url"], access)
+        except Exception as exc:  # leave type NULL; fetch retries it
+            report(f"  {row['id']}: metadata failed: {short(exc)}", post_id=row["id"], level="warn")
+            continue
+        con.execute(
+            "UPDATE posts SET type = ?, creator = COALESCE(creator, ?), upload_date = COALESCE(upload_date, ?),"
+            " updated_at = ? WHERE id = ?",
+            (kind, meta.get("creator"), meta.get("upload_date"), db.now(), row["id"]),
+        )
+        con.commit()
+        report(f"  {row['id']}: {kind}", post_id=row["id"])
+        if i < len(rows) - 1:
+            time.sleep(random.uniform(1, 3))
+
+
+def sync_connection(con, conn, report=echo) -> tuple[int, int]:
+    """List one connection. Returns (posts listed, new posts)."""
+    src = sources.get(conn["platform"])
+    try:
+        posts, used = list_connection(con, conn, src, report)
+    except Exception as exc:
+        con.execute("UPDATE connections SET last_error = ?, updated_at = ? WHERE id = ?",
+                    (short(exc), db.now(), conn["id"]))
+        con.commit()
+        raise
+    new = add_posts(con, conn["id"], conn["platform"], posts)
+    con.execute("UPDATE connections SET last_synced_at = ?, last_sync_source = ?, last_error = NULL WHERE id = ?",
+                (db.now(), used, conn["id"]))
+    con.commit()
+    report(f"{conn['name']}: {len(posts)} posts listed ({used}), {len(new)} new")
+    detect_types(con, conn, src, access_for(conn, used == "cookies"), report)
+    return len(posts), len(new)
+
+
+def connections(con, conn_ids=None) -> list:
+    if conn_ids:
+        rows = con.execute(f"SELECT * FROM connections WHERE id IN ({db.placeholders(conn_ids)}) ORDER BY id",
+                           list(conn_ids)).fetchall()
+        missing = set(conn_ids) - {r["id"] for r in rows}
+        if missing:
+            raise SystemExit(f"unknown connection id(s): {', '.join(map(str, sorted(missing)))} (see `vn conn list`)")
+        return rows
+    return con.execute("SELECT * FROM connections ORDER BY id").fetchall()
+
+
+def sync(conn_ids=None, report=echo) -> tuple[int, int]:
+    """Sync the given connections (default: all). Returns (posts listed, new posts) in total."""
+    con = db.connect()
+    conns = connections(con, conn_ids)
+    if not conns:
+        raise SystemExit("No connections yet. Add one: vn conn add <name> <collection URL>")
+    listed = new = 0
+    failed = []
+    for conn in conns:  # one broken connection doesn't stop the others
+        try:
+            n_listed, n_new = sync_connection(con, conn, report)
+        except (CookiesNeeded, ListingFailed) as exc:
+            report(str(exc), level="error")
+            failed.append(exc)
+            continue
+        listed += n_listed
+        new += n_new
+    if failed and len(failed) == len(conns):
+        raise failed[0]
+    return listed, new

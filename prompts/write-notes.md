@@ -4,7 +4,7 @@ Read these first, fully, and follow them exactly:
 1. ~/Projects/video-notes-app/docs/note-writing.md — the complete instructions (note format, cleanup rules, references, hub and quotes updates, vn done/skip).
 2. ~/Projects/brain/AGENTS.md — the brain's rules (especially "Writing notes" and "Commonplace").
 3. ~/Projects/brain/Resources/commonplace/commonplace.md and quotes.md — current themes and topic tags.
-4. Two finished example notes to match in tone, depth and format: ~/Projects/brain/Resources/commonplace/videos/video-anthropics-three-ai-scenarios-for-the-economy-by-2030.md and ~/Projects/brain/Resources/commonplace/videos/video-feeding-your-mind-the-big-truth.md
+4. Two finished example notes to match in tone, depth and format: ~/Projects/brain/Resources/commonplace/videos/video-anthropics-three-ai-scenarios-for-the-economy-by-2030.md and ~/Projects/brain/Resources/commonplace/videos/video-feeding-your-mind-the-big-truth.md. Their `type/resource` tag was added afterwards by brain-index: don't copy it; never write a `type/` tag yourself.
 
 Your batch is exactly these {{count}} post ids. Process only these:
 {{ids}}

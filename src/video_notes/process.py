@@ -9,6 +9,8 @@ import pytesseract
 
 from . import db
 from .config import ROOT, TOOLS, load, media_dir
+from .errors import ToolMissing
+from .events import echo
 from .ocr import ocr_image
 from .transcribe import transcribe
 
@@ -25,12 +27,13 @@ def setup_tesseract() -> None:
         return
     local = TOOLS / "root/usr/bin/tesseract"
     if not local.exists():
-        raise SystemExit("tesseract not found: sudo dnf install tesseract tesseract-langpack-ita tesseract-langpack-spa")
+        raise ToolMissing("tesseract not found",
+                          "Install it: sudo dnf install tesseract tesseract-langpack-ita tesseract-langpack-spa")
     pytesseract.pytesseract.tesseract_cmd = str(local)
     os.environ["TESSDATA_PREFIX"] = str(TOOLS / "tessdata")
 
 
-def run_ocr(con, post_ids: list[str], cfg: dict) -> None:
+def run_ocr(con, post_ids: list[str], cfg: dict, report=echo) -> None:
     if not post_ids:
         return
     marks = ",".join("?" * len(post_ids))
@@ -52,22 +55,31 @@ def run_ocr(con, post_ids: list[str], cfg: dict) -> None:
             con.execute("UPDATE images SET ocr_text = ?, ocr_conf = ? WHERE post_id = ? AND idx = ?",
                         (text, conf, r["post_id"], r["idx"]))
             con.commit()
-    print(f"ocr: {len(todo)} images in {time.time() - t0:.0f} s")
+    report(f"ocr: {len(todo)} images in {time.time() - t0:.0f} s")
 
 
-def process(limit: int | None) -> int:
+def process(limit: int | None = None, ids=None, report=echo) -> int:
+    """OCR and transcribe up to `limit` fetched posts (only those in `ids`, if given). Returns how many."""
     cfg = load()
-    setup_tesseract()
     con = db.connect()
-    posts = con.execute("SELECT * FROM posts WHERE status = 'fetched' ORDER BY rowid LIMIT ?",
-                        (limit or -1,)).fetchall()
-    run_ocr(con, [p["id"] for p in posts], cfg)
+    sql, args = "SELECT * FROM posts WHERE status = 'fetched'", []
+    if ids is not None:
+        if not ids:
+            return 0
+        sql += f" AND id IN ({db.placeholders(ids)})"
+        args += list(ids)
+    posts = con.execute(sql + " ORDER BY rowid LIMIT ?", [*args, limit or -1]).fetchall()
+    if not posts:
+        return 0
+    setup_tesseract()
+    run_ocr(con, [p["id"] for p in posts], cfg, report)
     model = cfg["whisper"]["model"]
     for post in posts:
         pid = post["id"]
         audio = media_dir(pid) / "audio.wav"
         if post["type"] == "video" and not post["transcribed"]:
             fields = {"transcribed": 1, "whisper_model": model}
+            done_msg = None
             if audio.exists():
                 t0 = time.time()
                 segs, lang, prob = transcribe(str(audio), model, cfg["whisper"]["compute_type"])
@@ -76,17 +88,19 @@ def process(limit: int | None) -> int:
                                 [(pid, i, s["start"], s["end"], s["text"]) for i, s in enumerate(segs)])
                 if segs:
                     fields |= {"language": lang, "language_prob": prob}
-                print(f"transcribed {pid}: {len(segs)} segments, {lang} ({prob}), {time.time() - t0:.0f} s")
+                done_msg = f"transcribed {pid}: {len(segs)} segments, {lang} ({prob}), {time.time() - t0:.0f} s"
             con.execute(f"UPDATE posts SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
                         [*fields.values(), pid])
             con.commit()
             audio.unlink(missing_ok=True)
+            if done_msg:  # only after the commit: a run's report writes to the database too
+                report(done_msg, post_id=pid)
         speech = con.execute("SELECT COUNT(*) FROM segments WHERE post_id = ?", (pid,)).fetchone()[0]
         texts = [r[0] for r in con.execute("SELECT ocr_text FROM images WHERE post_id = ?", (pid,))]
         if not speech and not any(has_text(t) for t in texts):
             db.set_status(con, pid, "skipped", skip_reason="no content")
-            print(f"skipped {pid}: no content")
+            report(f"skipped {pid}: no content", post_id=pid)
         else:
             db.set_status(con, pid, "processed")
-            print(f"processed {pid}")
+            report(f"processed {pid}", post_id=pid)
     return len(posts)

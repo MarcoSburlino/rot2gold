@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.id }} · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<h1>Run {{ run.id }} <span class="status s-{{ run.status }}" id="status">{{ run.status }}</span></h1>
+<p class="meta">
+  {{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}
+  · from {{ run.origin }}
+  · {% for i in (run.connection_ids or '').split(',') if i %}{{ names.get(i|int, '#' ~ i) }}{% if not loop.last %}, {% endif %}{% endfor %}
+  · {{ run.backend }}, {{ run.model }}
+</p>
+
+<ol class="stages" id="stages" data-stage="{{ run.stage or '' }}">
+  {% for s in ['sync', 'fetch', 'process', 'notes', 'done'] %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
+</ol>
+
+<div class="stats">
+  {% for k in ['listed', 'fetched', 'processed', 'noted', 'skipped'] %}
+  <div><b data-count="posts_{{ k }}">{{ run['posts_' ~ k] }}</b> {{ k }}</div>
+  {% endfor %}
+</div>
+
+{% if run.cost_estimate_usd or run.cache_read %}
+<section class="usage">
+  <h2>AI usage</h2>
+  <p>{{ '%.1f'|format(run.cache_read / 1e6) }} M cache-read · {{ '%.0f'|format(run.cache_write / 1e3) }} k cache-write ·
+     {{ '%.0f'|format(run.tokens_out / 1e3) }} k output tokens · ~${{ '%.2f'|format(run.cost_estimate_usd) }}
+     <span class="muted">{% if run.backend == 'subscription' %}what this would cost on the API — your plan is not charged per run{% else %}estimated API cost{% endif %}</span></p>
+  {% for w in plan_windows(run.plan_usage) %}
+    <div class="meter"><span>Plan {{ w.name }}</span><progress max="1" value="{{ w.used }}"></progress><span>{{ '%.0f'|format(w.used * 100) }}% used{% if w.resets %}, resets {{ w.resets }}{% endif %}</span></div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if run.error %}<div class="banner {{ 'error' if run.status == 'failed' else 'warn' }}"><pre>{{ run.error }}</pre></div>{% endif %}
+{% if run.brain_commits %}<p class="meta">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code> {% endfor %}</p>{% endif %}
+
+<h2>Log</h2>
+<ol class="log" id="log">
+  {% for e in events %}<li class="lv-{{ e.level }}"><time>{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>{% endfor %}
+</ol>
+
+<script>
+  (() => {
+    const log = document.getElementById('log');
+    const stages = document.getElementById('stages');
+    const order = [...stages.children].map(li => li.dataset.s);
+    const mark = stage => {
+      const at = order.indexOf(stage);
+      stages.querySelectorAll('li').forEach((li, i) => {
+        li.classList.toggle('done', at >= 0 && (i < at || stage === 'done'));
+        li.classList.toggle('now', i === at && stage !== 'done');
+      });
+    };
+    mark(stages.dataset.stage);
+    if ({{ 'true' if run.status == 'running' else 'false' }} === false) return;
+    const fmt = ts => new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    const es = new EventSource('/runs/{{ run.id }}/events?after={{ last_event }}');
+    es.onmessage = m => {
+      const e = JSON.parse(m.data);
+      const li = document.createElement('li');
+      li.className = 'lv-' + e.level;
+      const t = document.createElement('time'); t.textContent = fmt(e.ts);
+      li.append(t, document.createTextNode(e.message));
+      log.append(li);
+      if (e.stage) mark(e.stage);
+      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 200) li.scrollIntoView({block: 'end'});
+    };
+    es.addEventListener('run', m => {
+      const r = JSON.parse(m.data);
+      document.querySelectorAll('[data-count]').forEach(b => { b.textContent = r[b.dataset.count]; });
+      if (r.stage) mark(r.stage);
+    });
+    es.addEventListener('end', () => { es.close(); setTimeout(() => location.reload(), 500); });
+  })();
+</script>
+{% endblock %}

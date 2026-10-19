@@ -1,6 +1,7 @@
-# video-notes configuration. This is the only place the collection URL is stored.
+# video-notes-app configuration. Connection URLs live in the database (vn conn list), not here.
 
-collection_url = "https://www.tiktok.com/@someone/collection/Material-7000000000000000001"
+[brain]
+path = "~/Projects/brain"
 
 [fetch]
 delay_min = 3          # seconds to pause between posts
@@ -14,3 +15,14 @@ workers = 8            # parallel tesseract processes
 [whisper]
 model = "medium"       # chosen by scripts/whisper_bench.py, see docs/spec.md
 compute_type = "int8"
+
+[notes]
+backend = "subscription"   # subscription (claude -p with Marco's plan login) | api (Anthropic API key in the keyring)
+model = "opus"             # passed to claude --model
+batch_size = 5             # posts per claude -p call; see docs/app-spec.md → "Batch sizes and usage"
+max_per_run = 20           # notes written per Extract at most; the rest wait for the next one
+stop_at_plan_usage = 0.9   # subscription: don't start another batch once the 5-hour window is this full
+# max_budget_usd_per_batch = 3.0   # api backend only
+
+[app]
+port = 8740                # http://127.0.0.1:8740 — free among Marco's projects (docs/app-spec.md)

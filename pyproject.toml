@@ -11,7 +11,14 @@ dependencies = [
   "opencv-python-headless",
   "numpy",
   "pillow",
+  "fastapi",
+  "uvicorn",
+  "jinja2",
+  "python-multipart",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [project.scripts]
 vn = "video_notes.cli:main"

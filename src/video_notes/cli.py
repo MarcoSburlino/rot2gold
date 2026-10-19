@@ -1,11 +1,12 @@
-"""vn: TikTok collection → notes in the brain. See docs/spec.md."""
+"""vn: saved posts → notes in the brain. See docs/spec.md (pipeline) and docs/app-spec.md (app)."""
 
 import argparse
 import json
 import sys
 
-from . import db
+from . import brain, connections, db, lock
 from .config import ROOT
+from .errors import VNError
 
 
 def fmt_time(s: float) -> str:
@@ -69,6 +70,8 @@ def cmd_done(args) -> None:
     row = con.execute("SELECT status FROM posts WHERE id = ?", (args.id,)).fetchone()
     if not row:
         raise SystemExit(f"unknown post {args.id}")
+    if not brain.note_file(args.note_path).is_file():
+        raise SystemExit(f"note not found: {brain.note_file(args.note_path)} (write the note first; the path is relative to the brain)")
     db.set_status(con, args.id, "done", note_path=args.note_path, skip_reason=None)
     print(f"done {args.id} → {args.note_path}")
 
@@ -95,20 +98,104 @@ def cmd_status(args) -> None:
         print("skipped by reason:")
         for r in reasons:
             print(f"  {r['n']:>3}  {r['skip_reason']}")
-    src = con.execute("SELECT value FROM meta WHERE key = 'sync_source'").fetchone()
-    if src:
-        print(f"last sync source: {src[0]}")
+    for c in connections.all_with_counts(con):
+        print(f"connection {c['id']} {c['name']!r}: {c['counts']['total']} posts,"
+              f" last sync {(c['last_synced_at'] or 'never')[:16]} ({c['last_sync_source'] or '-'})"
+              + (f", last error: {c['last_error']}" if c["last_error"] else ""))
+    if info := lock.holder():
+        print(f"running: {lock.describe(info)}")
+
+
+def cmd_conn(args) -> None:
+    con = db.connect()
+    try:
+        if args.action == "list":
+            rows = connections.all_with_counts(con)
+            if not rows:
+                print("No connections yet. Add one: vn conn add <collection URL>")
+            for c in rows:
+                n = c["counts"]
+                print(f"{c['id']:>3}  {c['name']}  [{c['platform']}, cookies {c['cookies_mode']}]\n     {c['url']}\n     "
+                      + ", ".join(f"{connections.LABELS[s]} {n[s]}" for s in connections.STATUSES))
+        elif args.action == "add":
+            cid = connections.add(con, args.platform, args.url, args.name or "", args.cookies)
+            print(f"added connection {cid}: {connections.get(con, cid)['name']}")
+        elif args.action == "edit":
+            connections.update(con, args.id, name=args.name, url=args.url, cookies_mode=args.cookies,
+                               firefox_profile=args.profile)
+            print(f"updated connection {args.id}")
+        elif args.action == "rm":
+            c = connections.get(con, args.id)
+            alone = connections.only_here(con, args.id)
+            if not args.yes:
+                answer = input(f"Delete connection {c['name']!r}? {alone} posts belong only to it; their notes"
+                               " and media stay. [y/N] ")
+                if answer.strip().lower() != "y":
+                    raise SystemExit("not deleted")
+            connections.delete(con, args.id)
+            print(f"deleted connection {args.id}")
+        elif args.action == "links":
+            n = connections.set_links(con, args.id, sys.stdin.read())
+            print(f"connection {args.id}: {n} post URLs saved (used when listing fails)")
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def cmd_runs(args) -> None:
+    con = db.connect()
+    db.mark_interrupted_runs(con, (lock.holder() or {}).get("pid"))
+    for r in con.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (args.n,)):
+        print(f"run {r['id']}  {r['started_at'][:16]}  {r['origin']:<8} {r['status']:<11}"
+              f" listed {r['posts_listed']}, fetched {r['posts_fetched']}, processed {r['posts_processed']},"
+              f" noted {r['posts_noted']}, skipped {r['posts_skipped']}, ~${r['cost_estimate_usd']:.2f}"
+              + (f"\n      {r['error']}" if r["error"] else ""))
+
+
+def locked(command: str, fn, *a, **kw):
+    """Run a pipeline stage while holding the lock, so the app and the terminal can't run at the same time."""
+    with lock.PipelineLock("terminal", command):
+        return fn(*a, **kw)
 
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="vn", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("sync", help="list the collection and add new posts")
+    sp = sub.add_parser("sync", help="list every connection (or those given) and add new posts")
+    sp.add_argument("--conn", help="connection ids, comma-separated")
     for name, help_ in (("fetch", "download media for up to N posts"),
                         ("process", "OCR and transcribe up to N fetched posts"),
                         ("run", "sync + fetch + process")):
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("n", nargs="?", type=int)
+    sp = sub.add_parser("extract", help="the whole pipeline for connections: sync, fetch, process, write notes")
+    sp.add_argument("--conn", help="connection ids, comma-separated (default: all)")
+    sp.add_argument("--max-notes", type=int, help="write at most this many notes (default: config.toml [notes])")
+    sp.add_argument("--no-notes", action="store_true", help="stop after OCR and transcription")
+    sp.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
+    sp.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
+    sp = sub.add_parser("conn", help="manage connections (collections)")
+    csub = sp.add_subparsers(dest="action", required=True)
+    csub.add_parser("list", help="list connections with post counts")
+    cp = csub.add_parser("add", help="add a connection")
+    cp.add_argument("url")
+    cp.add_argument("--name")
+    cp.add_argument("--platform", default="tiktok")
+    cp.add_argument("--cookies", default="auto", choices=connections.COOKIE_MODES)
+    cp = csub.add_parser("edit", help="change a connection")
+    cp.add_argument("id", type=int)
+    cp.add_argument("--name")
+    cp.add_argument("--url")
+    cp.add_argument("--cookies", choices=connections.COOKIE_MODES)
+    cp.add_argument("--profile", help="Firefox profile folder for cookies ('' = automatic)")
+    cp = csub.add_parser("rm", help="delete a connection (posts and notes stay)")
+    cp.add_argument("id", type=int)
+    cp.add_argument("--yes", action="store_true")
+    cp = csub.add_parser("links", help="replace a connection's hand-pasted post URLs (read from stdin)")
+    cp.add_argument("id", type=int)
+    sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740")
+    sp.add_argument("--no-browser", action="store_true")
+    sp = sub.add_parser("runs", help="recent runs")
+    sp.add_argument("n", nargs="?", type=int, default=10)
     sp = sub.add_parser("pending", help="show processed posts waiting for a note")
     sp.add_argument("n", nargs="?", type=int)
     sp.add_argument("--id", help="show one post (any status)")
@@ -123,24 +210,52 @@ def main() -> None:
     sub.add_parser("status", help="counts by status and skip reason")
     args = p.parse_args()
 
-    if args.cmd == "sync":
-        from .sync import sync
-        sync()
-    elif args.cmd == "fetch":
-        from .fetch import fetch
-        fetch(args.n)
-    elif args.cmd == "process":
-        from .process import process
-        process(args.n)
-    elif args.cmd == "run":
-        from .fetch import fetch
-        from .process import process
-        from .sync import sync
-        sync()
-        fetch(args.n)
-        process(args.n)
-    else:
-        {"pending": cmd_pending, "done": cmd_done, "skip": cmd_skip, "status": cmd_status}[args.cmd](args)
+    try:
+        if args.cmd == "sync":
+            from .sync import sync
+            locked("vn sync", sync, conn_ids(args.conn))
+        elif args.cmd == "fetch":
+            from .fetch import fetch
+            locked("vn fetch", fetch, args.n)
+        elif args.cmd == "process":
+            from .process import process
+            locked("vn process", process, args.n)
+        elif args.cmd == "run":
+            from .fetch import fetch
+            from .process import process
+            from .sync import sync
+            with lock.PipelineLock("terminal", "vn run"):
+                sync()
+                fetch(args.n)
+                process(args.n)
+        elif args.cmd == "extract":
+            from .extract import extract
+            run = extract(conn_ids(args.conn), origin=args.origin, max_notes=args.max_notes,
+                          write=not args.no_notes, quiet=args.quiet)
+            print(f"run {run['id']} {run['status']}: listed {run['posts_listed']}, fetched {run['posts_fetched']},"
+                  f" processed {run['posts_processed']}, noted {run['posts_noted']}, skipped {run['posts_skipped']}"
+                  f"; ~${run['cost_estimate_usd']:.2f} API-equivalent")
+            if run["status"] == "failed":
+                raise SystemExit(1)
+        elif args.cmd == "ui":
+            from .web.app import serve
+            serve(open_browser=not args.no_browser)
+        else:
+            {"pending": cmd_pending, "done": cmd_done, "skip": cmd_skip, "status": cmd_status,
+             "conn": cmd_conn, "runs": cmd_runs}[args.cmd](args)
+    except VNError as exc:
+        raise SystemExit(f"{exc}") from None
+    except KeyboardInterrupt:
+        raise SystemExit("stopped") from None
+
+
+def conn_ids(text: str | None) -> list[int] | None:
+    if not text:
+        return None
+    try:
+        return [int(x) for x in text.split(",") if x.strip()]
+    except ValueError:
+        raise SystemExit("--conn takes connection ids like 1,2 (see `vn conn list`)") from None
 
 
 if __name__ == "__main__":

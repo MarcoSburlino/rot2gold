@@ -15,24 +15,31 @@ Everything runs locally. Captions, hashtags and comments are never fetched into 
 
 | Command | What it does |
 |---|---|
-| `vn sync` | List the collection; add new posts (id, URL, creator, upload date, type) |
+| `vn sync [--conn 1,2]` | List every connection (or those given); add new posts (id, URL, creator, upload date, type) and link them to the connection |
 | `vn fetch [N]` | Download media for up to N new posts, pausing 3–10 s between posts |
 | `vn process [N]` | OCR and transcribe up to N fetched posts; mark empty ones skipped ("no content") |
 | `vn run [N]` | sync + fetch N + process N |
 | `vn pending [N]` | Show processed posts waiting for a note (`--id`, `--json`, `--ids`) |
 | `vn done <id> <note-path>` | Mark a post as written up |
 | `vn skip <id> <reason>` | Skip a post with a reason |
-| `vn status` | Counts by status, type and skip reason |
+| `vn status` | Counts by status, type and skip reason; connections; the running pipeline, if any |
+| `vn extract [--conn 1,2] [--max-notes N] [--no-notes]` | The whole pipeline as one recorded run: sync, fetch, process, write notes (`app-spec.md`) |
+| `vn conn list \| add <url> \| edit <id> \| rm <id> \| links <id>` | Manage connections (collections); `links` reads hand-pasted post URLs from stdin |
+| `vn runs [N]` | Recent runs with counts and AI usage |
+| `vn ui` | Start the app at `http://127.0.0.1:8740` |
 
-`vn` is `.venv/bin/vn`, linked as `~/.local/bin/vn`.
+`vn` is `.venv/bin/vn`, linked as `~/.local/bin/vn`. `sync`, `fetch`, `process`, `run` and `extract` hold the lock `data/vn.lock`, so only one runs at a time.
+
+**`vn done` refuses a note path that doesn't exist in the brain** (the path is relative to the brain).
 
 ## Data
 
 `data/` is gitignored:
 
-- `data/vn.sqlite`: all state.
+- `data/vn.sqlite`: all state. `data/vn.sqlite.bak-v1`: the database as it was before the schema v2 migration (2026-10-19).
+- `data/vn.lock`: the pipeline lock (`lock.py`).
+- `data/logs/`: output of runs started from the app.
 - `data/media/<post id>/`: `frame.png` (videos) or `slide-01.jpg`, … (slideshows). Kept so note writers can look at them. Videos and audio are deleted after use.
-- `data/links.txt`: manual fallback list of post URLs, one per line.
 - `data/tools/`: fallback Tesseract (see Decisions).
 
 Tables (`src/video_notes/db.py`):
@@ -41,7 +48,8 @@ Tables (`src/video_notes/db.py`):
   - Status flows `new → fetched → processed → done`, or to `skipped` from any point.
 - `images`: post_id, idx (0 = the video frame, 1.. = slides), kind, path, ocr_text, ocr_conf (mean word confidence 0–100).
 - `segments`: post_id, idx, start, end, text.
-- `meta`: `sync_source`, `cookies`.
+- `meta`: `sync_source`, `cookies` (v1; now per connection).
+- Schema v2 (2026-10-19), for the app: `connections`, `connection_posts` (many-to-many), `connection_links` (hand-pasted post URLs), `runs`, `run_events`; `posts` gained `platform` and `ideas_checked_at`. Details in `app-spec.md` → "Data model". `PRAGMA user_version` is 2; WAL mode.
 
 Every stage selects only rows in its input status and commits after each post (OCR: after each image), so any command can be stopped and rerun.
 
