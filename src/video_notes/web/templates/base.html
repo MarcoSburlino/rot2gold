@@ -14,8 +14,9 @@
       <a href="/runs" {% if request.url.path.startswith('/runs') %}aria-current="page"{% endif %}>Runs</a>
       <a href="/videos" {% if request.url.path.startswith('/videos') %}aria-current="page"{% endif %}>Videos</a>
       <a href="/ideas" {% if request.url.path.startswith('/ideas') %}aria-current="page"{% endif %}>Ideas</a>
-      <span class="soon" title="Phase 4">Settings</span>
+      <a href="/settings" {% if request.url.path == '/settings' %}aria-current="page"{% endif %}>Settings</a>
     </nav>
+    <form method="post" action="/quit" class="quit"><button class="small">Quit</button></form>
   </header>
 
   {% if active %}

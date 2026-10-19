@@ -118,6 +118,8 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
                     report(f"  {label}: {item}", level="warn" if key == "problems" else "info")
         b_noted, b_skipped = check_batch(con, batch, report)
         noted, skipped = noted + b_noted, skipped + b_skipped
+        done_ids = [pid for pid in batch if con.execute("SELECT status FROM posts WHERE id = ?", (pid,)).fetchone()[0] == "done"]
+        db.add_batch(con, run_id, "notes", n, batch, noted=done_ids, res=res, error=limit)
         # Commit whatever the batch finished, even if it was cut short.
         sha, paths = brain.index_and_commit(before, brain.NOTE_PATHS, f"agent: video notes batch {n} (run {run_id})")
         add_commit(con, run_id, sha)

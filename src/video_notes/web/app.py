@@ -13,17 +13,21 @@ import sys
 import threading
 import time
 import webbrowser
+import socket
+import urllib.request
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import brain, connections, db, ideas, lock, notefile, sources
-from ..config import DATA, LOGS, MEDIA, ROOT, load, media_dir
+from .. import brain, connections, db, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
+from ..ai import claude_cli
+from ..config import DATA, LOGS, MEDIA, ROOT, brain_dir, load, media_dir
 from ..errors import VNError
 
 APP_NAME = "video-notes-app"  # the project name may change: this is the only place the UI shows it
@@ -34,6 +38,21 @@ app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 children: list[subprocess.Popen] = []  # runs started here; polled so finished ones don't linger as zombies
+server = None
+
+
+@app.middleware("http")
+async def local_requests(request: Request, call_next):
+    port = int(load()["app"]["port"])
+    allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    if request.headers.get("host", "").lower() not in allowed:
+        return PlainTextResponse("Use the local app address.", status_code=400)
+    if request.method not in ("GET", "HEAD"):
+        source = request.headers.get("origin") or request.headers.get("referer", "")
+        parts = urlsplit(source)
+        if parts.scheme != "http" or parts.netloc.lower() not in allowed:
+            return PlainTextResponse("This action must come from the app's own page.", status_code=403)
+    return await call_next(request)
 
 
 def local_time(iso: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
@@ -84,6 +103,76 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
 def back(path: str = "/", **params) -> RedirectResponse:
     params = {k: v for k, v in params.items() if v}
     return RedirectResponse(path + ("?" + urlencode(params) if params else ""), status_code=303)
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"app": APP_NAME}
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    cfg = load()
+    con = db.connect()
+    latest = con.execute("SELECT plan_usage FROM runs WHERE plan_usage IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    try:
+        key_set, key_error = secrets.has_api_key(), None
+    except VNError as exc:
+        key_set, key_error = False, str(exc)
+    from ..sources.firefox import profiles
+    return page(request, "settings.html", fields=settings.EDITABLE, cfg=cfg, key_set=key_set,
+                key_error=key_error, windows=plan_windows(latest[0] if latest else None),
+                versions=downloaders.versions(), brain_path=brain_dir(cfg), port=cfg["app"]["port"], profiles=profiles())
+
+
+@app.post("/settings")
+async def save_settings(request: Request):
+    form = await request.form()
+    values = {f"{f['section']}.{f['key']}": form.get(f"{f['section']}.{f['key']}", "") for f in settings.EDITABLE}
+    if values["notes.backend"] == "api" and not secrets.has_api_key():
+        return back("/settings", err="Set an API key before selecting the API backend.")
+    errors = settings.save(values)
+    return back("/settings", err="; ".join(errors)) if errors else back("/settings", msg="Settings saved.")
+
+
+@app.post("/settings/key")
+def set_key(key: str = Form("")):
+    if not key.strip():
+        return back("/settings", err="Enter an API key.")
+    try:
+        secrets.set_api_key(key)
+    except VNError:
+        return back("/settings", err="Could not store the API key in the keyring.")
+    return back("/settings", msg="API key stored.")
+
+
+@app.post("/settings/key/clear")
+def clear_key():
+    try:
+        secrets.delete_api_key()
+    except VNError:
+        return back("/settings", err="Could not clear the API key.")
+    return back("/settings", msg="API key cleared.")
+
+
+@app.post("/settings/key/test")
+def test_key():
+    try:
+        key = secrets.get_api_key()
+        if not key:
+            return back("/settings", err="No API key is stored.")
+        result = claude_cli.test_key(key)
+        if result.ok and (result.structured or {}).get("ok") is True:
+            return back("/settings", msg=f"API key works. Cost: ${result.cost_usd:.4f}.")
+        error = (result.error or "The test did not return ok.").replace(key, "[key hidden]")
+        return back("/settings", err=error)
+    except VNError as exc:
+        return back("/settings", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
+
+
+@app.post("/update-downloaders")
+def start_update():
+    return spawn_run([sys.executable, "-m", "video_notes.cli", "update-downloaders", "--origin", "app"], "Update")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -173,6 +262,9 @@ def spawn_run(cmd: list[str], label: str):
         if info and info.get("pid") == proc.pid and info.get("run_id"):
             return back(f"/runs/{info['run_id']}")
         if proc.poll() is not None:
+            finished = db.connect().execute("SELECT id FROM runs WHERE pid = ? ORDER BY id DESC LIMIT 1", (proc.pid,)).fetchone()
+            if finished:
+                return back(f"/runs/{finished['id']}")
             tail = log.read_text().strip().splitlines()[-3:]
             return back(err=f"{label} stopped right away: " + " ".join(tail))
         time.sleep(0.1)
@@ -347,7 +439,7 @@ def apply_preview(run_id: int):
     try:
         with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
             run.report.set_stage("ideas")
-            done = ideas.apply_dry_run(run.con, run_id, run.report)
+            done = ideas.apply_dry_run(run.con, run_id, run.report, run.run_id)
             run.counts["ideas_created"] = len(done["copied"])
             run.report.set_stage("done")
     except (ValueError, VNError) as exc:
@@ -386,9 +478,34 @@ def run_page(request: Request, run_id: int):
     if not row:
         return back("/runs", err=f"No run {run_id}.")
     events = [dict(e) for e in con.execute("SELECT * FROM run_events WHERE run_id = ? ORDER BY id", (run_id,))]
+    batches = [dict(b) for b in con.execute("SELECT * FROM batches WHERE run_id = ? ORDER BY id", (run_id,))]
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections")}
-    return page(request, "run.html", run=dict(row), events=events, names=names, active=active,
+    stages = (["sync", "fetch", "process", "notes", "ideas", "done"] if row["kind"] == "extract" else
+              ["undo", "done"] if row["kind"] == "undo" else ["update", "done"] if row["kind"] == "update" else
+              ["ideas", "done"])
+    return page(request, "run.html", run=dict(row), events=events, batches=batches, stages=stages, names=names, active=active,
                 last_event=events[-1]["id"] if events else 0)
+
+
+@app.get("/runs/{run_id}/undo", response_class=HTMLResponse)
+def confirm_undo(request: Request, run_id: int):
+    row = db.connect().execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+    if not row or row["status"] == "running" or row["undone_at"] or not row["brain_commits"]:
+        return back("/runs", err="This run cannot be undone.")
+    return page(request, "undo.html", run=dict(row), commits=row["brain_commits"].split())
+
+
+@app.post("/runs/{run_id}/undo")
+def perform_undo(run_id: int):
+    from ..runs import recorded_run
+    try:
+        with recorded_run("app", f"vn undo {run_id}", "undo", [], load()) as run:
+            run.report.set_stage("undo")
+            undo.undo_run(run.con, run_id, run.report)
+            run.report.set_stage("done")
+    except (ValueError, VNError) as exc:
+        return back(f"/runs/{run_id}/undo", err=str(exc))
+    return back(f"/runs/{run.run_id}")
 
 
 @app.get("/runs/{run_id}/events")
@@ -421,11 +538,38 @@ def run_events(run_id: int, after: int = 0):
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
+@app.post("/quit", response_class=HTMLResponse)
+def quit_app():
+    if server is not None:
+        threading.Timer(0.3, lambda: setattr(server, "should_exit", True)).start()
+    return HTMLResponse("<h1>The app has stopped.</h1><p>A running Extract keeps going.</p>")
+
+
 def serve(open_browser: bool = True) -> None:
     import uvicorn
+    global server
     port = int(load()["app"]["port"])
     url = f"http://{HOST}:{port}"
-    print(f"{APP_NAME} at {url}  (Ctrl+C to stop the server; a running Extract keeps going)")
+    with socket.socket() as sock:
+        if sock.connect_ex((HOST, port)) == 0:
+            try:
+                with urllib.request.urlopen(url + "/healthz", timeout=2) as response:
+                    if json.load(response).get("app") == APP_NAME:
+                        print(f"{APP_NAME} is already running at {url}")
+                        if open_browser:
+                            webbrowser.open(url)
+                        return
+            except Exception:
+                pass
+            raise VNError(f"Port {port} is already in use by another app.")
+    server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=port, log_level="warning"))
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host=HOST, port=port, log_level="warning")
+    if not sys.stdin.isatty():
+        LOGS.mkdir(parents=True, exist_ok=True)
+        with open(LOGS / "ui.log", "a") as log, redirect_stdout(log), redirect_stderr(log):
+            print(f"{APP_NAME} at {url}", flush=True)
+            server.run()
+    else:
+        print(f"{APP_NAME} at {url}  (Ctrl+C to stop the server; a running Extract keeps going)")
+        server.run()

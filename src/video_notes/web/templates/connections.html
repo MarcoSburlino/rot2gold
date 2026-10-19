@@ -23,7 +23,8 @@
         {% if c.last_synced_at %}Last listed {{ c.last_synced_at|local_time }} ({{ c.last_sync_source }}){% else %}Never listed{% endif %}
         · cookies {{ c.cookies_mode }}
       </p>
-      {% if c.last_error %}<p class="error-text">Last error: {{ c.last_error }}</p>{% endif %}
+      {% if c.last_error %}<p class="error-text">Last error: {{ c.last_error }}</p>
+      <form method="post" action="/update-downloaders"><button class="small" {% if active %}disabled{% endif %}>Update downloaders</button></form>{% endif %}
       <div class="actions">
         <button type="button" class="link" onclick="document.getElementById('edit-{{ c.id }}').showModal()">Edit</button>
         <a href="/connections/{{ c.id }}/delete">Delete</a>

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<h1>Settings</h1>
+<p class="lede">Your changes are saved locally in data/settings.json.</p>
+<section class="card">
+  <h2>Extract and ideas</h2>
+  <form method="post" action="/settings" class="stack narrow">
+    {% for f in fields %}
+    {% set value = cfg[f.section].get(f.key) %}
+    <label>{{ f.label }}
+      {% if f.type == 'choice' %}
+      <select name="{{ f.section }}.{{ f.key }}">{% for choice in f.choices %}<option value="{{ choice }}" {% if value == choice %}selected{% endif %}>{{ choice }}</option>{% endfor %}</select>
+      {% else %}
+      <input type="number" name="{{ f.section }}.{{ f.key }}" value="{{ value if value is not none else '' }}" min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step if f.step is defined else 1 }}" {% if not f.optional %}required{% endif %}>
+      {% endif %}
+      <span class="muted">{{ f.help }}</span>
+    </label>
+    {% endfor %}
+    <button class="primary">Save settings</button>
+  </form>
+</section>
+<section class="card">
+  <h2>API key</h2>
+  <p>Status: <b>{{ 'set' if key_set else 'not set' }}</b></p>
+  {% if key_error %}<p class="error-text">{{ key_error }}</p>{% endif %}
+  <form method="post" action="/settings/key" class="stack narrow">
+    <label>Set or replace key <input type="password" name="key" autocomplete="off" required></label>
+    <button>Store key</button>
+  </form>
+  <div class="row">
+    <form method="post" action="/settings/key/clear"><button {% if not key_set %}disabled{% endif %}>Clear key</button></form>
+    <form method="post" action="/settings/key/test"><button {% if not key_set %}disabled{% endif %}>Test key</button></form>
+  </div>
+</section>
+<section class="card">
+  <h2>Plan usage</h2>
+  {% for w in windows %}<div class="meter"><span>{{ w.name }}</span><progress max="1" value="{{ w.used }}"></progress><span>{{ '%.0f'|format(w.used * 100) }}% used{% if w.resets %}, resets {{ w.resets }}{% endif %}</span></div>
+  {% else %}<p>No plan usage was reported by recent runs.</p>{% endfor %}
+  <p class="muted">Plan limits are shared with claude.ai and interactive Claude Code.</p>
+</section>
+<section class="card">
+  <h2>Downloaders</h2>
+  <p>yt-dlp {{ versions['yt-dlp'] or 'not installed' }}{% if versions['yt-dlp_age_days'] is not none %} · {{ versions['yt-dlp_age_days'] }} days old{% endif %}<br>
+     gallery-dl {{ versions['gallery-dl'] or 'not installed' }}</p>
+  <form method="post" action="/update-downloaders"><button {% if active %}disabled{% endif %}>Update downloaders</button></form>
+</section>
+<section class="card">
+  <h2>Info</h2>
+  <p>Brain: <code>{{ brain_path }}</code><br>App: <code>http://127.0.0.1:{{ port }}</code></p>
+  <h3>Firefox profiles</h3>
+  {% for profile in profiles %}<p><b>{{ profile.name }}</b>{% if profile.default %} (default){% endif %} · {{ 'has cookies' if profile.has_cookies else 'no cookies' }}<br><code>{{ profile.path }}</code></p>
+  {% else %}<p>No Firefox profiles found.</p>{% endfor %}
+</section>
+{% endblock %}

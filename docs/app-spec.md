@@ -10,7 +10,7 @@ Other docs:
 
 The brain holds the knowledge. The app reads notes from it and writes notes to it, and never keeps its own copy.
 
-**Status:** Phases 1–3 built (2026-10-19): connections, Extract, note-writing and ideas batches, and the Connections, Runs, Videos and Ideas screens. The phases are at the end.
+**Status:** Phases 1–5 built (2026-10-19): connections, Extract, browsing, ideas, Settings, API backend, batch usage, undo, downloader updates and launcher. The phases are at the end.
 
 ## Goals
 
@@ -56,7 +56,8 @@ The pipeline and the app live in one repo, `~/Projects/video-notes-app` (Marco, 
   - A desktop app (Tauri, Electron) would add Rust or Node toolchains and installers, for a single user. GTK would mean learning a UI toolkit.
 - **Why 127.0.0.1:** it's the loopback address, reachable only from this laptop. Binding to `0.0.0.0` would expose the app to anyone on the same Wi-Fi.
 - **Why 8740:** Marco's other projects use 3000, 3001, 5173, 1420/1421, 2020–2024, 3070, 5434, 8000, 8080, 8081, 8100 and 8888. 8740 is free. It's set in `config.toml` (`[app] port`) and noted in `AGENTS.md`.
-- **No systemd service.** A service would run all the time on a laptop that is often asleep. The app starts on demand instead. An optional GNOME launcher (a `.desktop` file) comes in Phase 5.
+- **No systemd service.** A service would run all the time on a laptop that is often asleep. The app starts on demand instead. `vn install-launcher` adds a GNOME `.desktop` entry. `vn ui` reuses an already running copy and writes output to `data/logs/ui.log` when started without a terminal.
+- **Local request checks.** Every request must have the configured loopback Host header; writes must also have an Origin or Referer from that same local address. This blocks DNS rebinding and cross-site form posts.
 
 ### Functions, not printed output
 
@@ -91,7 +92,7 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
 
 | | Subscription (default) | API key |
 |---|---|---|
-| Command | `claude -p …` | `claude --bare -p …` |
+| Command | `claude -p …` | `claude -p …` |
 | Auth | Marco's plan login (`claude auth status` → claude.ai, Pro) | `ANTHROPIC_API_KEY` from the keyring, set only in the child's environment |
 | Billing | Plan usage limits, shared with claude.ai and interactive Claude Code | Pay per use |
 | Safety | `ANTHROPIC_API_KEY` is removed from the child's environment, because Claude Code prefers a key over the plan login when both exist | `--max-budget-usd` per batch |
@@ -100,6 +101,7 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
   - The agent loop, the tools (file edits, web search, `vn` commands) and the prompts are identical, so a note looks the same whichever backend wrote it.
   - Calling the Messages API directly would mean re-implementing the tools and web search.
   - The Agent SDK for Python runs this same CLI underneath, so the subprocess adds nothing.
+  - API mode does not use `--bare`: bare mode removes WebSearch and WebFetch, which note writing needs. The key is supplied only to the child process, and a per-batch budget can cap spending.
 - **Flags used for every call:**
   - `--output-format stream-json --verbose`: live events, and a final result with usage.
   - `--json-schema`: a structured report the app can check.
@@ -114,9 +116,9 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
 - **What Anthropic's docs said on 2026-10-19:**
   - `claude -p` and the Agent SDK still draw from subscription limits. The planned separate credit was paused on 2026-06-15.
   - Since 2026-10-07, Max and Team plans also get monthly API credits. Pro doesn't.
-  - `--bare` never reads the plan login, so it works only with a key.
+  - The API key in the child environment selects API billing over the plan login.
   - Sources: support.claude.com articles 15036540 and 11145838, and code.claude.com/docs/en/headless.
-- A Codex backend (`codex exec`) can be added later behind the same interface.
+- A Codex note-writing backend is deferred: a second agent backend would double the testing for this local app.
 
 ### Principle change: API keys allowed here
 
@@ -135,16 +137,20 @@ The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool
 - **Entering the key:** the Settings page sends it to `secret-tool` on standard input, never as a command-line argument, because arguments are visible to every user in `ps`. Afterwards the page shows only "key set" or "not set".
 - **No keyring:** without one (for example over SSH, with no desktop session), API mode stops with "keyring unavailable". It never falls back to a file.
 
-### No review step before commits (v1)
+### Review and undo after commits
 
 Each batch of notes is committed on its own, and Git is the review and undo tool.
 
 - **Review:** `git show` and Obsidian.
-- **Undo (Phase 5):** an "Undo this run" button. It does a `git revert` of the run's commits and puts the run's posts back to `processed`.
+- **Undo:** an "Undo this run" button and `vn undo` revert a run's commits, re-open its noted posts if their note files are gone, and clear its ideas checks. Undo refuses staged or conflicting changes and is itself a locked, recorded run.
 
-A true "hold before commit" mode would need a staging copy of `commonplace.md` and `quotes.md`, which every batch also edits. It comes in Phase 5 as an optional setting: write the batch, show the diff, commit on approval.
+A true "hold before commit" mode would need a staging copy of `commonplace.md` and `quotes.md`, which every batch also edits. It is not built: undo provides review after the fact without a second commit path.
 
-## Data model (schema v3)
+### Settings overlay
+
+The tracked `config.toml` holds project defaults only. Editable preferences are validated and saved atomically in gitignored `data/settings.json`, then merged over defaults and `config.toml`. The API key stays in the GNOME keyring.
+
+## Data model (schema v4)
 
 All state stays in `data/vn.sqlite`.
 
@@ -159,6 +165,7 @@ All state stays in `data/vn.sqlite`.
 - `runs(id, origin, connection_ids, backend, model, started_at, finished_at, status, error, posts_listed, posts_fetched, posts_processed, posts_noted, posts_skipped, tokens_in, tokens_out, cache_read, cache_write, cost_estimate_usd, brain_commits)`.
 - `run_events(run_id, ts, level, stage, post_id, message)`.
 - Schema v3 adds `runs.kind` (`extract`, `ideas`, `ideas-dry-run`) and `runs.ideas_created`, `runs.ideas_updated`. Existing runs default to `extract`; v2→v3 is additive and needs no backup.
+- Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
 
 ### Changes to `posts`
 
@@ -228,7 +235,7 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 - **Usage shown.** Tokens and the cost estimate from each result event, per batch and per run.
   - On a subscription, the dollar figure is what the run would have cost on the API, not a charge.
   - The real remaining limit is at claude.ai → Settings → Usage.
-- **Settings.** Batch size, notes per run and model are set in Settings and stored in `config.toml` (`[notes]`).
+- **Settings.** Batch size, notes per run and model are set in Settings and stored in `data/settings.json`.
 
 ### Stopping and interruptions
 
@@ -269,8 +276,8 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
    - Each idea links its sources: video notes go to Video detail, other notes open in Obsidian.
    - The detail page renders the full idea safely. The rebuild form selects themes, an optional limit and a dry run (on by default); `/ideas/preview/<run_id>` renders its files.
 5. **Runs** (`/runs`) and **Settings** (`/settings`)
-   - Runs: the history with status, counts, usage per run and per batch, and the brain commits made.
-   - Settings: backend, model, batch size, notes per run, API key (set or replace, never shown), Firefox profile.
+   - Runs: the history with status, counts, usage per run and per batch, brain commits, and an Undo confirmation for eligible runs.
+   - Settings: editable backend, models and batch limits; API key status, set, clear and test; plan usage, downloader versions and update; brain path, app address and Firefox profiles.
 
 ## Files
 
@@ -280,7 +287,7 @@ docs/ideas.md              rules for the ideas pass
 prompts/write-notes.md     prompt for one note-writing batch
 prompts/ideas.md           prompt for the ideas pass
 src/video_notes/
-  db.py                    schema v3, migration, WAL                (changed)
+  db.py                    schema v4, migration, WAL                (changed)
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
   cli.py                   extract, ui, conn add|list|rm, lock      (changed)
   lock.py events.py errors.py
@@ -290,6 +297,10 @@ src/video_notes/
   ideas.py                 ideas pass; reading idea notes
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
   secrets.py               keyring access through secret-tool
+  settings.py              validated preferences in data/settings.json
+  undo.py                  safe git revert and queue restoration
+  downloaders.py           installed versions and venv upgrade
+  launcher.py              GNOME desktop entry and icon
   sources/                 base.py, tiktok.py
   ai/                      claude_cli.py
   notefile.py              reading notes (front matter, title) and rendering them with wikilinks
@@ -307,8 +318,8 @@ tests/
    - Done when Marco adds a connection, presses Extract, and new posts become committed notes, as in the run of 2026-10-15.
 2. **Browse.** The Videos and Video detail screens.
 3. **Ideas.** The ideas pass in Extract, theme-based rebuilds, dry-run previews, and the Ideas screen. Migrating the 14 first-run idea files remains a separate brain change.
-4. **API backend.** Settings, keyring, `--bare`, budget caps, usage per run and per batch.
-5. **Extras.** Undo this run, an optional review before commit, a `.desktop` launcher, the Update downloaders button, maybe a Codex backend.
+4. **API backend (built).** Settings, keyring, full Claude tool set, budget caps, usage per run and per batch.
+5. **Extras (built).** Undo this run, a `.desktop` launcher, the Update downloaders button and Quit. Optional hold for review and a Codex note-writing backend are deferred for the reasons above.
 
 ## Acceptance checks
 

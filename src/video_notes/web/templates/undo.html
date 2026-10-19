@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Undo run {{ run.id }} · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<p class="crumbs"><a href="/runs/{{ run.id }}">← Run {{ run.id }}</a></p>
+<h1>Undo run {{ run.id }}?</h1>
+<p>This reverts these brain commits, returns their noted posts to the queue when their notes are removed, and clears their ideas checks:</p>
+<ul>{% for sha in commits %}<li><code>{{ sha }}</code></li>{% endfor %}</ul>
+<p>Later edits to the same files can stop the undo. The app checks for uncommitted changes first.</p>
+<form method="post" action="/runs/{{ run.id }}/undo" class="row">
+  <button class="danger" {% if active %}disabled{% endif %}>Undo this run</button>
+  <a href="/runs/{{ run.id }}">Cancel</a>
+</form>
+{% endblock %}

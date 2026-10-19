@@ -104,7 +104,7 @@ def read_manifest(folder: Path) -> dict:
     return json.loads(path.read_text()) if path.is_file() else {}
 
 
-def apply_dry_run(con, run_id: int, report) -> dict:
+def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> dict:
     """Copy a reviewed dry run into Inbox/ideas and mark its notes checked, without calling Claude again.
 
     An idea Marco changed (or deleted) after the dry run is skipped, so his edits are never overwritten.
@@ -129,7 +129,9 @@ def apply_dry_run(con, run_id: int, report) -> dict:
         shutil.copyfile(src, dst)
         copied.append(src.name)
         report(f"{'updated' if current else 'created'} idea {src.name}")
-    considered = manifest.get("considered", [])
+    considered = [pid for pid in manifest.get("considered", []) if con.execute(
+        "SELECT ideas_checked_at FROM posts WHERE id = ?", (pid,)).fetchone() and con.execute(
+        "SELECT ideas_checked_at FROM posts WHERE id = ?", (pid,)).fetchone()[0] is None]
     if considered:
         con.executemany("UPDATE posts SET ideas_checked_at = ? WHERE id = ? AND ideas_checked_at IS NULL",
                         [(db.now(), pid) for pid in considered])
@@ -137,6 +139,8 @@ def apply_dry_run(con, run_id: int, report) -> dict:
     sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS, f"agent: ideas from dry run {run_id}")
     if sha:
         report(f"brain commit {sha}: {len(changed)} files")
+    notes.add_commit(con, apply_run_id, sha)
+    db.add_batch(con, apply_run_id, "apply", 1, post_ids=[str(run_id)], considered=considered)
     manifest["applied"] = sha or "nothing to commit"
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
     return {"copied": copied, "skipped": skipped, "considered": considered, "commit": sha}
@@ -169,6 +173,7 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
             res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(ROOT),
                                  add_dirs=[str(brain_dir(cfg))] + ([str(folder)] if dry_run else []),
                                  model=cfg["ideas"]["model"], backend=cfg["notes"]["backend"], api_key=api_key,
+                                 max_budget_usd=cfg["notes"].get("max_budget_usd_per_batch"),
                                  on_line=lambda line: report(f"  {line}"))
         except UsageLimit as exc:
             limit, res = exc, getattr(exc, "result", None)
@@ -215,6 +220,8 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
             notes.add_commit(con, run_id, sha)
             if sha:
                 report(f"brain commit {sha}: {len(changed)} files")
+        db.add_batch(con, run_id, "ideas", n, batch, considered=() if dry_run else
+                     [pid for pid in batch if pid in considered], res=res, error=limit)
         if run_id:
             con.execute("UPDATE runs SET ideas_created = ideas_created + ?, ideas_updated = ideas_updated + ? WHERE id = ?",
                         (batch_counts["created"], batch_counts["updated"], run_id))

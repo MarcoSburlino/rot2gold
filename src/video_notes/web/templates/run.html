@@ -10,7 +10,7 @@
 </p>
 
 <ol class="stages" id="stages" data-stage="{{ run.stage or '' }}">
-  {% for s in (['sync', 'fetch', 'process', 'notes', 'ideas', 'done'] if run.kind == 'extract' else ['ideas', 'done']) %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
+  {% for s in stages %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
 </ol>
 
 <div class="stats">
@@ -36,6 +36,24 @@
 
 {% if run.error %}<div class="banner {{ 'error' if run.status == 'failed' else 'warn' }}"><pre>{{ run.error }}</pre></div>{% endif %}
 {% if run.brain_commits %}<p class="meta">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code> {% endfor %}</p>{% endif %}
+{% if run.undone_at %}<div class="banner ok">Undone at {{ run.undone_at|local_time }}.</div>
+{% elif run.brain_commits and run.status != 'running' %}<p><a class="button" href="/runs/{{ run.id }}/undo">Undo this run</a></p>{% endif %}
+
+{% if batches %}
+<h2>Batches</h2>
+<table class="runs">
+  <thead><tr><th>N</th><th>Kind</th><th>Posts</th><th>Turns</th><th>Minutes</th><th>M cache-read</th><th>k output</th><th>~$</th><th>5-hour window</th><th>Result</th></tr></thead>
+  <tbody>{% for b in batches %}<tr>
+    <td>{{ b.n }}</td><td>{{ b.kind }}</td><td>{{ b.post_ids or '—' }}</td><td>{{ b.turns if b.turns is not none else '—' }}</td>
+    <td>{{ '%.1f'|format(b.duration_ms / 60000) if b.duration_ms is not none else '—' }}</td>
+    <td>{{ '%.1f'|format(b.cache_read / 1e6) if b.cache_read is not none else '—' }}</td>
+    <td>{{ '%.0f'|format(b.tokens_out / 1e3) if b.tokens_out is not none else '—' }}</td>
+    <td>{{ '%.2f'|format(b.cost_usd) if b.cost_usd is not none else '—' }}</td>
+    <td>{{ '%.0f%%'|format(b.five_hour * 100) if b.five_hour is not none else '—' }}</td>
+    <td>{{ 'ok' if b.ok else (b.error or 'incomplete') }}</td>
+  </tr>{% endfor %}</tbody>
+</table>
+{% endif %}
 
 <h2>Log</h2>
 <ol class="log" id="log">

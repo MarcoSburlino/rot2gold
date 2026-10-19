@@ -27,6 +27,9 @@ Everything runs locally. Captions, hashtags and comments are never fetched into 
 | `vn conn list \| add <url> \| edit <id> \| rm <id> \| links <id>` | Manage connections (collections); `links` reads hand-pasted post URLs from stdin |
 | `vn runs [N]` | Recent runs with counts and AI usage |
 | `vn ui` | Start the app at `http://127.0.0.1:8740` |
+| `vn undo <run_id> [--yes]` | Revert a finished run's brain commits and reopen its posts |
+| `vn update-downloaders` | Upgrade yt-dlp and gallery-dl in the app venv, as a recorded run |
+| `vn install-launcher` / `vn uninstall-launcher` | Add or remove the GNOME app launcher |
 
 `vn` is `.venv/bin/vn`, linked as `~/.local/bin/vn`. `sync`, `fetch`, `process`, `run` and `extract` hold the lock `data/vn.lock`, so only one runs at a time.
 
@@ -49,7 +52,7 @@ Tables (`src/video_notes/db.py`):
 - `images`: post_id, idx (0 = the video frame, 1.. = slides), kind, path, ocr_text, ocr_conf (mean word confidence 0–100).
 - `segments`: post_id, idx, start, end, text.
 - `meta`: `sync_source`, `cookies` (v1; now per connection).
-- Schema v2 (2026-10-19), for the app: `connections`, `connection_posts` (many-to-many), `connection_links` (hand-pasted post URLs), `runs`, `run_events`; `posts` gained `platform` and `ideas_checked_at`. Details in `app-spec.md` → "Data model". `PRAGMA user_version` is 2; WAL mode.
+- Schema v2 (2026-10-19), for the app: `connections`, `connection_posts` (many-to-many), `connection_links` (hand-pasted post URLs), `runs`, `run_events`; `posts` gained `platform` and `ideas_checked_at`. Schema v3 added ideas run counts; v4 added `batches` and `runs.undone_at`. Details in `app-spec.md` → "Data model". `PRAGMA user_version` is 4; WAL mode.
 
 Every stage selects only rows in its input status and commits after each post (OCR: after each image), so any command can be stopped and rerun.
 

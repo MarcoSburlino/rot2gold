@@ -3,7 +3,8 @@
 Two backends, same agent loop, tools and prompts:
 - subscription: Marco's plan login. ANTHROPIC_API_KEY is removed from the child's environment,
   because Claude Code prefers a key over the plan login when both exist.
-- api: `--bare` (which never reads the plan login) with the key set only in the child's environment.
+- api: the same tools, including web tools; the key is set only in the child's environment.
+  Bare mode would remove WebSearch and WebFetch, which note writing needs.
 """
 
 import json
@@ -11,6 +12,7 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -84,20 +86,22 @@ def parse_event(ev: dict, res: Result, on_line) -> None:
 
 def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str,
         backend: str = "subscription", api_key: str | None = None, max_budget_usd: float | None = None,
-        on_line=lambda line: None) -> Result:
+        on_line=lambda line: None, allowed_tools: list[str] | None = None) -> Result:
     exe = shutil.which("claude")
     if not exe:
         raise ToolMissing("claude (Claude Code) not found on PATH", "Install Claude Code and log in with `claude`.")
     cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--model", model,
            "--json-schema", json.dumps(schema), "--permission-prompts", "none", "--permission-mode", "dontAsk",
-           "--no-session-persistence", "--strict-mcp-config", "--allowedTools", *ALLOWED_TOOLS]
+           "--no-session-persistence", "--strict-mcp-config"]
+    tools = ALLOWED_TOOLS if allowed_tools is None else allowed_tools
+    if tools:  # an empty --allowedTools would swallow the next flag
+        cmd += ["--allowedTools", *tools]
     for d in add_dirs:
         cmd += ["--add-dir", d]
     env = dict(os.environ)
     if backend == "api":
         if not api_key:
             raise AgentFailed("API backend selected but no API key is set", "Set it in Settings, or switch to the subscription.")
-        cmd.insert(1, "--bare")
         env["ANTHROPIC_API_KEY"] = api_key
         if max_budget_usd:
             cmd += ["--max-budget-usd", str(max_budget_usd)]
@@ -136,6 +140,14 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str,
     if not res.ok and not res.error:
         res.error = ("\n".join(res.other_output[-5:]) or f"claude exited with code {proc.returncode}")[:500]
     return res
+
+
+def test_key(api_key: str) -> Result:
+    """Make a cheap tool-free call in an isolated directory to check key billing."""
+    with tempfile.TemporaryDirectory() as cwd:
+        return run("Reply with ok", schema={"type": "object", "properties": {"ok": {"type": "boolean"}},
+                                            "required": ["ok"]}, cwd=cwd, add_dirs=[], model="haiku",
+                   backend="api", api_key=api_key, max_budget_usd=0.05, allowed_tools=[])
 
 
 def resets(plan: dict | None) -> str:

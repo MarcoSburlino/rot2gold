@@ -1,6 +1,6 @@
 """SQLite state. Each stage reads posts in its input status and commits after every post.
 
-Schema v3 adds ideas run counts to the v2 connections and runs. See docs/app-spec.md.
+Schema v4 adds per-batch usage and run undo state. See docs/app-spec.md.
 """
 
 import sqlite3
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from .config import DATA, DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -112,6 +112,30 @@ CREATE TABLE IF NOT EXISTS run_events (
 CREATE INDEX IF NOT EXISTS run_events_run ON run_events(run_id, id);
 """
 
+SCHEMA_V4 = """
+CREATE TABLE IF NOT EXISTS batches (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER REFERENCES runs(id),
+    kind TEXT NOT NULL CHECK (kind IN ('notes', 'ideas', 'apply')),
+    n INTEGER NOT NULL,
+    post_ids TEXT,
+    noted TEXT,
+    considered TEXT,
+    turns INTEGER,
+    duration_ms INTEGER,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    cache_read INTEGER,
+    cache_write INTEGER,
+    cost_usd REAL,
+    five_hour REAL,
+    ok INTEGER,
+    error TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS batches_run ON batches(run_id, id);
+"""
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -140,7 +164,7 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """Add v2 and v3 fields; back up an existing v1 database only once."""
+    """Add v2 through v4 fields; back up an existing v1 database only once."""
     version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
@@ -157,9 +181,11 @@ def migrate(con, path) -> None:
     run_cols = columns(con, "runs")
     for name, decl in (("kind", "TEXT NOT NULL DEFAULT 'extract'"),
                        ("ideas_created", "INTEGER NOT NULL DEFAULT 0"),
-                       ("ideas_updated", "INTEGER NOT NULL DEFAULT 0")):
+                       ("ideas_updated", "INTEGER NOT NULL DEFAULT 0"),
+                       ("undone_at", "TEXT")):
         if name not in run_cols:
             con.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
+    con.executescript(SCHEMA_V4)
     # The single collection of v1 becomes the first connection, with every existing post in it.
     url = load().get("collection_url") if version < 2 else None
     if url and not con.execute("SELECT 1 FROM connections").fetchone():
@@ -177,6 +203,22 @@ def migrate(con, path) -> None:
             con.executemany("INSERT OR IGNORE INTO connection_links VALUES (?, ?)",
                             [(cur.lastrowid, line.strip()) for line in LINKS.read_text().splitlines() if line.strip()])
     con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    con.commit()
+
+
+def add_batch(con, run_id, kind, n, post_ids=(), noted=(), considered=(), res=None, error=None) -> None:
+    if run_id is None:
+        return
+    usage = res.usage if res else {}
+    plan = (((res.plan or {}).get("unifiedWindows") or {}).get("five_hour") or {}) if res else {}
+    con.execute("INSERT INTO batches (run_id, kind, n, post_ids, noted, considered, turns, duration_ms,"
+                " tokens_in, tokens_out, cache_read, cache_write, cost_usd, five_hour, ok, error, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, kind, n, " ".join(post_ids), " ".join(noted), " ".join(considered),
+                 res.turns if res else None, res.duration_ms if res else None,
+                 usage.get("tokens_in"), usage.get("tokens_out"), usage.get("cache_read"), usage.get("cache_write"),
+                 res.cost_usd if res else None, plan.get("utilization"), int(bool(res.ok if res else kind == "apply") and not error),
+                 str(error or (res.error if res and not res.ok else ""))[:500] or None, now()))
     con.commit()
 
 

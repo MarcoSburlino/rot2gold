@@ -1,4 +1,4 @@
-"""Project paths and config.toml."""
+"""Project paths and defaults, with user preferences overlaid outside Git."""
 
 import tomllib
 from pathlib import Path
@@ -26,6 +26,12 @@ def load() -> dict:
         cfg = tomllib.load(f)
     for section, values in DEFAULTS.items():
         cfg[section] = values | cfg.get(section, {})
+    from .settings import EDITABLE, read
+    saved = read()
+    for field in EDITABLE:
+        section, key = field["section"], field["key"]
+        if isinstance(saved.get(section), dict) and key in saved[section]:
+            cfg.setdefault(section, {})[key] = saved[section][key]
     return cfg
 
 

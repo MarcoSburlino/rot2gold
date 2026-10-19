@@ -5,7 +5,7 @@ Turns the posts Marco saves on TikTok into notes in his brain (`~/Projects/brain
 Two parts, one repo:
 
 - **The pipeline, `vn`** (built, working): lists a collection, downloads each post, runs OCR (Tesseract) and speech-to-text (faster-whisper), and stores everything in SQLite. An agent then writes one note per post.
-- **The app** (Phases 1–3 built): a local web UI where Marco adds connections, runs Extract through note writing and the ideas pass, then browses posts, notes and ideas (`docs/app-spec.md` → "Phases").
+- **The app** (Phases 1–5 built): a local web UI for Extract, browsing, Settings, usage, undo and updates (`docs/app-spec.md` → "Phases").
 
 ## Docs
 
@@ -25,6 +25,7 @@ Two parts, one repo:
 - The web UI listens on `127.0.0.1:8740` only, never `0.0.0.0`.
 - Brain writes follow `~/Projects/brain/AGENTS.md`: `brain-index` and `brain-index --check` after changes; commits start `agent: ` and stage only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the brain.
 - `data/` (media, database, tools) and `.venv/` are gitignored. Secrets never go into notes or Git.
+- App settings live in `data/settings.json`; tracked `config.toml` holds defaults only and is never written by the app.
 - Fedora: `dnf`, not `apt`.
 
 ## How to run it
@@ -38,6 +39,9 @@ vn ideas pass     # new unchecked notes; --conn 1,2  --dry-run
 vn ideas rebuild  # unchecked notes under themes; --themes "Name,Other"  --limit N  --dry-run
 vn conn list      # connections; add <url> [--name N] | edit <id> | rm <id> | links <id> < urls.txt
 vn runs           # recent runs with counts and AI usage
+vn undo <run_id> [--yes]  # revert a run's brain commits and reopen its posts
+vn update-downloaders    # upgrade yt-dlp and gallery-dl in the venv
+vn install-launcher      # add the GNOME launcher; uninstall-launcher removes it
 vn run 25         # sync + fetch + process up to 25 posts, without note writing
 vn status         # counts by status and skip reason; connections; what is running
 vn pending 10     # processed posts waiting for a note

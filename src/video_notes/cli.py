@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import brain, connections, db, ideas, lock, secrets
+from . import brain, connections, db, downloaders, ideas, launcher, lock, secrets, undo
 from .config import ROOT, load
 from .errors import VNError
 
@@ -173,7 +173,7 @@ def cmd_ideas(args) -> None:
         with recorded_run("terminal", "vn ideas apply", "ideas", [], cfg) as run:
             run.report.set_stage("ideas")
             try:
-                done = ideas.apply_dry_run(run.con, args.run_id, run.report)
+                done = ideas.apply_dry_run(run.con, args.run_id, run.report, run.run_id)
             except ValueError as exc:
                 raise SystemExit(str(exc)) from None
             run.counts["ideas_created"] = len(done["copied"])
@@ -210,6 +210,35 @@ def locked(command: str, fn, *a, **kw):
     """Run a pipeline stage while holding the lock, so the app and the terminal can't run at the same time."""
     with lock.PipelineLock("terminal", command):
         return fn(*a, **kw)
+
+
+def cmd_undo(args):
+    row = db.connect().execute("SELECT brain_commits FROM runs WHERE id = ?", (args.run_id,)).fetchone()
+    if not row:
+        raise SystemExit(f"No run {args.run_id}.")
+    if not args.yes:
+        answer = input(f"Undo run {args.run_id} and its brain commits {row['brain_commits'] or '(none)'}? [y/N] ")
+        if answer.strip().lower() != "y":
+            raise SystemExit("Not undone.")
+    from .runs import recorded_run
+    with recorded_run("terminal", f"vn undo {args.run_id}", "undo", [], load()) as run:
+        run.report.set_stage("undo")
+        undo.undo_run(run.con, args.run_id, run.report)
+        run.report.set_stage("done")
+    print(f"run {run.run_id} {run.row()['status']}")
+    if run.row()["status"] == "failed":
+        raise SystemExit(1)
+
+
+def cmd_update(args):
+    from .runs import recorded_run
+    with recorded_run(args.origin, "vn update-downloaders", "update", [], load()) as run:
+        run.report.set_stage("update")
+        downloaders.update(run.report)
+        run.report.set_stage("done")
+    print(f"run {run.run_id} {run.row()['status']}")
+    if run.row()["status"] == "failed":
+        raise SystemExit(1)
 
 
 def main() -> None:
@@ -264,6 +293,13 @@ def main() -> None:
         ip.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
     sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740")
     sp.add_argument("--no-browser", action="store_true")
+    sp = sub.add_parser("undo", help="revert one finished run's brain commits and reopen its posts")
+    sp.add_argument("run_id", type=int)
+    sp.add_argument("--yes", action="store_true")
+    sp = sub.add_parser("update-downloaders", help="upgrade yt-dlp and gallery-dl")
+    sp.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
+    sub.add_parser("install-launcher", help="add the app to GNOME's launcher")
+    sub.add_parser("uninstall-launcher", help="remove the app launcher")
     sp = sub.add_parser("runs", help="recent runs")
     sp.add_argument("n", nargs="?", type=int, default=10)
     sp = sub.add_parser("pending", help="show processed posts waiting for a note")
@@ -312,6 +348,15 @@ def main() -> None:
             serve(open_browser=not args.no_browser)
         elif args.cmd == "ideas":
             cmd_ideas(args)
+        elif args.cmd == "undo":
+            cmd_undo(args)
+        elif args.cmd == "update-downloaders":
+            cmd_update(args)
+        elif args.cmd == "install-launcher":
+            print("Installed launcher:", launcher.install()[0])
+        elif args.cmd == "uninstall-launcher":
+            launcher.uninstall()
+            print("Removed launcher.")
         else:
             {"pending": cmd_pending, "done": cmd_done, "skip": cmd_skip, "status": cmd_status,
              "conn": cmd_conn, "runs": cmd_runs}[args.cmd](args)

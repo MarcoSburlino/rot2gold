@@ -83,7 +83,7 @@ def test_v2_to_v3_without_backup(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(db, "LINKS", tmp_path / "no-links")
     con = db.connect(path)
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 4
     assert {"kind", "ideas_created", "ideas_updated"} <= db.columns(con, "runs")
     assert not (tmp_path / "vn.sqlite.bak-v1").exists()
     db.connect(path)
@@ -124,6 +124,9 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
     messages = []
     found = ideas.run_pass(con, ["1"], cfg, lambda msg, **kw: messages.append(msg), 1, dry_run)
     assert len(found["created"]) == 1 and found["considered"] == ["1"]
+    batch = con.execute("SELECT * FROM batches WHERE run_id = 1").fetchone()
+    assert batch["kind"] == "ideas" and batch["post_ids"] == "1"
+    assert batch["considered"] == ("" if dry_run else "1")
     checked = con.execute("SELECT ideas_checked_at FROM posts WHERE id = '1'").fetchone()[0]
     if dry_run:
         assert checked is None
