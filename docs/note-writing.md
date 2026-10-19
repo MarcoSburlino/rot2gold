@@ -69,6 +69,7 @@ tags:
    - The only text you may add is a short italic label saying what a piece of on-screen text is, e.g. `*(Screenshot of a post by @AnthropicAI:)*`. Don't describe images otherwise; that belongs in Key points or Context.
    - Label speakers if there is more than one (`**Interviewer:**`, `**Speaker 2:**`, or the name if it is clear from the post).
    - On-screen text that only repeats the speech word for word (karaoke-style subtitles) is still written in the on-screen section, as it is.
+   - Never leave a line holding only `-`, `--` or `---` right under text: Markdown turns the text above into a heading. Put an attribution on the same line as the name, as an em dash: `— Napoleon`.
 4. `## References`, in two parts:
    - `**Mentioned**`: every person, book, study, event or work that is named or clearly paraphrased, with a link where useful (Wikipedia, the publisher, the paper). `None.` if there are none.
    - `**Checked**`: at most 3 factual claims that matter, verified with web search. These are statistics, studies, historical or scientific claims, what a politician, law or country did, and famous quotes (which are often misattributed). Format: `- <claim> — **supported | partly supported | disputed | not found**. <one line on what the sources say>. Sources: [name](url), [name](url)`. Use 1–2 good sources per claim. Don't check opinions, values, interpretations, advice or jokes. If nothing needs checking, write `No factual claims needing a check.`

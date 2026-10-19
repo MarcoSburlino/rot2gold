@@ -5,7 +5,7 @@ Turns the posts Marco saves on TikTok into notes in his brain (`~/Projects/brain
 Two parts, one repo:
 
 - **The pipeline, `vn`** (built, working): lists a collection, downloads each post, runs OCR (Tesseract) and speech-to-text (faster-whisper), and stores everything in SQLite. An agent then writes one note per post.
-- **The app** (Phase 1 built): a local web UI where Marco adds connections (collections), presses Extract, and the whole pipeline runs, including note writing; next come screens to browse posts and notes, and the ideas pass (`docs/app-spec.md` → "Phases").
+- **The app** (Phases 1–2 built): a local web UI where Marco adds connections (collections), presses Extract, and the whole pipeline runs, including note writing; then browses every post and reads its note. Next: the ideas pass (`docs/app-spec.md` → "Phases").
 
 ## Docs
 

@@ -16,7 +16,7 @@
       <a class="url" href="{{ c.url }}" target="_blank" rel="noreferrer">{{ c.url }}</a>
       <ul class="counts">
         {% for s in STATUSES %}
-          <li class="st-{{ s }}{% if not c.counts[s] %} zero{% endif %}"><b>{{ c.counts[s] }}</b> {{ LABELS[s] }}</li>
+          <li class="st-{{ s }}{% if not c.counts[s] %} zero{% endif %}"><a href="/videos?conn={{ c.id }}&amp;status={{ s }}"><b>{{ c.counts[s] }}</b> {{ LABELS[s] }}</a></li>
         {% endfor %}
       </ul>
       <p class="meta">

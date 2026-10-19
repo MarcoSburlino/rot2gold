@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Videos · {{ APP_NAME }}{% endblock %}
+{% block main %}
+<h1>Videos</h1>
+<p class="lede">Every post the pipeline knows, with its state. Open one to read its note.</p>
+
+<form method="get" class="filters" id="filters">
+  <label>Connection
+    <select name="conn" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for id, name in names.items() %}<option value="{{ id }}" {% if f.conn == id|string %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="type" onchange="this.form.submit()">
+      <option value="">All</option>
+      {% for t in ['video', 'slideshow'] %}<option value="{{ t }}" {% if f.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="grow">Search
+    <input type="search" name="q" value="{{ f.q }}" placeholder="title, creator, id, skip reason">
+  </label>
+  <input type="hidden" name="status" value="{{ f.status }}">
+  <button>Filter</button>
+</form>
+
+<nav class="status-tabs" aria-label="Filter by status">
+  {% set total = counts.values()|sum %}
+  <a href="?{{ {'conn': f.conn, 'type': f.type, 'q': f.q}|urlencode }}" {% if not f.status %}aria-current="true"{% endif %}>All <b>{{ total }}</b></a>
+  {% for s in STATUSES %}
+    <a class="st-{{ s }}" href="?{{ {'conn': f.conn, 'type': f.type, 'q': f.q, 'status': s}|urlencode }}" {% if f.status == s %}aria-current="true"{% endif %}>{{ LABELS[s] }} <b>{{ counts[s] }}</b></a>
+  {% endfor %}
+</nav>
+
+{% if not rows %}
+  <p class="empty">No posts match.</p>
+{% else %}
+<ul class="video-list">
+  {% for r in rows %}
+  <li>
+    <a class="row-link" href="/videos/{{ r.id }}">
+      <span class="badge st-{{ r.status }}">{{ LABELS[r.status] }}</span>
+      <span class="main">
+        <span class="title">{{ r.title or ('@' ~ r.creator if r.creator else r.id) }}</span>
+        {% if r.description %}<span class="desc">{{ r.description }}</span>{% endif %}
+        {% if r.status == 'skipped' %}<span class="desc">Skipped: {{ r.skip_reason }}</span>{% endif %}
+        {% if r.missing %}<span class="desc error-text">Note file missing: {{ r.note_path }}</span>{% endif %}
+      </span>
+      <span class="side">
+        <span>{{ '@' ~ r.creator if r.creator }}</span>
+        <span>{{ r.upload_date or '' }} · {{ r.type or '?' }}</span>
+        {% if r.conn_ids|length > 1 or not f.conn %}
+        <span class="chips">{% for c in r.conn_ids %}<span class="chip">{{ names.get(c, '#' ~ c) }}</span>{% endfor %}</span>
+        {% endif %}
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

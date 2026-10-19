@@ -18,12 +18,12 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import connections, db, lock, sources
-from ..config import LOGS, ROOT, load
+from .. import brain, connections, db, lock, notefile, sources
+from ..config import LOGS, MEDIA, ROOT, load, media_dir
 
 APP_NAME = "video-notes-app"  # the project name may change: this is the only place the UI shows it
 HERE = Path(__file__).parent
@@ -182,6 +182,92 @@ def stop_run():
     except ProcessLookupError:
         return back(msg="The run had already ended.")
     return back(f"/runs/{info['run_id']}" if info.get("run_id") else "/", msg="Stopping… the current step finishes first.")
+
+
+def note_head(row) -> dict:
+    """Title and description of a post's note, read from the brain ({} if it has none)."""
+    if row["status"] != "done" or not row["note_path"]:
+        return {}
+    path = brain.note_file(row["note_path"])
+    if not path.is_file():
+        return {"missing": True}
+    note = notefile.read(path, head_only=True)
+    return {"title": note.title, "description": note.meta.get("description", "")}
+
+
+@app.get("/videos", response_class=HTMLResponse)
+def videos(request: Request, conn: str = "", status: str = "", type: str = "", q: str = ""):
+    con = db.connect()
+    where, args = [], []
+    if conn.isdigit():
+        where.append("EXISTS (SELECT 1 FROM connection_posts x WHERE x.post_id = p.id AND x.connection_id = ?)")
+        args.append(int(conn))
+    base_where, base_args = list(where), list(args)  # status counts ignore the status filter itself
+    if status in connections.STATUSES:
+        where.append("p.status = ?")
+        args.append(status)
+    if type in ("video", "slideshow"):
+        where.append("p.type = ?")
+        args.append(type)
+    sql = ("SELECT p.*, GROUP_CONCAT(cp.connection_id) AS conns FROM posts p"
+           " LEFT JOIN connection_posts cp ON cp.post_id = p.id"
+           + (" WHERE " + " AND ".join(where) if where else "") +
+           " GROUP BY p.id ORDER BY COALESCE(p.upload_date, '') DESC, p.rowid DESC")
+    rows = []
+    needle = q.strip().lower()
+    for r in con.execute(sql, args):
+        item = dict(r) | note_head(r)
+        item["conn_ids"] = [int(x) for x in (r["conns"] or "").split(",") if x]
+        if needle and needle not in " ".join(str(item.get(k) or "") for k in
+                                             ("id", "creator", "title", "description", "skip_reason")).lower():
+            continue
+        rows.append(item)
+    counts = dict.fromkeys(connections.STATUSES, 0)
+    for r in con.execute("SELECT p.status, COUNT(*) n FROM posts p" + (" WHERE " + " AND ".join(base_where) if base_where else "")
+                         + " GROUP BY p.status", base_args):
+        counts[r["status"]] = r["n"]
+    names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections ORDER BY id")}
+    return page(request, "videos.html", rows=rows, counts=counts, names=names,
+                f={"conn": conn, "status": status, "type": type, "q": q})
+
+
+@app.get("/videos/{post_id}", response_class=HTMLResponse)
+def video(request: Request, post_id: str):
+    con = db.connect()
+    row = con.execute("SELECT * FROM posts WHERE id = ?", (post_id,)).fetchone()
+    if not row:
+        return back("/videos", err=f"No post {post_id}.")
+    post = dict(row)
+    images = [dict(i) | {"url": f"/media/{post_id}/{Path(i['path']).name}"}
+              for i in con.execute("SELECT * FROM images WHERE post_id = ? ORDER BY idx", (post_id,))]
+    segments = [dict(s) for s in con.execute("SELECT * FROM segments WHERE post_id = ? ORDER BY idx", (post_id,))]
+    conns = [dict(c) for c in con.execute("SELECT c.id, c.name FROM connections c JOIN connection_posts cp"
+                                         " ON cp.connection_id = c.id WHERE cp.post_id = ? ORDER BY c.id", (post_id,))]
+    note = note_html = obsidian = None
+    if post["note_path"] and (path := brain.note_file(post["note_path"])).is_file():
+        note = notefile.read(path)
+        names = notefile.brain_names()
+        videos_by_note = {Path(r["note_path"]).stem: r["id"] for r in
+                          con.execute("SELECT id, note_path FROM posts WHERE note_path IS NOT NULL")}
+
+        def link_for(name):
+            if name in videos_by_note:
+                return f"/videos/{videos_by_note[name]}"
+            return notefile.obsidian_link(names[name]) if name in names else None
+
+        note_html = notefile.render(note.body, link_for)
+        obsidian = notefile.obsidian_link(path)
+    return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
+                note=note, note_html=note_html, obsidian=obsidian)
+
+
+@app.get("/media/{post_id}/{name}")
+def media(post_id: str, name: str):
+    """Frame and slide images, only from inside data/media/."""
+    path = (media_dir(post_id) / name).resolve()
+    if not path.is_relative_to(MEDIA.resolve()) or not path.is_file():
+        return HTMLResponse("Not found", status_code=404)
+    return FileResponse(path)
 
 
 @app.get("/runs", response_class=HTMLResponse)

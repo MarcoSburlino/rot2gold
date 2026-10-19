@@ -170,3 +170,23 @@ def test_run_log_never_stops_a_run(fresh, tmp_path, monkeypatch, capsys):
     other.commit()
     report("next line")
     assert fresh.execute("SELECT message FROM run_events").fetchall()[-1][0] == "next line"
+
+
+def test_note_rendering(tmp_path):
+    from video_notes import notefile
+    path = tmp_path / "video-x.md"
+    path.write_text('---\ndescription: "A test note"\ntags:\n  - tiktok\n---\n\n# The Title\n\n'
+                    '> [!note] AI-processed note.\n\n## Content\n\n<script>alert(1)</script> and [[video-y]], '
+                    '[[hejdansk|the app]], [[missing-note]] and [a link](https://example.com).\n')
+    note = notefile.read(path)
+    assert note.title == "The Title" and note.meta["description"] == "A test note"
+    assert "# The Title" not in note.body
+    links = {"video-y": "/videos/1", "hejdansk": "obsidian://open?path=x"}
+    out = notefile.render(note.body, links.get)
+    assert "<script>" not in out and "&lt;script&gt;" in out  # raw HTML shown as text, never run
+    assert '<a href="/videos/1">video-y</a>' in out
+    assert '<a href="obsidian://open?path=x">the app</a>' in out
+    assert "missing-note" in out and "[[missing-note]]" not in out
+    assert 'class="callout callout-note"' in out
+    assert 'target="_blank" rel="noreferrer" href="https://example.com"' in out
+    assert notefile.read(path, head_only=True).title == "The Title"

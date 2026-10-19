@@ -10,7 +10,7 @@ Other docs:
 
 The brain holds the knowledge. The app reads notes from it and writes notes to it, and never keeps its own copy.
 
-**Status:** Phase 1 built (2026-10-19): connections, Extract, the lock, note-writing batches and the Connections, Runs and Run screens. The phases are at the end.
+**Status:** Phases 1 and 2 built (2026-10-19): connections, Extract, the lock, note-writing batches, and the Connections, Runs, Run, Videos and Video detail screens. The phases are at the end.
 
 ## Goals
 
@@ -258,7 +258,8 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
    - Every post, filtered by connection and status: creator, posted date, type, status, skip reason.
    - A post in several connections shows each one as a chip.
 3. **Video detail** (`/videos/<id>`)
-   - The note, rendered from its markdown file in the brain. Front matter is shown as a header, and `[[wikilinks]]` link to app pages where they resolve.
+   - The note, rendered from its markdown file in the brain (`notefile.py`). Front matter is shown as a header, and `[[wikilinks]]` link to app pages where they resolve.
+   - Rendering has raw HTML switched off: notes contain text from posts and the web, so `<script>` in a note shows as text and never runs.
    - The frame or slide images from `data/media/`.
    - **Open in Obsidian:** `obsidian://open?path=<absolute note path>`. This works without the vault name; the Flatpak Obsidian is registered for `obsidian://` links.
    - The raw OCR text and transcript, collapsed.
@@ -287,7 +288,8 @@ src/video_notes/
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
   secrets.py               keyring access through secret-tool
   sources/                 base.py, tiktok.py
-  ai/                      backend.py, claude_cli.py
+  ai/                      claude_cli.py
+  notefile.py              reading notes (front matter, title) and rendering them with wikilinks
   web/                     app.py, templates/, static/
 tests/
 ```
