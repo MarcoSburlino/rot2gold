@@ -36,7 +36,7 @@ Never fetch or store a post's caption, hashtags or comments, not even from the w
 
 ```yaml
 ---
-description: <one line, at most ~15 words: what the post says and when to open the note>
+description: "<one line, at most ~15 words: what the post says and when to open the note>"   # always in double quotes: a colon inside breaks YAML
 source: <post URL>
 creator: "@<creator>"
 posted: YYYY-MM-DD
