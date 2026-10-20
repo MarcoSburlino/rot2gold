@@ -661,8 +661,7 @@ def apply_preview(run_id: int):
         with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
             run.report.set_stage("ideas")
             done = ideas.apply_dry_run(run.con, run_id, run.report, run.run_id)
-            run.counts["ideas_created"] = sum(ideas.kind_of(n) == "idea" for n in done["copied"])
-            run.counts["learnings_created"] = sum(ideas.kind_of(n) == "learning" for n in done["copied"])
+            run.counts.update(done["counts"])
             run.report.set_stage("done")
     except (ValueError, VNError) as exc:  # e.g. the lock is held: no run was recorded
         return back(f"/ideas/preview/{run_id}", err=str(exc))

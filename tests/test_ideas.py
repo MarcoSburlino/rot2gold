@@ -206,6 +206,7 @@ def test_apply_dry_run_copies_new_and_never_overwrites_edits(vault, con, monkeyp
 
     done = ideas.apply_dry_run(con, 5, lambda *a, **k: None)
     assert sorted(done["copied"]) == ["idea-kept.md", "idea-new.md"] and done["skipped"] == ["idea-edited.md"]
+    assert done["counts"] == {"ideas_created": 1, "ideas_updated": 1, "learnings_created": 0, "learnings_updated": 0}
     assert edited.read_text() == "Marco changed status: trying\n"
     assert (vault / "Inbox/ideas/idea-new.md").read_text() == "from the dry run\n"
     assert con.execute("SELECT COUNT(*) FROM posts WHERE ideas_checked_at IS NOT NULL").fetchone()[0] == 2

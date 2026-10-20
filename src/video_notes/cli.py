@@ -178,9 +178,9 @@ def cmd_ideas(args) -> None:
                 done = ideas.apply_dry_run(run.con, args.run_id, run.report, run.run_id)
             except ValueError as exc:
                 raise SystemExit(str(exc)) from None
-            run.counts["ideas_created"] = len(done["copied"])
+            run.counts.update(done["counts"])
             run.report.set_stage("done")
-        print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas copied, {len(done['skipped'])} skipped,"
+        print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas and learnings copied, {len(done['skipped'])} skipped,"
               f" {len(set(done['considered']) | set(done['learned']))} notes marked checked; commit {done['commit'] or '-'}")
         return
     ids = conn_ids(args.conn) if args.action == "pass" else None

@@ -160,6 +160,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
     base = manifest.get("base", {})
     before = brain.snapshot()
     copied, skipped = [], []
+    counts = dict.fromkeys(("ideas_created", "ideas_updated", "learnings_created", "learnings_updated"), 0)
     for src in note_files(folder):
         target = kind_dir(kind_of(src.name))
         target.mkdir(parents=True, exist_ok=True)
@@ -171,6 +172,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
             continue
         shutil.copyfile(src, dst)
         copied.append(src.name)
+        counts[f"{kind_of(src.name)}s_{'updated' if current else 'created'}"] += 1
         report(f"{'updated' if current else 'created'} {kind_of(src.name)} {src.name}")
     # Dry runs from before learnings existed list only "considered" (checked for ideas).
     needs = _checks(con, set(manifest.get("considered", [])) | set(manifest.get("learned", [])))
@@ -184,7 +186,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
     db.add_batch(con, apply_run_id, "apply", 1, post_ids=[str(run_id)], considered=considered, learned=learned)
     manifest["applied"] = sha or "nothing to commit"
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
-    return {"copied": copied, "skipped": skipped, "considered": considered, "learned": learned, "commit": sha}
+    return {"copied": copied, "skipped": skipped, "counts": counts, "considered": considered, "learned": learned, "commit": sha}
 
 
 def _known(kind: str, folder: Path | None) -> list[dict]:
