@@ -94,8 +94,14 @@ check("clicking an idea opens it in the reading pane", q(".reading-title").text 
 check("its row is marked as selected", q(".idea-row[aria-current]").find_element(By.CSS_SELECTOR, ".row-title").text == title)
 
 # 8b. Delete idea asks first, lists the videos it could delete, and Cancel deletes nothing.
-q(".reading-actions [data-dialog='delete-idea']").click()
-check("'Delete idea' asks first, with the videos unticked", is_open("delete-idea") and all(
+check("no Delete button among the actions", not qs(".reading-actions [data-dialog='delete-idea']"))
+q(".reading-head .menu > summary").click()
+check("⋯ at the top right opens a menu with Delete idea", q(".menu-list .menu-item").is_displayed() and "Delete idea" in q(".menu-list").text)
+ActionChains(d).send_keys(Keys.ESCAPE).perform()
+check("Escape closes the menu", not q(".menu-list").is_displayed())
+q(".reading-head .menu > summary").click()
+q(".menu-list [data-dialog='delete-idea']").click()
+check("Delete idea asks first (menu closed), with the videos unticked", is_open("delete-idea") and not q(".menu-list").is_displayed() and all(
     not box.is_selected() for box in qs("#delete-idea input[name=with_videos]")))
 q("#delete-idea [data-close].button").click()
 check("…and Cancel keeps the idea", not is_open("delete-idea") and q(".reading-title").text == title)

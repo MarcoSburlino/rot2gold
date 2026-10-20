@@ -43,6 +43,23 @@
   });
 
 
+  /* ── ⋯ menus ────────────────────────────────────────────────────────── */
+  // A <details data-menu> closes when you pick an item, click elsewhere or press Escape.
+
+  document.addEventListener('click', event => {
+    $$('details[data-menu][open]').forEach(menu => {
+      if (!menu.contains(event.target) || event.target.closest('.menu-item')) menu.open = false;
+    });
+  });
+  document.addEventListener('keydown', event => {
+    const menu = event.key === 'Escape' && $('details[data-menu][open]');
+    if (menu) {
+      menu.open = false;
+      $('summary', menu).focus();
+    }
+  });
+
+
   /* ── Phone drawer ───────────────────────────────────────────────────── */
 
   const sidebar = $('#sidebar');

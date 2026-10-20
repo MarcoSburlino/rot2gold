@@ -63,7 +63,17 @@
       {% if selected %}
         <article class="reading-pane" aria-labelledby="idea-title">
           <a class="back-link" href="/ideas{{ keep }}">{{ icon('back') }} All ideas</a>
-          <h2 id="idea-title" class="reading-title">{{ selected.title }}</h2>
+          <div class="reading-head">
+            <h2 id="idea-title" class="reading-title">{{ selected.title }}</h2>
+            {% if removal %}
+              <details class="menu" data-menu>
+                <summary class="icon-button" aria-label="More actions for this idea">{{ icon('more') }}</summary>
+                <div class="menu-list">
+                  <button type="button" class="menu-item menu-item-danger" data-dialog="delete-idea">Delete idea…</button>
+                </div>
+              </details>
+            {% endif %}
+          </div>
           <p class="meta-line">
             {{ idea_pill(selected.status) }}
             <span>updated {{ selected.updated or selected.created or 'unknown' }}</span>
@@ -71,7 +81,6 @@
           {{ source_strip(selected, open=True) }}
           <div class="reading-actions">
             {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
-            {% if removal %}<button type="button" class="button button-danger-quiet" data-dialog="delete-idea">Delete idea</button>{% endif %}
             <p class="hint">To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.</p>
           </div>
           {% set d = distinct(selected.description, selected.title) %}

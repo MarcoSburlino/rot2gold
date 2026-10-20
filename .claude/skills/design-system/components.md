@@ -29,6 +29,8 @@ Icons: inline SVG from `templates/_icons.html` (16px, 1.5px stroke, `currentColo
 
 **Reading pane.** Sheet, r-sheet, padding 32 (16 mobile). Title (title lg), meta line, source strip, actions (Open in Obsidian primary · secondary links), then the rendered note at 68ch. Inside prose: `h2` title md 700 with 32 above / 8 below and no rule; lists 1.6 line-height; Obsidian callouts as a sheet-on-paper box with a 3px ink left border (not highlighter, to keep the accent rare); links ink with underline 1px graphite.
 
+**⋯ menu.** Rare or destructive actions on a page (e.g. Delete idea) sit behind a quiet ⋯ icon button at the top right of the reading pane, never beside the primary action. It opens a small sheet list (r-control, rule border, shadow) aligned right; items sm, destructive items in alert and ending in "…" because they open a confirmation. Closes on a pick, an outside click or Escape.
+
 **Dialog card.** `<dialog>`, sheet, r-sheet, shadow, width min(560px, 100vw − 32px), padding 24; header (title md 600 + close icon button), body, footer with actions right-aligned (primary last). Backdrop `rgb(0 0 0 / 0.35)`. Escape and the close button close it.
 
 **Tabs (Settings card).** The card has a fixed height (min(720px, viewport − 32)) so switching tabs never resizes it; the tab row is sticky and only the panel scrolls. A row of quiet buttons with `role="tab"`; current has ink text and a 2px ink underline; arrow keys, Home and End move between tabs. Panels `role="tabpanel"`. A Settings form's result appears inside the reopened card, never as a page banner.
