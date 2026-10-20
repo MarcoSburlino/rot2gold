@@ -1,23 +1,37 @@
 # Colours
 
-Six colours. Defined once as CSS custom properties on `:root`, redefined under `@media (prefers-color-scheme: dark)`.
+Dark only. Defined once as CSS custom properties on `:root` in `style.css`; `color-scheme: dark`.
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| `--paper` | `#F5F6F3` | `#121417` | App background, sidebar background. A cool off-white, deliberately not cream. |
-| `--sheet` | `#FFFFFF` | `#1A1D21` | Reading surfaces: the list, the reading pane, dialogs, inputs. |
-| `--ink` | `#1E2329` | `#E7E8E4` | Text, primary buttons (ink fill, sheet text), focus ring. |
-| `--graphite` | `#646B73` | `#9AA0A6` | Secondary text, metadata, icons at rest. |
-| `--rule` | `#DFE1DC` | `#2C3036` | Hairlines (1px), borders of controls and sheets. |
-| `--highlighter` | `#F2D53C` | `#E6C832` | The only accent. Used like a marker pen: the underline under a support count, the selected list row's left mark, the active run dot, the "new" status pill, the current nav item's mark. Text on it is always `--on-highlighter`. Never a button fill, never large areas. |
-| `--on-highlighter` | `#1E2329` | `#121417` | Text on highlighter. |
-| `--alert` | `#B3261E` | `#F28B82` | Errors and destructive actions only (Delete, Undo confirm, failed run). |
+| Token | Value | Use |
+|---|---|---|
+| `--bg-app` | `#0C0C0D` | Page background. |
+| `--bg-sidebar` | `#090809` | Sidebar and phone top bar: the darkest black. |
+| `--surface-sheet` | `#141415` | Sheets: lists, reading pane, dialogs, tables. One step lighter than the page. |
+| `--surface-raised` | `#19191B` | Secondary buttons, ⋯ menus. |
+| `--surface-inset` | `#090809` | Inputs, thumbnails, the run log, callouts, code. |
+| `--text-1` | `#F9F4EF` | Cream. Text, titles. |
+| `--text-2` | `#B5B0A9` | Warm grey. Descriptions, note body, ledes. |
+| `--text-3` | `#8E8A85` | Warm grey. Metadata, help text, icons at rest. |
+| `--border` | `#2A2A2D` | Hairlines (1px) of sheets and rows. |
+| `--border-strong` | `#3A3A3E` | Borders of controls: buttons, inputs, chips, pills. |
+| `--accent` | `#F8AD45` | **The gold**, the "2" in the wordmark. Used like light: the current nav bar, the selected row's bar, the open tab's underline, the running dot, "new" pills, the primary button, the "N sources" underline, upcoming event dates, counts that need attention. Text on it is `--on-accent`. |
+| `--accent-strong` | `#FBC77A` | Primary button hover. |
+| `--on-accent` | `#090809` | Text on gold. |
+| `--ember` | `#7D542C` | Only the start of the usage meter's gradient. |
+| `--alert` | `#FF7A6B` | Errors and destructive actions only. |
+| `--focus` | `#FBC77A` | Focus outline. |
 
-Derived (computed in CSS with `color-mix`, not new colours):
-- `--hover`: `color-mix(in srgb, var(--ink) 5%, transparent)` — row and button hover.
-- `--selected`: `color-mix(in srgb, var(--highlighter) 18%, var(--sheet))` — selected list row background.
-- `--alert-soft`: `color-mix(in srgb, var(--alert) 10%, var(--sheet))` — error banner background.
+Derived (with `color-mix`, not new colours):
+- `--hover`: cream at 6% (rows, quiet buttons, nav);
+- `--selected`: gold at 10% on the sheet (selected row);
+- `--accent-soft`: gold at 14% on the sheet (action banners, filter chips);
+- `--alert-soft`: red at 12% on the sheet (error banners);
+- `--scrim`: black at 60% (dialogs, the phone drawer).
 
-Contrast (WCAG): ink/paper 14.6, graphite/paper 5.0, graphite/sheet 5.4, ink/highlighter 10.8, alert/sheet 6.5; dark: 15.0, 6.4, 11.1, 7.1. All pass AA for body text.
+Glows instead of shadows:
+- `--glow-dot` (10px gold) on gold marks;
+- `--glow-soft` (18px gold at 22%) on primary button hover, the live-run widget and the current run stage.
 
-Status colours: there is no green/orange/red traffic-light set. Status pills are neutral outlines; meaning comes from the word, plus the highlighter for "new"/"running" and alert for "failed".
+Contrast on the sheet (`#141415`): text-1 16.8, text-2 8.5, text-3 5.4, gold 9.7, alert 7.2; dark text on gold 10.5. All pass AA for body text.
+
+Status: there is no green/amber/red set. Pills are neutral outlines. Meaning comes from the word, plus gold for "new"/"running" and red for "failed".

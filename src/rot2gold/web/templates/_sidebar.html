@@ -1,8 +1,8 @@
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, wordmark %}
 {% set path = request.url.path %}
 <aside id="sidebar" class="sidebar" aria-label="Navigation and collections">
   <div class="sidebar-head">
-    <a class="brand" href="/ideas">{{ APP_NAME }}</a>
+    <a class="brand brand-sidebar" href="/ideas">{{ wordmark() }}</a>
     <button type="button" class="icon-button sidebar-close" data-close-sidebar aria-label="Close menu">{{ icon('x') }}</button>
   </div>
 

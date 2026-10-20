@@ -1,18 +1,24 @@
 {# Small building blocks shared by every page. #}
 
+{# The wordmark, typeset, with the gold "2" (see .brand in style.css). #}
+{% macro wordmark() -%}Rot<b>2</b>Gold{%- endmacro %}
+
 {% macro icon(name, label=None) -%}
   <svg class="icon" focusable="false" {% if label %}role="img" aria-label="{{ label }}"{% else %}aria-hidden="true"{% endif %}><use href="#i-{{ name }}"></use></svg>
 {%- endmacro %}
 
 {# Status words keep their meaning without colour; colour only adds emphasis.
-   tone "mark" = highlighter (needs attention or is happening now), "alert" = went wrong. #}
+   tone "mark" = gold (needs attention or is happening now), "alert" = went wrong. #}
 {% macro pill(text, tone='') -%}
   <span class="pill{% if tone %} pill-{{ tone }}{% endif %}">{{ text }}</span>
 {%- endmacro %}
 
 {% macro post_pill(status) -%}{{ pill(LABELS[status], 'mark' if status in ('new', 'fetched', 'processed') else '') }}{%- endmacro %}
 {% macro idea_pill(status) -%}{{ pill(status, 'mark' if status == 'new' else '') }}{%- endmacro %}
-{% macro run_pill(status) -%}{{ pill(status, 'mark' if status == 'running' else 'alert' if status in ('failed', 'interrupted') else '') }}{%- endmacro %}
+{% macro run_pill(status) -%}
+  {%- if status == 'running' %}<span class="pill pill-mark"><span class="dot" aria-hidden="true"></span>{{ status }}</span>
+  {%- else %}{{ pill(status, 'alert' if status in ('failed', 'interrupted') else '') }}{% endif -%}
+{%- endmacro %}
 
 {% macro thumb(url, size="row") -%}
   <span class="thumb thumb-{{ size }}">

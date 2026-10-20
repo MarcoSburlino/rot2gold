@@ -1,12 +1,14 @@
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, wordmark %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0C0C0D">
   <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
   <script src="/static/app.js?v={{ asset_version() }}" defer></script>
 </head>
@@ -17,7 +19,7 @@
   <div class="shell">
     {# Phones: a top bar; the sidebar opens as a drawer over the page. #}
     <header class="topbar">
-      <a class="brand" href="/ideas">{{ APP_NAME }}</a>
+      <a class="brand" href="/ideas">{{ wordmark() }}</a>
       <button type="button" class="button" data-open-sidebar aria-controls="sidebar" aria-expanded="false">
         {{ icon('menu') }} Menu
       </button>

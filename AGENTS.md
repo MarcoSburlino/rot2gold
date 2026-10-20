@@ -23,7 +23,7 @@ Two parts, one repo:
 - Connection (collection) URLs live only in the database (`data/r2g.sqlite`, `r2g conn list`), never in Git.
 - One pipeline run at a time: every command that runs the pipeline takes the lock `data/r2g.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
 - The web UI listens on `127.0.0.1:8740` only, never `0.0.0.0`.
-- UI work follows the design system in `.claude/skills/design-system/` (colours, type, spacing, components, motion). Keep templates and CSS readable: one element or rule per line.
+- UI work follows the design system in `.claude/skills/design-system/` (colours, type, spacing, components, motion): always dark, black and one gold. Fonts are bundled in `src/rot2gold/web/static/fonts/`; never load fonts or scripts from other hosts. Keep templates and CSS readable: one element or rule per line.
 - Brain writes follow `~/Projects/brain/AGENTS.md`: `brain-index` and `brain-index --check` after changes; commits start `agent: ` and stage only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the brain.
 - `data/` (media, database, tools) and `.venv/` are gitignored. Secrets never go into notes or Git.
 - The repo is **public** on GitHub (`git@github.com:MarcoSburlino/rot2gold.git`, branch `main`). Before every push, check the diff for secrets and personal data (keys, tokens, cookies, Marco's TikTok handle or collection links, his email). Tests use made-up URLs. Commits use the GitHub no-reply address set in this repo's Git config.

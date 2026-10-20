@@ -1,10 +1,12 @@
 # Motion
 
-Two things move; nothing else.
+Three things move; nothing else.
 
-1. **Dialogs**: on open, opacity 0 → 1 and scale 0.98 → 1, 120ms `ease-out` (`@starting-style` on `dialog[open]`). Backdrop fades with it. No exit animation.
-2. **Running dot**: the highlighter dot in the live run widget and on running status marks pulses opacity 1 → 0.35 → 1 over 1.4s, infinite.
+1. **Running dot:** the gold dot (live widget, "running" pill, current run stage) pulses opacity 1 → 0.35 → 1 over 1.4s, infinite.
+2. **Dialogs:** on open, opacity 0 → 1 and scale 0.98 → 1 over 180ms (`--dur-base`, `--ease-out`). The backdrop fades in with it and blurs the page 6px. No exit animation.
+3. **Gold button:** the primary button gains its soft gold glow on hover (180ms). Buttons nudge down 1px while pressed.
 
-Hover changes background colour instantly (no transition). No page-load animations, no hover lifts, no skeleton shimmer.
+Also allowed: background tints on hover (120ms), and the fold chevron's turn.
+Not allowed: page-load animations, hover lifts or scaling, skeleton shimmer.
 
-`@media (prefers-reduced-motion: reduce)`: both animations off (`animation: none; transition: none`).
+`@media (prefers-reduced-motion: reduce)` turns every animation and transition off.
