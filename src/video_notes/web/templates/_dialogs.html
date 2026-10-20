@@ -9,29 +9,36 @@
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <fieldset class="choice-group">
-        <legend>Platform</legend>
-        {% for key, src in source_types.items() %}
-          <label class="choice"><input type="radio" name="platform" value="{{ key }}" {% if loop.first %}checked{% endif %}> {{ src.label }}</label>
-        {% endfor %}
-        <span class="choice choice-later">Instagram and YouTube later</span>
-      </fieldset>
+      {# Only TikTok exists today: the platform choice appears once there is a second one. #}
+      {% if source_types|length == 1 %}
+        <input type="hidden" name="platform" value="{{ source_types.keys()|first }}">
+      {% else %}
+        <fieldset class="choice-group">
+          <legend>Platform</legend>
+          {% for key, src in source_types.items() %}
+            <label class="choice"><input type="radio" name="platform" value="{{ key }}" {% if loop.first %}checked{% endif %}> {{ src.label }}</label>
+          {% endfor %}
+        </fieldset>
+      {% endif %}
       <label class="field">
         <span>Collection link</span>
         <input type="url" name="url" required autofocus placeholder="{{ (source_types.values()|first).url_hint }}" autocomplete="off">
         <small>Open the collection on TikTok and copy the address.</small>
       </label>
       <label class="field">
-        <span>Name</span>
+        <span>Name <span class="muted">(optional)</span></span>
         <input type="text" name="name" placeholder="Taken from the link if empty" autocomplete="off">
       </label>
-      <label class="field">
-        <span>Firefox cookies</span>
-        <select name="cookies_mode">
-          {% for m in cookie_modes %}<option value="{{ m }}">{{ cookie_help[m] }}</option>{% endfor %}
-        </select>
-        <small>Cookies are needed only for private collections.</small>
-      </label>
+      <details class="advanced">
+        <summary>Private collection?</summary>
+        <label class="field">
+          <span>Firefox cookies</span>
+          <select name="cookies_mode">
+            {% for m in cookie_modes %}<option value="{{ m }}">{{ cookie_help[m] }}</option>{% endfor %}
+          </select>
+          <small>The app can borrow your Firefox login to read a private collection. The default tries without it first.</small>
+        </label>
+      </details>
     </div>
     <div class="dialog-foot">
       <button type="button" class="button" data-close>Cancel</button>
@@ -47,12 +54,19 @@
     <h2 id="collection-{{ c.id }}-title">{{ c.name }}</h2>
     <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
   </div>
-  <div class="dialog-body">
+  <div class="dialog-body stack">
     <p class="dialog-links">
       <a href="/videos?conn={{ c.id }}">Its videos</a>
-      <a href="/runs?conn={{ c.id }}">Run history</a>
+      <a href="/runs?conn={{ c.id }}">Its history</a>
       <a href="{{ c.url }}" target="_blank" rel="noreferrer">Open on TikTok {{ icon('external') }}</a>
     </p>
+
+    {% if sidebar_conns|length > 1 and not active %}
+      <form method="post" action="/extract">
+        <input type="hidden" name="conn" value="{{ c.id }}">
+        <button type="submit" class="button">{{ icon('play') }} Extract only {{ c.name }}</button>
+      </form>
+    {% endif %}
 
     <form method="post" action="/connections/{{ c.id }}" class="stack" id="edit-{{ c.id }}">
       <label class="field">
@@ -63,36 +77,42 @@
         <span>Collection link</span>
         <input type="url" name="url" value="{{ c.url }}" required autocomplete="off">
       </label>
-      <label class="field">
-        <span>Firefox cookies</span>
-        <select name="cookies_mode">
-          {% for m in cookie_modes %}<option value="{{ m }}" {% if m == c.cookies_mode %}selected{% endif %}>{{ cookie_help[m] }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span>Firefox profile</span>
-        <select name="firefox_profile">
-          <option value="">Automatic (the profile used last)</option>
-          {% for p in firefox_profiles %}
-            <option value="{{ p.path }}" {% if p.path == c.firefox_profile %}selected{% endif %}>{{ p.name }}{% if p.default %} (default){% endif %}{% if not p.has_cookies %} — no cookies{% endif %}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span>Post links, one per line</span>
-        <textarea name="links" rows="3" placeholder="https://www.tiktok.com/@creator/video/123…">{{ sidebar_links[c.id] }}</textarea>
-        <small>Used only when the collection itself can't be read.</small>
-      </label>
+      <details class="advanced" {% if c.cookies_mode != 'auto' or c.firefox_profile or sidebar_links[c.id] %}open{% endif %}>
+        <summary>Advanced: cookies and backup links</summary>
+        <div class="stack">
+          <label class="field">
+            <span>Firefox cookies</span>
+            <select name="cookies_mode">
+              {% for m in cookie_modes %}<option value="{{ m }}" {% if m == c.cookies_mode %}selected{% endif %}>{{ cookie_help[m] }}</option>{% endfor %}
+            </select>
+            <small>Needed only for private collections.</small>
+          </label>
+          <label class="field">
+            <span>Firefox profile</span>
+            <select name="firefox_profile">
+              <option value="">Automatic (the profile used last)</option>
+              {% for p in firefox_profiles %}
+                <option value="{{ p.path }}" {% if p.path == c.firefox_profile %}selected{% endif %}>{{ p.name }}{% if p.default %} (default){% endif %}{% if not p.has_cookies %} — no cookies{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Backup video links, one per line</span>
+            <textarea name="links" rows="3" placeholder="https://www.tiktok.com/@creator/video/123…">{{ sidebar_links[c.id] }}</textarea>
+            <small>Used only when TikTok won't list the collection.</small>
+          </label>
+        </div>
+      </details>
     </form>
 
     <details class="danger-zone">
-      <summary>Delete this collection</summary>
+      <summary>Remove this collection</summary>
       <form method="post" action="/connections/{{ c.id }}/delete" class="stack">
         <p>
-          Removes the collection from the app. {{ c.only_here }} of its {{ c.counts.total }} posts belong to no other
-          collection. <strong>Their notes, ideas and media stay.</strong>
+          The app stops reading this collection. <strong>Its notes, ideas and media stay in your brain.</strong>
+          {% if c.only_here %}{{ c.only_here }} of its {{ c.counts.total }} videos are in no other collection.{% endif %}
         </p>
-        <button type="submit" class="button button-danger">Delete {{ c.name }}</button>
+        <button type="submit" class="button button-danger">Remove {{ c.name }}</button>
       </form>
     </details>
   </div>

@@ -562,15 +562,7 @@ legend {
 }
 
 .collection {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: var(--s-3);
-  align-items: start;
-}
-
-/* Centre the checkbox on the 32 px name line. */
-.collection > input {
-  margin-top: var(--s-2);
+  min-width: 0;
 }
 
 .collection-line {
@@ -612,6 +604,18 @@ legend {
 
 a.last-run:hover {
   color: var(--ink);
+  text-decoration: underline;
+}
+
+.last-run-alert,
+a.last-run-alert:hover {
+  color: var(--alert);
+}
+
+/* A count that needs attention, marked like a highlighter stroke under the words. */
+.mark-text {
+  color: var(--ink);
+  box-shadow: inset 0 -0.4em 0 color-mix(in srgb, var(--highlighter) 55%, transparent);
 }
 
 .run-mark {
@@ -647,41 +651,14 @@ a.last-run:hover {
 .extract {
   display: grid;
   gap: var(--s-2);
-  margin-top: var(--s-4);
+  margin-top: var(--s-5);
 }
 
-.extract-options summary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: 2px var(--s-1);
-  border-radius: var(--r-control);
+.hint {
+  margin: 0;
   color: var(--graphite);
-  font-size: var(--text-sm);
-  list-style: none;
-  cursor: pointer;
-}
-
-.extract-options summary::-webkit-details-marker {
-  display: none;
-}
-
-.extract-options summary:hover {
-  color: var(--ink);
-}
-
-.extract-options[open] summary .icon {
-  transform: rotate(180deg);
-}
-
-.extract-options-body {
-  display: grid;
-  gap: var(--s-3);
-  margin-top: var(--s-2);
-  padding: var(--s-3);
-  background: var(--sheet);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-sheet);
+  font-size: var(--text-xs);
+  line-height: 1.45;
 }
 
 .empty-note {
@@ -869,6 +846,90 @@ a.last-run:hover {
 .banner-mark a {
   margin-left: var(--s-1);
   font-weight: 600;
+}
+
+/* A banner that offers one action: the sentence, then its button. */
+.banner-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+  box-shadow: inset var(--mark) 0 0 var(--highlighter);
+}
+
+.banner-action p {
+  margin: 0;
+}
+
+/* What a run did, in one sentence: the first thing on its page. */
+.summary {
+  margin: 0 0 var(--s-5);
+  font-size: var(--text-md);
+  line-height: 1.45;
+}
+
+.summary.live-line {
+  color: var(--graphite);
+  font: 400 var(--text-sm) / 1.45 var(--font-mono);
+  white-space: normal;
+}
+
+/* Sections that stay folded until asked for: the log and the details of a run. */
+.disclosure {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
+}
+
+.disclosure + .disclosure {
+  margin-top: var(--s-4);
+}
+
+.disclosure > summary {
+  display: flex;
+  list-style: none;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  cursor: pointer;
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure > summary .icon {
+  transform: rotate(-90deg);
+  color: var(--graphite);
+}
+
+.disclosure[open] > summary {
+  margin-bottom: var(--s-4);
+}
+
+.disclosure[open] > summary .icon {
+  transform: none;
+}
+
+.disclosure .stats,
+.disclosure .facts,
+.disclosure .meter {
+  margin-bottom: var(--s-4);
+}
+
+/* Options most people never touch, folded under one line. */
+.advanced > summary {
+  color: var(--graphite);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.advanced > summary:hover {
+  color: var(--ink);
+}
+
+.advanced[open] > summary {
+  margin-bottom: var(--s-3);
 }
 
 .section {
@@ -1112,6 +1173,25 @@ a.last-run:hover {
   justify-self: start;
 }
 
+.history-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-1) var(--s-4);
+}
+
+.history-text {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.history-side {
+  display: grid;
+  justify-items: end;
+  gap: var(--s-1);
+  white-space: nowrap;
+}
+
 @media (min-width: 768px) {
   .video-row {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1300,7 +1380,8 @@ a.last-run:hover {
 .reading-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-2);
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
   margin-top: var(--s-4);
 }
 
@@ -1964,6 +2045,13 @@ progress::-webkit-progress-value {
 .stopped h1 {
   margin-bottom: var(--s-3);
   font: 400 var(--text-xl) / 1.2 var(--font-title);
+}
+
+
+.settings-key {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
 }
 
 

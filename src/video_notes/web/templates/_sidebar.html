@@ -1,6 +1,5 @@
 {% from "_macros.html" import icon %}
 {% set path = request.url.path %}
-{% set added = request.query_params.get('added') %}
 <aside id="sidebar" class="sidebar" aria-label="Navigation and collections">
   <div class="sidebar-head">
     <a class="brand" href="/ideas">{{ APP_NAME }}</a>
@@ -14,6 +13,7 @@
     <a href="/videos" {% if path.startswith('/videos') %}aria-current="page"{% endif %}>
       Videos <span class="count">{{ post_count }}</span>
     </a>
+    <a href="/runs" {% if path.startswith('/runs') %}aria-current="page"{% endif %}>History</a>
   </nav>
 
   <section class="collections" aria-labelledby="collections-label">
@@ -23,69 +23,52 @@
     </div>
 
     {% if sidebar_conns %}
-      <form id="extract-form" method="post" action="/extract">
-        <ul class="collection-list">
-          {% for c in sidebar_conns %}
-            {% set checked = sidebar_conns|length == 1 or added == c.id|string %}
-            <li class="collection">
-              <input type="checkbox" name="conn" value="{{ c.id }}" id="pick-{{ c.id }}" data-name="{{ c.name }}"
-                     aria-label="Select {{ c.name }} for Extract" {% if checked %}checked{% endif %}>
-              <div class="collection-body">
-                <div class="collection-line">
-                  <a class="collection-name" href="/videos?conn={{ c.id }}">{{ c.name }}</a>
-                  <button type="button" class="icon-button" data-dialog="collection-{{ c.id }}"
-                          aria-label="Options for {{ c.name }}">{{ icon('more') }}</button>
-                </div>
-                <p class="collection-meta">
-                  {{ c.counts.total }} {{ 'post' if c.counts.total == 1 else 'posts' }}
-                  · {{ c.waiting }} waiting
-                </p>
-                {% set r = c.last_run %}
-                {% if r %}
-                  <a class="last-run" href="/runs/{{ r.id }}">
-                    <span class="run-mark run-{{ r.status }}" aria-hidden="true">
-                      {%- if r.status == 'ok' %}{{ icon('check') }}{% elif r.status == 'running' %}<span class="dot"></span>{% elif r.status == 'failed' %}!{% else %}{{ icon('stop') }}{% endif -%}
-                    </span>
-                    <span>
-                      <span class="visually-hidden">Last run {{ r.status }}, </span>{{ r.started_at|relative_time }}
-                      · {{ r.posts_noted }} noted · {{ r.ideas_created }} {{ 'idea' if r.ideas_created == 1 else 'ideas' }}
-                    </span>
-                  </a>
-                {% else %}
-                  <p class="last-run">Never extracted</p>
-                {% endif %}
-                {% if c.last_error %}
-                  <p class="collection-error">{{ c.last_error }}</p>
-                  {# A form can't sit inside the Extract form: this button submits the separate one below. #}
-                  <button type="submit" form="update-downloaders" class="button button-small">Update downloaders</button>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-
-        <div class="extract">
-          <button type="submit" class="button button-primary button-block" data-extract-button
-                  {% if active %}disabled title="A run is in progress"{% endif %}>
-            {{ icon('play') }} <span data-extract-label>Extract</span>
-          </button>
-          <details class="extract-options">
-            <summary>Extract options {{ icon('chevron') }}</summary>
-            <div class="extract-options-body">
-              <label class="check"><input type="checkbox" name="write_notes" value="1" checked> Write notes</label>
-              <label class="check"><input type="checkbox" name="find_ideas" value="1" checked> Find ideas</label>
-              <label class="field">
-                <span>Most notes this run</span>
-                <input type="number" name="max_notes" min="1" max="200" inputmode="numeric" placeholder="{{ notes_cfg.max_per_run }}">
-              </label>
+      <ul class="collection-list">
+        {% for c in sidebar_conns %}
+          <li class="collection">
+            <div class="collection-line">
+              <a class="collection-name" href="/videos?conn={{ c.id }}">{{ c.name }}</a>
+              <button type="button" class="icon-button" data-dialog="collection-{{ c.id }}"
+                      aria-label="Options for {{ c.name }}">{{ icon('more') }}</button>
             </div>
-          </details>
-        </div>
-      </form>
-      <form id="update-downloaders" method="post" action="/update-downloaders" hidden></form>
+            <p class="collection-meta">
+              {{ c.counts.total }} {{ 'video' if c.counts.total == 1 else 'videos' }}
+              {%- if c.waiting %} · <span class="mark-text">{{ c.waiting }} waiting for a note</span>{% endif %}
+            </p>
+            {% set r = c.last_run %}
+            {% if r %}
+              <a class="last-run{% if r.status in ('failed', 'interrupted') %} last-run-alert{% endif %}" href="/runs/{{ r.id }}">
+                {%- if r.status == 'running' %}Extracting now
+                {%- elif r.status in ('failed', 'interrupted') %}Last extract {{ r.started_at|relative_time }} failed
+                {%- elif r.status == 'stopped' %}Last extract {{ r.started_at|relative_time }} was stopped
+                {%- else %}Last extract {{ r.started_at|relative_time }}:
+                  {% if r.posts_noted or r.ideas_created -%}
+                    {{ r.posts_noted }} {{ 'note' if r.posts_noted == 1 else 'notes' }}, {{ r.ideas_created }} {{ 'idea' if r.ideas_created == 1 else 'ideas' }}
+                  {%- else %}nothing new{% endif %}
+                {%- endif -%}
+              </a>
+            {% else %}
+              <p class="last-run">Not extracted yet</p>
+            {% endif %}
+            {% if c.last_error %}
+              <p class="collection-error">{{ c.last_error }}</p>
+              <form method="post" action="/update-downloaders">
+                <button type="submit" class="button button-small" {% if active %}disabled{% endif %}>Update downloaders</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if not active %}
+        <form method="post" action="/extract" class="extract">
+          <button type="submit" class="button button-primary button-block">{{ icon('play') }} Extract new videos</button>
+          <p class="hint">Reads {{ 'your collection' if sidebar_conns|length == 1 else 'all ' ~ sidebar_conns|length ~ ' collections' }}, writes a note for each new video, then looks for ideas.</p>
+        </form>
+      {% endif %}
     {% else %}
       <p class="empty-note">Add a TikTok collection to start.</p>
-      <button type="button" class="button button-block" data-dialog="add-collection">{{ icon('plus') }} Add a collection</button>
+      <button type="button" class="button button-primary button-block" data-dialog="add-collection">{{ icon('plus') }} Add a collection</button>
     {% endif %}
   </section>
 
@@ -95,14 +78,15 @@
       <p class="live-head">
         <span class="dot" aria-hidden="true"></span>
         {% if run %}
-          <strong>Run {{ run.id }}</strong> · <span data-live-stage>{{ run.stage or 'starting' }}</span>
+          <strong>{{ {'extract': 'Extracting', 'ideas': 'Finding ideas', 'ideas-dry-run': 'Finding ideas', 'update': 'Updating downloaders', 'undo': 'Undoing'}.get(run.kind, 'Working') }}</strong>
+          <span class="live-stage">· <span data-live-stage>{{ run.stage or 'starting' }}</span></span>
         {% else %}
           <strong>Running in a terminal</strong>
         {% endif %}
       </p>
       <p class="live-line" data-live-line aria-live="polite">{{ active.last_line if run else active.who }}</p>
       <div class="live-actions">
-        {% if run %}<a href="/runs/{{ run.id }}">Open log</a>{% endif %}
+        {% if run %}<a href="/runs/{{ run.id }}">See progress</a>{% endif %}
         <form method="post" action="/runs/stop"><button type="submit" class="link-button">{{ icon('stop') }} Stop</button></form>
       </div>
     </section>

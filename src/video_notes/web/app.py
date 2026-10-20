@@ -90,6 +90,50 @@ def plan_windows(plan_json: str | None) -> list[dict]:
     return out
 
 
+RUN_TITLES = {"extract": "Extract", "ideas": "Ideas from older notes", "ideas-dry-run": "Ideas preview",
+              "update": "Downloader update", "undo": "Undo"}
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def run_title(run: dict, names: dict) -> str:
+    """"Extract · Material", "Ideas from older notes", …"""
+    title = RUN_TITLES.get(run.get("kind"), (run.get("kind") or "Run").capitalize())
+    picked = [names.get(int(i), "a deleted collection") for i in (run.get("connection_ids") or "").split(",") if i.isdigit()]
+    return f"{title} · {', '.join(picked)}" if run.get("kind") == "extract" and picked else title
+
+
+def run_summary(run: dict) -> str:
+    """What a run did, in one sentence of plain words."""
+    kind, status = run.get("kind"), run.get("status")
+    if kind == "extract":
+        parts = [f"checked {plural(run['posts_listed'], 'video')}" if run["posts_listed"] else "",
+                 f"wrote {plural(run['posts_noted'], 'note')}" if run["posts_noted"] else "no new notes",
+                 f"skipped {run['posts_skipped']}" if run["posts_skipped"] else "",
+                 ideas_phrase(run)]
+    elif kind and kind.startswith("ideas"):
+        parts = [ideas_phrase(run) + (" proposed for review" if kind == "ideas-dry-run" and
+                                      (run["ideas_created"] or run["ideas_updated"]) else "")]
+    elif kind == "update":
+        parts = ["downloaders updated" if status == "ok" else "downloaders not updated"]
+    elif kind == "undo":
+        parts = ["brain changes reverted" if status == "ok" else "nothing was reverted"]
+    else:
+        parts = []
+    text = ", ".join(p for p in parts if p)
+    return text[:1].upper() + text[1:] + "." if text else ""
+
+
+def ideas_phrase(run: dict) -> str:
+    created, updated = run.get("ideas_created") or 0, run.get("ideas_updated") or 0
+    if not created and not updated:
+        return "no new ideas"
+    return " and ".join(p for p in (plural(created, "new idea") if created else "",
+                                    f"{updated} updated" if updated else "") if p)
+
+
 def asset_version() -> str:
     """Changes whenever style.css or app.js changes, so browsers never keep a stale copy."""
     return str(int(max((HERE / "static" / name).stat().st_mtime for name in ("style.css", "app.js"))))
@@ -98,7 +142,7 @@ def asset_version() -> str:
 templates.env.filters["local_time"] = local_time
 templates.env.filters["relative_time"] = relative_time
 templates.env.globals.update(APP_NAME=APP_NAME, LABELS=connections.LABELS, STATUSES=connections.STATUSES,
-                             plan_windows=plan_windows, asset_version=asset_version)
+                             plan_windows=plan_windows, asset_version=asset_version, run_summary=run_summary)
 
 
 def active_run(con) -> dict | None:
@@ -122,8 +166,7 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx.setdefault("active", active_run(con))
     conns = connections.all_with_counts(con)
     last_runs = {}
-    for run in con.execute("SELECT id, connection_ids, started_at, status, posts_noted, ideas_created, stage "
-                           "FROM runs WHERE kind = 'extract' ORDER BY id DESC"):
+    for run in con.execute("SELECT * FROM runs WHERE kind = 'extract' ORDER BY id DESC"):
         for raw_id in (run["connection_ids"] or "").split(","):
             if raw_id.isdigit() and int(raw_id) not in last_runs:
                 last_runs[int(raw_id)] = dict(run)
@@ -201,20 +244,20 @@ async def save_settings(request: Request):
     form = await request.form()
     values = {f"{f['section']}.{f['key']}": form.get(f"{f['section']}.{f['key']}", "") for f in settings.EDITABLE}
     if values["notes.backend"] == "api" and not secrets.has_api_key():
-        return settings_back(request, "notes", err="Set an API key before selecting the API backend.")
+        return settings_back(request, "general", err="Set an API key before selecting the API backend.")
     errors = settings.save(values)
-    return settings_back(request, "notes", err="; ".join(errors)) if errors else settings_back(request, "notes", msg="Settings saved.")
+    return settings_back(request, "general", err="; ".join(errors)) if errors else settings_back(request, "general", msg="Settings saved.")
 
 
 @app.post("/settings/key")
 def set_key(request: Request, key: str = Form("")):
     if not key.strip():
-        return settings_back(request, "key", err="Enter an API key.")
+        return settings_back(request, "general", err="Enter an API key.")
     try:
         secrets.set_api_key(key)
     except VNError:
-        return settings_back(request, "key", err="Could not store the API key in the keyring.")
-    return settings_back(request, "key", msg="API key stored.")
+        return settings_back(request, "general", err="Could not store the API key in the keyring.")
+    return settings_back(request, "general", msg="API key stored.")
 
 
 @app.post("/settings/key/clear")
@@ -222,8 +265,8 @@ def clear_key(request: Request):
     try:
         secrets.delete_api_key()
     except VNError:
-        return settings_back(request, "key", err="Could not clear the API key.")
-    return settings_back(request, "key", msg="API key cleared.")
+        return settings_back(request, "general", err="Could not clear the API key.")
+    return settings_back(request, "general", msg="API key cleared.")
 
 
 @app.post("/settings/key/test")
@@ -231,14 +274,14 @@ def test_key(request: Request):
     try:
         key = secrets.get_api_key()
         if not key:
-            return settings_back(request, "key", err="No API key is stored.")
+            return settings_back(request, "general", err="No API key is stored.")
         result = claude_cli.test_key(key)
         if result.ok and (result.structured or {}).get("ok") is True:
-            return settings_back(request, "key", msg=f"API key works. Cost: ${result.cost_usd:.4f}.")
+            return settings_back(request, "general", msg=f"API key works. Cost: ${result.cost_usd:.4f}.")
         error = (result.error or "The test did not return ok.").replace(key, "[key hidden]")
-        return settings_back(request, "key", err=error)
+        return settings_back(request, "general", err=error)
     except VNError as exc:
-        return settings_back(request, "key", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
+        return settings_back(request, "general", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
 
 
 @app.post("/update-downloaders")
@@ -255,10 +298,10 @@ async def home(request: Request):
 def add_connection(request: Request, platform: str = Form(...), url: str = Form(...), name: str = Form(""),
                    cookies_mode: str = Form("auto")):
     try:
-        cid = connections.add(db.connect(), platform, url, name, cookies_mode)
+        connections.add(db.connect(), platform, url, name, cookies_mode)
     except ValueError as exc:
         return back_to(request, err=str(exc))
-    return back_to(request, msg="Collection added. It's selected in the sidebar: press Extract to read it.", added=cid)
+    return back_to(request, msg="Collection added. Press Extract new videos to read it.")
 
 
 @app.post("/connections/{cid}")
@@ -290,15 +333,17 @@ def delete_connection(request: Request, cid: int):
     except ValueError as exc:
         return back_to(request, err=str(exc))
     if request.headers.get("referer", "").split("?")[0].endswith("/runs"):
-        return back("/ideas", msg="Collection deleted. Its posts, media and notes are still there.")
-    return back_to(request, drop=("conn",), msg="Collection deleted. Its posts, media and notes are still there.")
+        return back("/ideas", msg="Collection removed. Its notes, ideas and media are still in your brain.")
+    return back_to(request, drop=("conn",), msg="Collection removed. Its notes, ideas and media are still in your brain.")
 
 
 @app.post("/extract")
 def start_extract(request: Request, conn: list[int] = Form([]), max_notes: str = Form(""), write_notes: str = Form(""),
                   find_ideas: str = Form("")):
     if not conn:
-        return back_to(request, err="Select at least one collection to extract.")
+        conn = [r["id"] for r in db.connect().execute("SELECT id FROM connections ORDER BY id")]
+    if not conn:
+        return back_to(request, err="Add a collection first: press + next to Collections.")
     cmd = [sys.executable, "-m", "video_notes.cli", "extract", "--origin", "app", "--conn", ",".join(map(str, conn))]
     if max_notes.strip().isdigit():
         cmd += ["--max-notes", max_notes.strip()]
@@ -412,54 +457,46 @@ def decorate_ideas(rows: list[dict], lookup: dict) -> list[dict]:
     return rows
 
 
+VIDEO_GROUPS = {"waiting": ("new", "fetched", "processed"), "skipped": ("skipped",)}  # the rest are noted
+
+
 @app.get("/videos", response_class=HTMLResponse)
-async def videos(request: Request, conn: str = "", status: str = "", type: str = "", q: str = ""):
+async def videos(request: Request, conn: str = "", status: str = "", q: str = ""):
     con = db.connect()
     where, args = [], []
     if conn.isdigit():
         where.append("EXISTS (SELECT 1 FROM connection_posts x WHERE x.post_id = p.id AND x.connection_id = ?)")
         args.append(int(conn))
-    sql = ("SELECT p.*, GROUP_CONCAT(cp.connection_id) AS conns FROM posts p"
-           " LEFT JOIN connection_posts cp ON cp.post_id = p.id"
-           + (" WHERE " + " AND ".join(where) if where else "") +
-           " GROUP BY p.id ORDER BY COALESCE(p.upload_date, '') DESC, p.rowid DESC")
+    sql = ("SELECT p.* FROM posts p" + (" WHERE " + " AND ".join(where) if where else "") +
+           " ORDER BY COALESCE(p.upload_date, '') DESC, p.rowid DESC")
     matching = []
     needle = q.strip().lower()
     for r in con.execute(sql, args):
         item = dict(r) | note_head(r)
-        item["conn_ids"] = [int(x) for x in (r["conns"] or "").split(",") if x]
         if needle and needle not in " ".join(str(item.get(k) or "") for k in
                                              ("id", "creator", "title", "description", "skip_reason")).lower():
             continue
         matching.append(item)
-    counts = {s: sum(r["status"] == s for r in matching if type not in ("video", "slideshow") or r["type"] == type)
-              for s in connections.STATUSES}
-    type_counts = {t: sum(r["type"] == t for r in matching if status not in connections.STATUSES or r["status"] == status)
-                   for t in ("video", "slideshow")}
-    rows = [r for r in matching if (status not in connections.STATUSES or r["status"] == status) and
-            (type not in ("video", "slideshow") or r["type"] == type)]
+    status = status if status in VIDEO_GROUPS else ""
+    rows = [r for r in matching if not status or r["status"] in VIDEO_GROUPS[status]]
     thumbs = thumbnails(con)
     for item in rows:
         item["thumbnail"] = thumbs.get(item["id"])
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections ORDER BY id")}
-    current = {"conn": conn if conn.isdigit() and int(conn) in names else "",
-               "status": status if status in connections.STATUSES else "",
-               "type": type if type in ("video", "slideshow") else "", "q": q.strip()}
+    current = {"conn": conn if conn.isdigit() and int(conn) in names else "", "status": status, "q": q.strip()}
 
     def link(**change):
         """This page's address with some filters changed; the others are kept."""
         params = {k: v for k, v in (current | change).items() if v}
         return "/videos" + ("?" + urlencode(params) if params else "")
 
-    status_chips = [{"label": "All", "href": link(status=""), "count": sum(counts.values()), "current": not current["status"]}] + [
-        {"label": connections.LABELS[s].capitalize(), "href": link(status=s), "count": counts[s], "current": current["status"] == s}
-        for s in connections.STATUSES]
-    type_chips = [{"label": "All types", "href": link(type=""), "current": not current["type"]}] + [
-        {"label": t.capitalize(), "href": link(type=t), "count": type_counts[t], "current": current["type"] == t}
-        for t in ("video", "slideshow")]
+    # Only the groups that have something in them get a chip: "All 111 · Skipped 3".
+    counts = {g: sum(r["status"] in states for r in matching) for g, states in VIDEO_GROUPS.items()}
+    chips = [{"label": "All", "href": link(status=""), "count": len(matching), "current": not status}] + [
+        {"label": g.capitalize(), "href": link(status=g), "count": counts[g], "current": status == g}
+        for g in VIDEO_GROUPS if counts[g] or status == g]
     conn_filter = {"name": names[int(current["conn"])], "clear": link(conn="")} if current["conn"] else None
-    return page(request, "videos.html", rows=rows, names=names, status_chips=status_chips, type_chips=type_chips,
-                conn_filter=conn_filter, f=current)
+    return page(request, "videos.html", rows=rows, chips=chips if len(chips) > 1 else [], conn_filter=conn_filter, f=current)
 
 
 @app.get("/videos/{post_id}", response_class=HTMLResponse)
@@ -516,23 +553,19 @@ def idea_view(request, name=None, status="all", q=""):
     pending = {Path(r["note_path"]).stem for r in con.execute(
         "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
     themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
-    dry_run = None
-    for run in con.execute("SELECT id FROM runs WHERE kind = 'ideas-dry-run' ORDER BY id DESC LIMIT 20"):
-        folder = ideas.dry_run_dir(run["id"])
-        if folder.is_dir() and not ideas.read_manifest(folder).get("applied"):
-            count = len(list(folder.glob("idea-*.md")))
-            if count:
-                dry_run = {"id": run["id"], "count": count}
-                break
+    unchecked = len(pending & {name for names in ideas.themes().values() for name in names})
+
     def query(**params):
         params = {k: v for k, v in params.items() if v and v != "all"}
         return "?" + urlencode(params) if params else ""
 
+    # Only statuses that have ideas get a chip, so a new list shows just "All 28 · New 28".
     chips = [{"label": label, "href": "/ideas" + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
               "current": status == key or (key == "all" and status not in counts)}
-             for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))]
-    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes, chips=chips,
-                keep=query(status=status, q=q), status=status, q=q, dry_run=dry_run, detail_page=bool(name))
+             for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))
+             if key == "all" or counts[key] or status == key]
+    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes, unchecked=unchecked,
+                chips=chips, keep=query(status=status, q=q), status=status, q=q, detail_page=bool(name))
 
 
 @app.get("/ideas", response_class=HTMLResponse)
@@ -542,8 +575,6 @@ async def idea_index(request: Request, status: str = "all", q: str = ""):
 
 @app.post("/ideas/rebuild")
 def start_ideas_rebuild(request: Request, themes: list[str] = Form([]), dry_run: str = Form(""), limit: str = Form("")):
-    if not themes:
-        return back_to(request, err="Choose at least one theme to look for ideas in.")
     cmd = [sys.executable, "-m", "video_notes.cli", "ideas", "rebuild", "--origin", "app"]
     if themes:
         cmd += ["--themes", ",".join(themes)]
@@ -611,10 +642,11 @@ async def runs(request: Request, conn: str = "", kind: str = ""):
         args.append(conn)
     if kind == "ideas":
         where.append("kind LIKE 'ideas%'")
-    rows = [dict(r) for r in con.execute("SELECT * FROM runs" + (" WHERE " + " AND ".join(where) if where else "") +
-                                         " ORDER BY id DESC LIMIT 50", args)]
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections")}
-    return page(request, "runs.html", runs=rows, names=names, active=active, conn=conn, kind=kind)
+    rows = [dict(r) | {"title": run_title(dict(r), names)} for r in con.execute(
+        "SELECT * FROM runs" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT 50", args)]
+    conn_name = names.get(int(conn)) if conn.isdigit() else None
+    return page(request, "runs.html", runs=rows, active=active, conn_name=conn_name, kind=kind)
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
@@ -630,8 +662,11 @@ async def run_page(request: Request, run_id: int):
     stages = (["sync", "fetch", "process", "notes", "ideas", "done"] if row["kind"] == "extract" else
               ["undo", "done"] if row["kind"] == "undo" else ["update", "done"] if row["kind"] == "update" else
               ["ideas", "done"])
-    return page(request, "run.html", run=dict(row), events=events, batches=batches, stages=stages, names=names, active=active,
-                last_event=events[-1]["id"] if events else 0)
+    preview = None
+    if row["kind"] == "ideas-dry-run" and (folder := ideas.dry_run_dir(run_id)).is_dir():
+        preview = {"applied": ideas.read_manifest(folder).get("applied"), "count": len(list(folder.glob("idea-*.md")))}
+    return page(request, "run.html", run=dict(row), title=run_title(dict(row), names), events=events, batches=batches,
+                stages=stages, names=names, active=active, preview=preview, last_event=events[-1]["id"] if events else 0)
 
 
 @app.get("/runs/{run_id}/undo", response_class=HTMLResponse)

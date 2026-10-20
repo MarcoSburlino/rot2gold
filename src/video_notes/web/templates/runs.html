@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, run_pill %}
-{% set conn_name = names.get(conn|int) if conn and conn.isdigit() else None %}
-{% set heading = 'Runs · ' ~ conn_name if conn_name else 'Idea runs' if kind == 'ideas' else 'All runs' %}
+{% set heading = 'History · ' ~ conn_name if conn_name else 'History' %}
 {% block title %}{{ heading }} · {{ APP_NAME }}{% endblock %}
 
 {% block main %}
@@ -9,57 +8,43 @@
     <div>
       <h1>{{ heading }}</h1>
       <p class="lede">
-        {% if conn_name %}Every Extract that read {{ conn_name }}.
-        {% elif kind == 'ideas' %}Ideas passes, dry runs and applied previews.
-        {% else %}Every Extract, ideas pass, undo and update.{% endif %}
+        {% if conn_name %}Every Extract that read {{ conn_name }}, newest first.
+        {% else %}Everything the app has done, newest first. Open one to see its log or undo it.{% endif %}
       </p>
-    </div>
-    <div class="page-actions">
-      {% if conn_name or kind %}<a class="button button-quiet" href="/runs">All runs</a>{% endif %}
     </div>
   </header>
 
-  {% if runs %}
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th scope="col">Run</th>
-            <th scope="col">Started</th>
-            <th scope="col">Status</th>
-            <th scope="col">Collections</th>
-            <th scope="col" class="num">Listed</th>
-            <th scope="col" class="num">Fetched</th>
-            <th scope="col" class="num">Noted</th>
-            <th scope="col" class="num">Skipped</th>
-            <th scope="col" class="num">Ideas new / updated</th>
-            <th scope="col" class="num">API value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in runs %}
-            <tr>
-              <td><a href="/runs/{{ r.id }}">Run {{ r.id }}</a><br><span class="muted">{{ r.kind|replace('-', ' ') }}{% if r.origin == 'terminal' %} · terminal{% endif %}</span></td>
-              <td>{{ r.started_at|relative_time }}</td>
-              <td>{{ run_pill(r.status) }}{% if r.undone_at %}<br><span class="muted">undone</span>{% endif %}</td>
-              <td>
-                {% for i in (r.connection_ids or '').split(',') if i %}
-                  {% if names.get(i|int) %}<a class="chip" href="/runs?conn={{ i }}">{{ names[i|int] }}</a>{% else %}<span class="muted">deleted</span>{% endif %}
-                {% else %}<span class="muted">—</span>{% endfor %}
-              </td>
-              <td class="num">{{ r.posts_listed }}</td>
-              <td class="num">{{ r.posts_fetched }}</td>
-              <td class="num">{{ r.posts_noted }}</td>
-              <td class="num">{{ r.posts_skipped }}</td>
-              <td class="num">{{ r.ideas_created }} / {{ r.ideas_updated }}</td>
-              <td class="num">{{ '$%.2f'|format(r.cost_estimate_usd) if r.cost_estimate_usd else '—' }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  {% if conn_name or kind %}
+    <div class="toolbar">
+      <a class="chip chip-filter" href="/runs" aria-label="Remove filter">
+        {{ conn_name or 'Ideas only' }} {{ icon('x') }}
+      </a>
     </div>
-    <p class="muted table-note">API value: what the AI work would have cost on the API. On your subscription it isn't charged per run.</p>
+  {% endif %}
+
+  {% if runs %}
+    <ul class="rows sheet-list">
+      {% for r in runs %}
+        <li>
+          <a class="row history-row" href="/runs/{{ r.id }}">
+            <span class="history-text">
+              <span class="row-title">{{ r.title }}</span>
+              <span class="row-desc">
+                {%- if r.status == 'running' %}Running now…
+                {%- elif r.status in ('failed', 'interrupted') %}Didn't finish. Open it to see why.
+                {%- else %}{{ run_summary(r) }}{% if r.status == 'stopped' %} Stopped before the end.{% endif %}{% endif -%}
+              </span>
+            </span>
+            <span class="history-side">
+              <span class="row-meta">{{ r.started_at|relative_time }}</span>
+              {% if r.undone_at %}{{ run_pill('undone') }}
+              {% elif r.status != 'ok' %}{{ run_pill(r.status) }}{% endif %}
+            </span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
   {% else %}
-    <div class="empty"><p>No runs here yet.{% if conn_name %} Select {{ conn_name }} in the sidebar and press Extract.{% endif %}</p></div>
+    <div class="empty"><p>Nothing here yet. Press <strong>Extract new videos</strong> in the sidebar to start.</p></div>
   {% endif %}
 {% endblock %}

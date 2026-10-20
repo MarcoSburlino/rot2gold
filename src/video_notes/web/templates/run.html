@@ -1,93 +1,109 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, run_pill %}
-{% block title %}Run {{ run.id }} · {{ APP_NAME }}{% endblock %}
+{% block title %}{{ title }} · {{ APP_NAME }}{% endblock %}
 
 {% block main %}
-  {% set conn_ids = (run.connection_ids or '').split(',')|select|list %}
-  {% if conn_ids|length == 1 and names.get(conn_ids[0]|int) %}
-    <a class="back-link back-link-page" href="/runs?conn={{ conn_ids[0] }}">{{ icon('back') }} Runs · {{ names[conn_ids[0]|int] }}</a>
-  {% elif run.kind.startswith('ideas') %}
-    <a class="back-link back-link-page" href="/runs?kind=ideas">{{ icon('back') }} Idea runs</a>
-  {% else %}
-    <a class="back-link back-link-page" href="/runs">{{ icon('back') }} All runs</a>
-  {% endif %}
+  {% set running = run.status == 'running' %}
+  <a class="back-link back-link-page" href="/runs">{{ icon('back') }} History</a>
 
   <header class="page-head">
     <div>
-      <h1>Run {{ run.id }} <span data-run-status>{{ run_pill(run.status) }}</span></h1>
+      <h1>{{ title }} {% if run.status != 'ok' %}<span data-run-status>{{ run_pill(run.status) }}</span>{% endif %}</h1>
       <p class="meta-line">
-        <span>{{ run.kind|replace('-', ' ')|capitalize }}</span>
         <span>{{ run.started_at|local_time }}{% if run.finished_at %} → {{ run.finished_at|local_time('%H:%M') }}{% endif %}</span>
-        <span>from the {{ 'app' if run.origin == 'app' else 'terminal' }}</span>
-        {% if run.backend %}<span>{{ run.backend }}, {{ run.model }}</span>{% endif %}
+        {% if run.origin != 'app' %}<span>started in the terminal</span>{% endif %}
       </p>
-      {% if conn_ids %}
-        <p class="chips chips-inline">
-          {% for i in conn_ids %}{% if names.get(i|int) %}<a class="chip" href="/videos?conn={{ i }}">{{ names[i|int] }}</a>{% endif %}{% endfor %}
-        </p>
-      {% endif %}
     </div>
     <div class="page-actions">
-      {% if run.status == 'running' %}
+      {% if running %}
         <form method="post" action="/runs/stop"><button type="submit" class="button">{{ icon('stop') }} Stop</button></form>
       {% elif run.brain_commits and not run.undone_at %}
-        <button type="button" class="button" data-dialog="undo">Undo this run</button>
-      {% endif %}
-      {% if run.kind == 'ideas-dry-run' %}
-        <a class="button button-primary" href="/ideas/preview/{{ run.id }}">Review the proposals</a>
+        <button type="button" class="button" data-dialog="undo">Undo</button>
       {% endif %}
     </div>
   </header>
 
-  {% if run.undone_at %}<p class="banner">This run was undone {{ run.undone_at|relative_time }}.</p>{% endif %}
-  {% if run.error %}<div class="banner {{ 'banner-alert' if run.status == 'failed' else '' }}" role="status"><pre>{{ run.error }}</pre></div>{% endif %}
-
-  <ol class="stages" data-stages data-stage="{{ run.stage or '' }}" data-status="{{ run.status }}">
-    {% for s in stages %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
-  </ol>
-
-  <dl class="stats">
-    {% if run.kind == 'extract' %}
-      {% for key, label in [('posts_listed', 'listed'), ('posts_fetched', 'fetched'), ('posts_processed', 'processed'), ('posts_noted', 'noted'), ('posts_skipped', 'skipped')] %}
-        <div><dt>{{ label }}</dt><dd class="num" data-count="{{ key }}">{{ run[key] }}</dd></div>
-      {% endfor %}
-    {% endif %}
-    {% if run.kind == 'extract' or run.kind.startswith('ideas') %}
-      <div><dt>ideas new</dt><dd class="num" data-count="ideas_created">{{ run.ideas_created }}</dd></div>
-      <div><dt>ideas updated</dt><dd class="num" data-count="ideas_updated">{{ run.ideas_updated }}</dd></div>
-    {% endif %}
-  </dl>
-
-  {% if run.cost_estimate_usd or run.cache_read or run.plan_usage %}
-    <section class="section">
-      <h2 class="section-title">AI usage</h2>
-      <p>
-        <span class="num">{{ '%.1f'|format(run.cache_read / 1e6) }} M</span> cache-read ·
-        <span class="num">{{ '%.0f'|format(run.cache_write / 1e3) }} k</span> cache-write ·
-        <span class="num">{{ '%.0f'|format(run.tokens_out / 1e3) }} k</span> output tokens ·
-        <span class="num">${{ '%.2f'|format(run.cost_estimate_usd) }}</span>
-        <span class="muted">{{ 'API value; not charged on your subscription' if run.backend == 'subscription' else 'estimated API cost' }}</span>
-      </p>
-      {% for w in plan_windows(run.plan_usage) %}
-        <div class="meter">
-          <div class="meter-head"><span>Plan {{ w.name }}</span><span class="num">{{ '%.0f'|format(w.used * 100) }}%{% if w.resets %} · resets {{ w.resets }}{% endif %}</span></div>
-          <progress max="1" value="{{ w.used }}" aria-label="Plan {{ w.name }} used">{{ '%.0f'|format(w.used * 100) }}%</progress>
-        </div>
-      {% endfor %}
-    </section>
+  {% if running %}
+    <ol class="stages" data-stages data-stage="{{ run.stage or '' }}" data-status="{{ run.status }}">
+      {% for s in stages %}<li data-s="{{ s }}">{{ s }}</li>{% endfor %}
+    </ol>
+    <p class="summary live-line" data-live-line aria-live="polite">{{ events[-1].message if events else 'Starting…' }}</p>
+  {% else %}
+    <p class="summary">
+      {%- if run.status in ('failed', 'interrupted') %}It didn't finish.
+      {%- else %}{{ run_summary(run) }}{% if run.status == 'stopped' %} It was stopped before the end.{% endif %}{% endif -%}
+    </p>
   {% endif %}
 
-  {% if batches %}
-    <section class="section">
-      <h2 class="section-title">Batches</h2>
+  {% if run.undone_at %}<p class="banner">Undone {{ run.undone_at|relative_time }}: its changes to your brain were reverted.</p>{% endif %}
+  {% if run.error %}<div class="banner {{ 'banner-alert' if run.status == 'failed' else '' }}" role="status"><pre>{{ run.error }}</pre></div>{% endif %}
+
+  {% if preview and preview.count and not preview.applied %}
+    <div class="banner banner-action">
+      <p>This run only proposed ideas; they aren't in your brain.</p>
+      <a class="button button-small" href="/ideas/preview/{{ run.id }}">See the {{ preview.count }} proposals</a>
+    </div>
+  {% endif %}
+
+  <details class="section disclosure" {% if running %}open{% endif %}>
+    <summary class="section-title">{{ icon('chevron') }} Log</summary>
+    <ol class="log" data-log {% if running %}data-follow-run="{{ run.id }}" data-after="{{ last_event }}"{% endif %}>
+      {% for e in events %}
+        <li class="log-{{ e.level }}"><time datetime="{{ e.ts }}">{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>
+      {% else %}
+        <li class="muted">No log lines yet.</li>
+      {% endfor %}
+    </ol>
+  </details>
+
+  <details class="section disclosure">
+    <summary class="section-title">{{ icon('chevron') }} Details</summary>
+
+    <dl class="stats">
+      {% if run.kind == 'extract' %}
+        {% for key, label in [('posts_listed', 'videos checked'), ('posts_fetched', 'downloaded'), ('posts_processed', 'read'), ('posts_noted', 'notes written'), ('posts_skipped', 'skipped')] %}
+          <div><dt>{{ label }}</dt><dd class="num" data-count="{{ key }}">{{ run[key] }}</dd></div>
+        {% endfor %}
+      {% endif %}
+      {% if run.kind == 'extract' or run.kind.startswith('ideas') %}
+        <div><dt>new ideas</dt><dd class="num" data-count="ideas_created">{{ run.ideas_created }}</dd></div>
+        <div><dt>ideas updated</dt><dd class="num" data-count="ideas_updated">{{ run.ideas_updated }}</dd></div>
+      {% endif %}
+    </dl>
+
+    {% set conn_ids = (run.connection_ids or '').split(',')|select|list %}
+    <dl class="facts">
+      {% if conn_ids %}
+        <dt>Collections</dt>
+        <dd>{% for i in conn_ids %}{% if names.get(i|int) %}<a href="/videos?conn={{ i }}">{{ names[i|int] }}</a>{% else %}deleted{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+      {% endif %}
+      {% if run.backend %}<dt>AI</dt><dd>{{ 'Claude subscription' if run.backend == 'subscription' else 'API key' }}, {{ run.model }}</dd>{% endif %}
+      {% if run.cost_estimate_usd %}
+        <dt>AI cost</dt>
+        <dd>${{ '%.2f'|format(run.cost_estimate_usd) }} <span class="muted">{{ '(what it would cost on the API; your subscription covers it)' if run.backend == 'subscription' else '(estimated)' }}</span></dd>
+      {% endif %}
+      {% if run.brain_commits %}
+        <dt>Brain commits</dt>
+        <dd>{% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+      {% endif %}
+      <dt>Run number</dt><dd>{{ run.id }}</dd>
+    </dl>
+
+    {% for w in plan_windows(run.plan_usage) %}
+      <div class="meter">
+        <div class="meter-head"><span>Plan {{ w.name }}</span><span class="num">{{ '%.0f'|format(w.used * 100) }}%{% if w.resets %} · resets {{ w.resets }}{% endif %}</span></div>
+        <progress max="1" value="{{ w.used }}" aria-label="Plan {{ w.name }} used">{{ '%.0f'|format(w.used * 100) }}%</progress>
+      </div>
+    {% endfor %}
+
+    {% if batches %}
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
-              <th scope="col">Batch</th><th scope="col">Posts</th><th scope="col" class="num">Turns</th>
-              <th scope="col" class="num">Minutes</th><th scope="col" class="num">Cache-read</th>
-              <th scope="col" class="num">Output</th><th scope="col" class="num">API value</th>
-              <th scope="col" class="num">5-hour</th><th scope="col">Result</th>
+              <th scope="col">Batch</th><th scope="col" class="num">Videos</th>
+              <th scope="col" class="num">Minutes</th><th scope="col" class="num">API value</th>
+              <th scope="col" class="num">5-hour use</th><th scope="col">Result</th>
             </tr>
           </thead>
           <tbody>
@@ -95,10 +111,7 @@
               <tr>
                 <td>{{ b.kind }} {{ b.n }}</td>
                 <td class="num">{{ (b.post_ids or '').split()|length if b.kind != 'apply' else '—' }}</td>
-                <td class="num">{{ b.turns or '—' }}</td>
                 <td class="num">{{ '%.1f'|format((b.duration_ms or 0) / 60000) }}</td>
-                <td class="num">{{ '%.1f M'|format((b.cache_read or 0) / 1e6) }}</td>
-                <td class="num">{{ '%.0f k'|format((b.tokens_out or 0) / 1e3) }}</td>
                 <td class="num">{{ '$%.2f'|format(b.cost_usd) if b.cost_usd else '—' }}</td>
                 <td class="num">{{ '%.0f%%'|format(b.five_hour * 100) if b.five_hour is not none else '—' }}</td>
                 <td>{% if b.ok %}{{ icon('check') }} ok{% else %}<span class="alert-text">{{ b.error or 'failed' }}</span>{% endif %}</td>
@@ -107,23 +120,8 @@
           </tbody>
         </table>
       </div>
-    </section>
-  {% endif %}
-
-  {% if run.brain_commits %}
-    <p class="muted">Brain commits: {% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-  {% endif %}
-
-  <section class="section">
-    <h2 class="section-title">Log</h2>
-    <ol class="log" data-log {% if run.status == 'running' %}data-follow-run="{{ run.id }}" data-after="{{ last_event }}"{% endif %}>
-      {% for e in events %}
-        <li class="log-{{ e.level }}"><time datetime="{{ e.ts }}">{{ e.ts|local_time('%H:%M:%S') }}</time>{{ e.message }}</li>
-      {% else %}
-        <li class="muted">No log lines yet.</li>
-      {% endfor %}
-    </ol>
-  </section>
+    {% endif %}
+  </details>
 {% endblock %}
 
 {% block dialogs %}
@@ -131,19 +129,18 @@
     <dialog id="undo" class="dialog" aria-labelledby="undo-title">
       <form method="post" action="/runs/{{ run.id }}/undo" class="dialog-form">
         <div class="dialog-head">
-          <h2 id="undo-title">Undo run {{ run.id }}?</h2>
+          <h2 id="undo-title">Undo this run?</h2>
           <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
         </div>
         <div class="dialog-body stack">
-          <p>This reverts the run's brain {{ 'commit' if run.brain_commits.split()|length == 1 else 'commits' }}
-            {% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
-            with a new commit, so nothing is lost from Git's history.</p>
-          <p>Notes it wrote go back in the queue for the next Extract, and the notes it checked for ideas will be checked again.</p>
-          <p class="muted">If you've edited the same files since, the undo stops and changes nothing.</p>
+          <p>The notes and ideas this run wrote are taken back out of your brain. Git keeps a record, so nothing is lost for good.</p>
+          {% if run.kind == 'extract' %}<p>Its videos go back in the queue for the next Extract.</p>
+          {% elif run.kind.startswith('ideas') %}<p>The notes it read will be checked for ideas again next time.</p>{% endif %}
+          <p class="muted">If you've edited the same notes since, the undo stops and changes nothing.</p>
         </div>
         <div class="dialog-foot">
           <button type="button" class="button" data-close>Cancel</button>
-          <button type="submit" class="button button-danger">Undo run {{ run.id }}</button>
+          <button type="submit" class="button button-danger">Undo</button>
         </div>
       </form>
     </dialog>

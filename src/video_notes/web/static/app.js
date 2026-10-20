@@ -1,6 +1,6 @@
 // video-notes-app: small page behaviours, no framework.
 // Every page works without this file (plain links and forms); it adds dialogs, the phone
-// drawer, the Settings card, the Extract button label and live run updates.
+// drawer, the Settings card and live run updates.
 
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -79,27 +79,6 @@
     if (event.key === 'Escape' && sidebar && 'open' in sidebar.dataset && !$('dialog[open]')) closeSidebar();
   });
   matchMedia('(min-width: 768px)').addEventListener('change', () => closeSidebar(false));
-
-
-  /* ── Extract button label ───────────────────────────────────────────── */
-  // The button says what it will do: "Extract Material", "Extract 2 collections".
-
-  const extractForm = $('#extract-form');
-  if (extractForm) {
-    const button = $('[data-extract-button]', extractForm);
-    const label = $('[data-extract-label]', extractForm);
-    const runInProgress = button.disabled;
-    const update = () => {
-      const picked = $$('input[name="conn"]:checked', extractForm);
-      label.textContent =
-        picked.length === 0 ? 'Select a collection' :
-        picked.length === 1 ? `Extract ${picked[0].dataset.name}` :
-        `Extract ${picked.length} collections`;
-      button.disabled = runInProgress || picked.length === 0;
-    };
-    extractForm.addEventListener('change', update);
-    update();
-  }
 
 
   /* ── Settings card ──────────────────────────────────────────────────── */
@@ -184,7 +163,7 @@
   }
 
   // Messages are one-off: take them out of the address so a reload doesn't repeat them.
-  const oneOff = ['msg', 'err', 'added', 'settings'];
+  const oneOff = ['msg', 'err', 'settings'];
   if (oneOff.some(key => page.searchParams.has(key))) {
     oneOff.forEach(key => page.searchParams.delete(key));
     history.replaceState(null, '', page.pathname + (page.search || '') + page.hash);
@@ -255,16 +234,14 @@
     source.onmessage = message => {
       const event = JSON.parse(message.data);
       appendLog(event);
-      const line = $('[data-live-line]');
-      if (line) line.textContent = event.message;
+      $$('[data-live-line]').forEach(line => { line.textContent = event.message; });
     };
     source.addEventListener('run', message => {
       const run = JSON.parse(message.data);
       $$('[data-count]').forEach(element => {
         if (run[element.dataset.count] !== undefined) element.textContent = run[element.dataset.count];
       });
-      const stage = $('[data-live-stage]');
-      if (stage && run.stage) stage.textContent = run.stage;
+      if (run.stage) $$('[data-live-stage]').forEach(stage => { stage.textContent = run.stage; });
       if (run.stage) markStages(run.stage, run.status);
     });
     source.addEventListener('end', () => {

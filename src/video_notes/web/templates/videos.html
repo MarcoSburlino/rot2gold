@@ -7,30 +7,26 @@
     <div>
       <h1>Videos</h1>
       <p class="lede">
-        {{ rows|length }} {{ 'post' if rows|length == 1 else 'posts' }}{% if conn_filter %} in {{ conn_filter.name }}{% endif %},
-        newest first.
+        {{ rows|length }} {{ 'video' if rows|length == 1 else 'videos' }}{% if conn_filter %} in {{ conn_filter.name }}{% endif %}, newest first.
       </p>
     </div>
   </header>
 
-  <div class="toolbar toolbar-videos">
-    {% if conn_filter %}
+  <div class="toolbar">
+    {% if conn_filter and sidebar_conns|length > 1 %}
       <a class="chip chip-filter" href="{{ conn_filter.clear }}" aria-label="Remove filter: in {{ conn_filter.name }}">
         In {{ conn_filter.name }} {{ icon('x') }}
       </a>
     {% endif %}
-    <nav class="chips" aria-label="Filter by status">
-      {% for chip in status_chips %}
-        <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>{{ chip.label }} <span class="num">{{ chip.count }}</span></a>
-      {% endfor %}
-    </nav>
-    <nav class="chips" aria-label="Filter by type">
-      {% for chip in type_chips %}
-        <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>{{ chip.label }}{% if chip.count is defined %} <span class="num">{{ chip.count }}</span>{% endif %}</a>
-      {% endfor %}
-    </nav>
+    {% if chips %}
+      <nav class="chips" aria-label="Filter">
+        {% for chip in chips %}
+          <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>{{ chip.label }} <span class="num">{{ chip.count }}</span></a>
+        {% endfor %}
+      </nav>
+    {% endif %}
     <form method="get" action="/videos" class="search" role="search">
-      {% for key in ('conn', 'status', 'type') %}{% if f[key] %}<input type="hidden" name="{{ key }}" value="{{ f[key] }}">{% endif %}{% endfor %}
+      {% for key in ('conn', 'status') %}{% if f[key] %}<input type="hidden" name="{{ key }}" value="{{ f[key] }}">{% endif %}{% endfor %}
       <label class="visually-hidden" for="video-search">Search videos</label>
       {{ icon('search') }}
       <input id="video-search" type="search" name="q" value="{{ f.q }}" placeholder="Search videos">
@@ -54,10 +50,9 @@
               {% endif %}
               <span class="row-meta">
                 {% if r.creator %}@{{ r.creator }} · {% endif %}{{ r.upload_date or 'date unknown' }} · {{ r.type or 'type unknown' }}
-                {% if not f.conn and r.conn_ids|length > 1 %} · in {{ r.conn_ids|length }} collections{% endif %}
               </span>
             </span>
-            {{ post_pill(r.status) }}
+            {% if r.status != 'done' or r.missing %}{{ post_pill(r.status) }}{% endif %}
           </a>
         </li>
       {% endfor %}

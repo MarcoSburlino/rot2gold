@@ -85,13 +85,13 @@ def test_pages_and_links(sample):
             saved = await client.post("/settings", data=values, headers={"Referer": "http://127.0.0.1:8740/videos?conn=1"}, follow_redirects=False)
             assert saved.status_code == 303
             assert saved.headers["location"].startswith("/videos?")
-            assert "settings=notes" in saved.headers["location"] and "msg=" in saved.headers["location"]
+            assert "settings=general" in saved.headers["location"] and "msg=" in saved.headers["location"]
             denied = await client.post("/extract", data={"conn": "1"}, headers={"Origin": "https://elsewhere.example"})
             assert denied.status_code == 403
     asyncio.run(check())
 
 
-def test_actions_return_to_the_page_they_came_from(sample):
+def test_actions_return_to_the_page_they_came_from(sample, monkeypatch):
     """Bugs fixed in the 2026-10-19 UI rebuild: actions used to jump back to Ideas, a filtered-out idea
     gave 'Not found', and deleting a collection left its filter in the address."""
     async def check():
@@ -104,8 +104,11 @@ def test_actions_return_to_the_page_they_came_from(sample):
             assert location.startswith("/videos?") and "conn=1" in location and "status=done" in location
             assert "err=" in location and "old" not in location  # the stale message is replaced, not repeated
 
-            none = await client.post("/extract", data={}, headers=here, follow_redirects=False)
-            assert none.headers["location"].startswith("/videos?") and "err=" in none.headers["location"]
+            started = []
+            monkeypatch.setattr(web, "spawn_run", lambda request, cmd, label: started.append(cmd) or web.back("/runs/1"))
+            everything = await client.post("/extract", data={}, headers=here, follow_redirects=False)
+            assert everything.headers["location"] == "/runs/1"
+            assert started[-1][started[-1].index("--conn") + 1] == "1,11"  # nothing picked: every collection
 
             deleted = await client.post("/connections/11/delete", headers={**here, "Referer": "http://127.0.0.1:8740/videos?conn=11"},
                                         follow_redirects=False)
@@ -127,4 +130,21 @@ def test_actions_return_to_the_page_they_came_from(sample):
 
             page = (await client.get("/ideas?msg=Saved")).text
             assert 'data-msg=""' in page  # an ordinary message never leaks into the Settings card
+    asyncio.run(check())
+
+
+def test_simple_pages(sample):
+    """The 2026-10-20 simplification: plain History, one Extract button, chips only for what exists."""
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            ideas_page = (await client.get("/ideas")).text
+            assert "Extract new videos" in ideas_page and 'type="checkbox" name="conn"' not in ideas_page
+            assert "Trying" not in ideas_page  # no idea is "trying", so there is no chip for it
+            assert "1 older note hasn" in ideas_page and "Check them" in ideas_page  # video-one is under a theme, unchecked
+            history = (await client.get("/runs")).text
+            assert "Extract · Collection 1" in history and "No new notes, no new ideas." in history
+            run = (await client.get("/runs/2")).text
+            assert "Extract · Collection 11" in run and "<summary" in run
+            panel = (await client.get("/settings/panel")).text
+            assert 'id="tab-general"' in panel and 'id="tab-key"' not in panel and "Advanced" in panel
     asyncio.run(check())

@@ -6,22 +6,19 @@
   <header class="page-head">
     <div>
       <h1>Ideas</h1>
-      <p class="lede">What your saved videos keep pointing to, strongest first.</p>
-    </div>
-    <div class="page-actions">
-      <a class="button button-quiet" href="/runs?kind=ideas">Idea runs</a>
-      <button type="button" class="button" data-dialog="find-ideas">Find ideas in older notes</button>
+      <p class="lede">What your saved videos keep pointing to. New ones appear here after each Extract.</p>
     </div>
   </header>
 
-  {% if dry_run %}
-    <p class="banner banner-mark">
-      A dry run proposes {{ dry_run.count }} {{ 'idea' if dry_run.count == 1 else 'ideas' }} that aren't in your brain yet.
-      <a href="/ideas/preview/{{ dry_run.id }}">Review dry run {{ dry_run.id }}</a>
-    </p>
+  {% if unchecked %}
+    <div class="banner banner-action">
+      <p>{{ unchecked }} older {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for ideas yet.</p>
+      <button type="button" class="button button-small" data-dialog="find-ideas">Check them</button>
+    </div>
   {% endif %}
 
   <div class="toolbar">
+    {% if chips|length > 1 %}
     <nav class="chips" aria-label="Filter by status">
       {% for chip in chips %}
         <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>
@@ -29,6 +26,7 @@
         </a>
       {% endfor %}
     </nav>
+    {% endif %}
     <form method="get" action="/ideas" class="search" role="search">
       {% if status in ('new', 'trying', 'kept', 'dropped') %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
       <label class="visually-hidden" for="idea-search">Search ideas</label>
@@ -52,7 +50,7 @@
                   </span>
                   {{ source_strip(idea) }}
                   {% set d = distinct(idea.description, idea.title) %}
-                  <span class="row-meta">{% if d %}{{ d }} · {% endif %}updated {{ idea.updated or 'unknown' }}</span>
+                  {% if d %}<span class="row-meta">{{ d }}</span>{% endif %}
                 </a>
               </li>
             {% endfor %}
@@ -68,12 +66,12 @@
           <h2 id="idea-title" class="reading-title">{{ selected.title }}</h2>
           <p class="meta-line">
             {{ idea_pill(selected.status) }}
-            <span>created {{ selected.created or 'unknown' }}</span>
-            <span>updated {{ selected.updated or 'unknown' }}</span>
+            <span>updated {{ selected.updated or selected.created or 'unknown' }}</span>
           </p>
           {{ source_strip(selected, open=True) }}
           <div class="reading-actions">
             {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
+            <p class="hint">To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.</p>
           </div>
           {% set d = distinct(selected.description, selected.title) %}
           {% if d %}<p class="description">{{ d }}</p>{% endif %}
@@ -83,41 +81,42 @@
     </div>
   {% else %}
     <div class="empty">
-      <p>No ideas yet. Extract a collection, or find ideas in the notes you already have.</p>
-      <button type="button" class="button" data-dialog="find-ideas">Find ideas in older notes</button>
+      <p>No ideas yet. Press <strong>Extract new videos</strong> in the sidebar: ideas appear here once a few videos point the same way.</p>
     </div>
   {% endif %}
 {% endblock %}
 
 {% block dialogs %}
+{% if unchecked %}
 <dialog id="find-ideas" class="dialog" aria-labelledby="find-ideas-title">
   <form method="post" action="/ideas/rebuild" class="dialog-form">
     <div class="dialog-head">
-      <h2 id="find-ideas-title">Find ideas in older notes</h2>
+      <h2 id="find-ideas-title">Check older notes for ideas</h2>
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <p class="muted">Claude reads the notes under the themes you choose and proposes ideas they point to. Notes already checked are skipped, so you can stop and continue later.</p>
-      <fieldset class="theme-list">
-        <legend>Themes</legend>
-        {% for theme in themes %}
-          <label class="check theme">
-            <input type="checkbox" name="themes" value="{{ theme.name }}" {% if not theme.unchecked %}disabled{% endif %}>
-            <span>{{ theme.name }}</span>
-            <span class="num muted">{{ theme.unchecked }} of {{ theme.total }} to check</span>
-          </label>
-        {% endfor %}
-      </fieldset>
-      <label class="check"><input type="checkbox" name="dry_run" value="1" checked> Dry run first: preview the ideas before anything is written to your brain</label>
-      <label class="field">
-        <span>Most notes this time</span>
-        <input type="number" name="limit" min="1" inputmode="numeric" placeholder="All of them">
-      </label>
+      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas {{ 'it points' if unchecked == 1 else 'they point' }} to.
+        If your plan's limit gets close it stops, and next time it carries on where it left off.</p>
+      <details class="advanced">
+        <summary>Only some themes</summary>
+        <fieldset class="theme-list">
+          <legend class="visually-hidden">Themes</legend>
+          {% for theme in themes if theme.unchecked %}
+            <label class="check theme">
+              <input type="checkbox" name="themes" value="{{ theme.name }}">
+              <span>{{ theme.name }}</span>
+              <span class="num muted">{{ theme.unchecked }}</span>
+            </label>
+          {% endfor %}
+        </fieldset>
+        <small class="muted">Tick none to check every theme.</small>
+      </details>
     </div>
     <div class="dialog-foot">
       <button type="button" class="button" data-close>Cancel</button>
-      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>Find ideas</button>
+      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>Check for ideas</button>
     </div>
   </form>
 </dialog>
+{% endif %}
 {% endblock %}

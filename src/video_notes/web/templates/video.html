@@ -11,13 +11,12 @@
     <div class="video-head-text">
       <h1 class="reading-title">{{ title }}</h1>
       <p class="meta-line">
-        {{ post_pill(post.status) }}
+        {% if post.status != 'done' %}{{ post_pill(post.status) }}{% endif %}
         {% if post.creator %}<span>@{{ post.creator }}</span>{% endif %}
         <span>{{ post.upload_date or 'date unknown' }}</span>
         <span>{{ post.type or 'type unknown' }}</span>
-        {% if post.language %}<span>speech: {{ post.language }}</span>{% endif %}
       </p>
-      {% if conns %}
+      {% if conns and sidebar_conns|length > 1 %}
         <p class="chips chips-inline">
           {% for c in conns %}<a class="chip" href="/videos?conn={{ c.id }}">{{ c.name }}</a>{% endfor %}
         </p>
@@ -39,14 +38,14 @@
       {% elif post.status == 'done' %}
         <p class="banner banner-alert">The note <code>{{ post.note_path }}</code> is missing from your brain. It may have been moved or renamed in Obsidian.</p>
       {% else %}
-        <p class="empty-note">No note yet: this post is {{ LABELS[post.status] }}. Extract one of its collections to finish it.</p>
+        <p class="empty-note">No note yet. Press <strong>Extract new videos</strong> in the sidebar to write it.</p>
       {% endif %}
     </article>
 
     <aside class="rail" aria-label="About this video">
       {% if images %}
         <section class="rail-section">
-          <h2 class="rail-title">{{ 'Frame at 0.5 s' if post.type == 'video' else 'Slides (' ~ images|length ~ ')' }}</h2>
+          <h2 class="rail-title">{{ 'First frame' if post.type == 'video' else 'Slides (' ~ images|length ~ ')' }}</h2>
           <div class="gallery{% if images|length == 1 %} gallery-single{% endif %}">
             {% for i in images %}
               <a href="{{ i.url }}" target="_blank" rel="noreferrer">
@@ -72,16 +71,16 @@
 
       {% if images or segments %}
         <section class="rail-section">
-          <h2 class="rail-title">Raw extraction</h2>
+          <h2 class="rail-title">What was read from the video</h2>
           {% for i in images %}
             <details class="raw">
-              <summary>Text read from {{ 'the frame' if i.kind == 'frame' else 'slide ' ~ i.idx }}{% if i.ocr_conf is not none %} <span class="muted num">{{ '%.0f'|format(i.ocr_conf) }}%</span>{% endif %}</summary>
+              <summary>Text read from {{ 'the frame' if i.kind == 'frame' else 'slide ' ~ i.idx }}</summary>
               <pre>{{ i.ocr_text or '(no text found)' }}</pre>
             </details>
           {% endfor %}
           {% if post.type == 'video' %}
             <details class="raw">
-              <summary>Transcript <span class="muted num">{{ segments|length }} {{ 'segment' if segments|length == 1 else 'segments' }}</span></summary>
+              <summary>What was said</summary>
               <pre>{% for s in segments %}[{{ '%d:%04.1f'|format(s.start // 60, s.start % 60) }}] {{ s.text }}
 {% else %}(no speech){% endfor %}</pre>
             </details>
@@ -90,13 +89,16 @@
       {% endif %}
 
       <section class="rail-section">
-        <h2 class="rail-title">Post</h2>
-        <dl class="facts">
-          <dt>Id</dt><dd><code>{{ post.id }}</code></dd>
-          <dt>Added</dt><dd>{{ post.added_at|local_time }}</dd>
-          {% if post.note_path %}<dt>Note</dt><dd><code>{{ post.note_path }}</code></dd>{% endif %}
-          {% if post.last_error %}<dt>Last error</dt><dd class="alert-text">{{ post.last_error }}</dd>{% endif %}
-        </dl>
+        <details class="raw">
+          <summary>Details</summary>
+          <dl class="facts">
+            <dt>Id</dt><dd><code>{{ post.id }}</code></dd>
+            <dt>Added</dt><dd>{{ post.added_at|local_time }}</dd>
+            {% if post.note_path %}<dt>Note</dt><dd><code>{{ post.note_path }}</code></dd>{% endif %}
+            {% if post.language %}<dt>Speech</dt><dd>{{ post.language }}</dd>{% endif %}
+            {% if post.last_error %}<dt>Last error</dt><dd class="alert-text">{{ post.last_error }}</dd>{% endif %}
+          </dl>
+        </details>
       </section>
     </aside>
   </div>

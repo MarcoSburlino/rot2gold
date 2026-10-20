@@ -6,7 +6,7 @@ from selenium.webdriver.firefox.options import Options
 OUT = pathlib.Path(sys.argv[1]); OUT.mkdir(parents=True, exist_ok=True)
 B = "http://127.0.0.1:8740"
 PAGES = {"ideas": "/ideas", "idea": "/ideas/idea-write-a-five-year-plan-and-a-get-away-day", "videos": "/videos",
-         "video": "/videos/7273505335577414944", "slides": "/videos/7282799479298788640", "runs": "/runs?conn=1",
+         "video": "/videos/7273505335577414944", "slides": "/videos/7282799479298788640", "history": "/runs", "runs": "/runs?conn=1",
          "run": "/runs/2", "preview": "/ideas/preview/3", "settings": "/settings"}
 CHECKS = """
 const doc = document.documentElement;
