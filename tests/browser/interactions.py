@@ -124,6 +124,26 @@ if qs(".banner-action [data-dialog='find-ideas']"):
     check("'Check them now' opens its card", is_open("find-ideas") and "learnings" in q("#find-ideas-title").text)
     q("#find-ideas [data-close].button").click()
     check("…and Cancel closes it", not is_open("find-ideas"))
+
+# 8d. Events: their own page, grouped by date, with the same banner and card.
+d.get(B + "/events")
+check("the sidebar has Events, marked as the current page", q(".nav a[aria-current='page']").text.startswith("Events"), q(".nav").text)
+check("the Events page says what it holds", q("h1").text == "Events" and "coming up" in q(".lede").text)
+if qs(".idea-row"):
+    check("events are grouped by date", q(".rows-label").text.upper() in ("COMING UP", "PAST", "NO DATE"))
+    check("each event row shows its date", all(r.find_elements(By.CSS_SELECTOR, ".row-when") for r in qs(".idea-row")))
+    qs(".idea-row")[0].click()
+    wait.until(lambda _: "/events/event-" in d.current_url)
+    q(".reading-head .menu > summary").click()
+    check("an event's ⋯ menu offers Delete event", "Delete event" in q(".menu-list").text)
+    ActionChains(d).send_keys(Keys.ESCAPE).perform()
+else:
+    check("with no events yet, the page says how they arrive", "Extract new videos" in q("main .empty").text)
+if qs(".banner-action [data-dialog='find-ideas']"):
+    check("the events banner says the next Extract checks the notes", "checked for events" in q(".banner-action").text)
+    q(".banner-action [data-dialog='find-ideas']").click()
+    check("its 'Check them now' opens the card for events", is_open("find-ideas") and "events" in q("#find-ideas-title").text)
+    q("#find-ideas [data-close].button").click()
 d.get(B + "/ideas")
 
 # 9. Filters stay while browsing ideas.

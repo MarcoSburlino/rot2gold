@@ -53,8 +53,8 @@ def undo_run(con, run_id: int, report) -> dict:
     undo_sha = brain.git("rev-parse", "--short", "HEAD").strip()
     rows = con.execute("SELECT * FROM batches WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
     noted = {pid for row in rows for pid in (row["noted"] or "").split()}
-    considered = {pid for row in rows for pid in (row["considered"] or "").split()}
-    learned = {pid for row in rows for pid in (row["learned"] or "").split()}
+    # The checks this run marked, per kind: {"idea": {post ids}, "learning": …, "event": …}.
+    checked = {kind: {pid for row in rows for pid in (row[key] or "").split()} for kind, (_, key) in ideas.CHECKS.items()}
     if not rows:
         noted = {row["id"] for row in con.execute("SELECT id, note_path FROM posts WHERE note_path IS NOT NULL")
                  if row["note_path"] in added}
@@ -66,10 +66,8 @@ def undo_run(con, run_id: int, report) -> dict:
             con.execute("UPDATE posts SET status = 'processed', note_path = NULL, updated_at = ? WHERE id = ?",
                         (db.now(), pid))
             reopened.append(pid)
-    for pid in considered:
-        con.execute("UPDATE posts SET ideas_checked_at = NULL WHERE id = ?", (pid,))
-    for pid in learned:
-        con.execute("UPDATE posts SET learnings_checked_at = NULL WHERE id = ?", (pid,))
+    for kind, ids in checked.items():
+        con.executemany(f"UPDATE posts SET {ideas.CHECKS[kind][0]} = NULL WHERE id = ?", [(pid,) for pid in ids])
     restored = []
     for row in rows:
         if row["kind"] == "delete":  # videos deleted with an idea: noted again once their notes are back
@@ -88,7 +86,8 @@ def undo_run(con, run_id: int, report) -> dict:
                     (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
     con.execute("UPDATE runs SET undone_at = ? WHERE id = ?", (db.now(), run_id))
     con.commit()
-    report(f"Undo commit {undo_sha}; {len(reopened)} posts returned to the queue; {len(considered)} ideas checks and {len(learned)} learnings checks cleared"
+    report(f"Undo commit {undo_sha}; {len(reopened)} posts returned to the queue; {len(checked['idea'])} ideas checks,"
+           f" {len(checked['learning'])} learnings checks and {len(checked['event'])} events checks cleared"
            + (f"; {len(restored)} deleted videos restored" if restored else ""))
-    return {"commit": undo_sha, "reopened": reopened, "considered": sorted(considered), "learned": sorted(learned),
-            "restored": restored}
+    return {"commit": undo_sha, "reopened": reopened, "restored": restored,
+            **{key: sorted(checked[kind]) for kind, (_, key) in ideas.CHECKS.items()}}

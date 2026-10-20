@@ -16,7 +16,7 @@
         <p>{{ unchecked }} older {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for ideas yet.</p>
         <button type="button" class="button button-small" data-dialog="find-ideas">Check them</button>
       {% else %}
-        <p>{{ unchecked }} {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for learnings yet. The next Extract checks them, 25 at a time.</p>
+        <p>{{ unchecked }} {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for {{ k.many }} yet. The next Extract checks them, 25 at a time.</p>
         <button type="button" class="button button-small" data-dialog="find-ideas">Check them now</button>
       {% endif %}
     </div>
@@ -24,7 +24,7 @@
 
   <div class="toolbar">
     {% if chips|length > 1 %}
-    <nav class="chips" aria-label="Filter by status">
+    <nav class="chips" aria-label="Filter by {{ 'date' if k.kind == 'event' else 'status' }}">
       {% for chip in chips %}
         <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>
           {{ chip.label }} <span class="num">{{ chip.count }}</span>
@@ -33,7 +33,7 @@
     </nav>
     {% endif %}
     <form method="get" action="{{ k.base }}" class="search" role="search">
-      {% if status in ('new', 'trying', 'kept', 'dropped') %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+      {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
       <label class="visually-hidden" for="idea-search">Search {{ k.many }}</label>
       {{ icon('search') }}
       <input id="idea-search" type="search" name="q" value="{{ q }}" placeholder="Search {{ k.many }}">
@@ -46,6 +46,9 @@
         {% if rows %}
           <ul class="rows">
             {% for idea in rows %}
+              {% if k.kind == 'event' and not status and (loop.first or loop.previtem.timing != idea.timing) %}
+                <li class="rows-label section-label">{{ groups[idea.timing] }}</li>
+              {% endif %}
               <li>
                 <a class="row idea-row" href="{{ k.base }}/{{ idea.name }}{{ keep }}"
                    {% if selected and selected.name == idea.name %}aria-current="true"{% endif %}>
@@ -53,6 +56,9 @@
                     <span class="row-title">{{ idea.title }}</span>
                     {{ idea_pill(idea.status) }}
                   </span>
+                  {% if k.kind == 'event' %}
+                    <span class="row-when{% if idea.timing == 'upcoming' %} row-when-upcoming{% endif %}">{{ idea.when|event_date(idea.until) }}{% if idea.where %} · {{ idea.where }}{% endif %}</span>
+                  {% endif %}
                   {{ source_strip(idea) }}
                   {% set d = distinct(idea.description, idea.title) %}
                   {% if d %}<span class="row-meta">{{ d }}</span>{% endif %}
@@ -81,11 +87,18 @@
           </div>
           <p class="meta-line">
             {{ idea_pill(selected.status) }}
-            <span>updated {{ selected.updated or selected.created or 'unknown' }}</span>
+            {% if k.kind == 'event' %}
+              <span class="num">{{ selected.when|event_date(selected.until) }}</span>
+              {% if selected.where %}<span>{{ selected.where }}</span>{% endif %}
+              {% if selected.timing == 'upcoming' %}<span>coming up</span>{% endif %}
+            {% else %}
+              <span>updated {{ selected.updated or selected.created or 'unknown' }}</span>
+            {% endif %}
           </p>
           {{ source_strip(selected, open=True) }}
           <div class="reading-actions">
             {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
+            {% if calendar %}<a class="button" href="{{ k.base }}/{{ selected.name }}/calendar.ics" download>{{ icon('calendar') }} Add to calendar</a>{% endif %}
             <p class="hint">{{ k.status_hint|safe }}</p>
           </div>
           {% set d = distinct(selected.description, selected.title) %}
@@ -127,7 +140,7 @@
       {% if removal.kept %}
         <p class="muted">
           {{ 'This video stays' if removal.kept|length == 1 else 'These videos stay' }} because
-          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other ideas or learnings:
+          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other ideas, learnings or events:
           {% for v in removal.kept %}{{ v.title }} (“{{ v.other_idea }}”){% if not loop.last %}; {% endif %}{% endfor %}.
         </p>
       {% endif %}
@@ -144,11 +157,11 @@
 <dialog id="find-ideas" class="dialog" aria-labelledby="find-ideas-title">
   <form method="post" action="/ideas/rebuild" class="dialog-form">
     <div class="dialog-head">
-      <h2 id="find-ideas-title">Check {{ 'older notes for ideas' if k.kind == 'idea' else 'notes for learnings' }}</h2>
+      <h2 id="find-ideas-title">Check {{ 'older notes for ideas' if k.kind == 'idea' else 'notes for ' ~ k.many }}</h2>
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas and learnings {{ 'it points' if unchecked == 1 else 'they point' }} to.
+      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas, learnings and events {{ 'it points' if unchecked == 1 else 'they point' }} to.
         If your plan's limit gets close it stops, and next time it carries on where it left off.</p>
       <details class="advanced">
         <summary>Only some themes</summary>

@@ -1,6 +1,6 @@
-# The ideas and learnings pass
+# The ideas, learnings and events pass
 
-Rules for finding ideas and learnings across Marco's notes and writing them as notes in his brain. Every agent and every backend (`claude -p` on the subscription or with an API key, or a person running Claude Code or Codex by hand) follows this file, so ideas come out the same way each time.
+Rules for finding ideas, learnings and events across Marco's notes and writing them as notes in his brain. Every agent and every backend (`claude -p` on the subscription or with an API key, or a person running Claude Code or Codex by hand) follows this file, so ideas come out the same way each time.
 
 Read the brain's rules first: `~/Projects/brain/AGENTS.md`, especially "Writing notes" and "Commonplace".
 
@@ -22,6 +22,20 @@ Marco asked for them on 2026-10-20: what did a video teach, does another video s
 - What is *not* a learning: a bare quote, a motivational slogan with no claim in it, a fact about the video itself ("the creator uses subtitles"), or a claim the note's **Checked** section found false. A disputed claim can be a learning only if the note says so in the text ("a small commercial study claims…").
 - **Ideas and learnings link up.** When an idea puts a learning into practice, the learning lists it under `## Use it` and the idea lists the learning under `## Learnings behind it`. A note can give an idea, a learning, both, or neither.
 
+## What an event is
+
+An event is **a specific happening with a time**, that a video reports or announces. Marco asked for them on 2026-10-20, both kinds:
+
+- **What happened**: news (a strike, an election, a court ruling, a disaster), a release or launch (a product, an AI model, a book, a film), a historical event (a 1983 CIA report, a battle).
+- **What is coming**: something Marco could go to or watch: a conference, a festival, an exhibition, a concert, a match, a launch date, a deadline.
+
+Its title names the event as a short noun phrase ("Yandex data-centre strikes", "Qwen 3.8 release", "Milan Design Week 2027"), not a sentence. One note per event, which grows as other videos talk about it.
+
+- What is *not* an event: a trend ("AI is getting cheaper"), a habit or a recurring advice ("every spring, plan your year"), a person's life in general, the creator's own story with no public happening in it, the video itself, a sale or promotion someone is selling.
+- A note can give an event and also a learning or an idea. The event is what happened; the learning is what it teaches ("viral claims spread because they confirm what people already believe"). When an event shows a learning, the event lists it under `## Learnings it shows` and the learning lists the event under `## Events that show it`.
+- **Dates are never guessed.** `when:` is the first day as the note gives it (`YYYY-MM-DD`). If the video says "next Friday" or "this weekend", work it out from the note's `posted:` date and say so in the text. If only the month or the year is known, write `YYYY-MM` or `YYYY`. If there is no date at all, leave `when:` empty. `until:` is the last day of an event that lasts several days. `where:` is the place as the video gives it (`online` for a stream), or empty.
+- The app sorts events by date: **Coming up** until their last day has passed, then **Past**. An event known only by its month or year counts as coming up only until that month or year begins. So a date must be right or left out, never invented.
+
 ## History
 
 On the first full run (2026-10-15), each batch agent decided per post whether it held "an idea Marco could act on", and if so wrote `Inbox/idea-<slug>.md`: a title as an action, 1–3 lines, and `From [[video-<slug>]].` That made 15 ideas, each with exactly one source; one was later archived. The video notes themselves linked to each other a lot (Related notes, Insights), but no step looked across notes for shared ideas.
@@ -30,18 +44,19 @@ This file replaces that per-post step with one pass that looks across sources. I
 
 ## When the pass runs
 
-One pass looks for both kinds, in the same Claude call per batch. Each note has two checks in `data/vn.sqlite`: `ideas_checked_at` and `learnings_checked_at`. The prompt tags each note with what to look for in it: `[ideas and learnings]`, or `[learnings]` for a note already checked for ideas.
+One pass looks for all three kinds, in the same Claude call per batch. Each note has three checks in `data/vn.sqlite`: `ideas_checked_at`, `learnings_checked_at` and `events_checked_at`. The prompt tags each note with what it still needs: `[ideas, learnings and events]`, `[learnings and events]`, `[events]`, and so on.
 
-- **Inside each Extract**, right after its notes are written and committed: the same run, not a separate step. Input: notes not checked for ideas and marked done on or after `[ideas] since` (2026-10-19 by default), then notes of **any age** not checked for learnings. So the Extracts after 2026-10-20 work through the older notes for learnings, 25 per batch, stopping at the plan-usage limit and carrying on next time.
+- **Inside each Extract**, right after its notes are written and committed: the same run, not a separate step. Input: notes not checked for ideas and marked done on or after `[ideas] since` (2026-10-19 by default), then notes of **any age** not checked for learnings or events. So the Extracts after 2026-10-20 work through the older notes for learnings and events, 25 per batch, stopping at the plan-usage limit and carrying on next time.
 - **"Rebuild ideas"**, started by hand from the app or CLI. Input: notes missing either check, under selected themes in `commonplace.md`, regardless of date, in batches of 25. Marco chose Mindset and self-help, Learning and memory, and Money and business on 2026-10-19. Marking only considered notes lets a stopped rebuild resume.
 - **Dry runs** write previews to `data/ideas-dry-run/run-N/`, without marking posts or committing to the brain.
 
-The app gives the agent the list of notes to consider. The agent only writes idea and learning notes; the app runs `brain-index`, commits, and records which posts were considered.
+The app gives the agent the list of notes to consider. The agent only writes idea, learning and event notes; the app runs `brain-index`, commits, and records which posts were considered.
 
 ## Where they live
 
 - Ideas: `~/Projects/brain/Inbox/ideas/idea-<slug>.md`, template `~/Projects/brain/System/templates/idea-note.md`.
 - Learnings: `~/Projects/brain/Inbox/learnings/learning-<slug>.md`, template `~/Projects/brain/System/templates/learning-note.md`.
+- Events: `~/Projects/brain/Inbox/events/event-<slug>.md`, template `~/Projects/brain/System/templates/event-note.md`. Add the year to the slug of an event that repeats (`event-milan-design-week-2027`).
 - The slug comes from the title: lowercase, words joined by dashes, ASCII, at most about 8 words. Names must be unique across the whole vault: check with `find ~/Projects/brain -name "<file>.md"`, and add `-2` if taken.
 
 ## Update first, create last
@@ -54,9 +69,11 @@ Marco wants **a few ideas that grow** as more videos point to them, not a new id
 - **Create a new idea only when no existing idea fits**: the note points to a different action, one where doing it would not mostly mean doing an existing idea.
 - Notes in the same pass that point to the same new action become **one** new idea with several sources.
 
-The prompt lists every existing idea and every existing learning (file, title, description, status, sources), so each candidate is compared with all of them before anything is created.
+The prompt lists every existing idea, learning and event (file, title, description, status, sources, and an event's date), so each candidate is compared with all of them before anything is created.
 
 **Learnings follow the same rules.** A note that says the same thing as an existing learning, from another angle, with other evidence, or as a narrower or broader case, updates the closest learning. Create a new learning only when none fits. When a second source joins a learning, rewrite its paragraph as the **shared learning**: what the sources agree on, what each adds, and how strong the evidence is (a study, a personal story, an opinion). A source that says the opposite goes under `## Where they differ`.
+
+**Events too.** A note about the same happening (the same thing, at the same time and place) updates that event, even if it calls it by another name or tells it from another side. A follow-up that is a happening of its own (a court ruling after a strike, the 2028 edition of a festival) is a new event, linked under `## Related events` in both. When sources give different dates, places or figures, keep the best-supported one in the front matter and list the others under `## Where they differ`.
 
 ## Steps
 
@@ -69,12 +86,12 @@ The prompt lists every existing idea and every existing learning (file, title, d
 4. **Match before creating** (see "Update first, create last"). For each candidate, find the existing idea it fits best.
    - **Fits → update** that idea (below). Never create a second note for it.
    - **Nothing fits → it may become a new idea** (step 5). If it is related to an existing idea without fitting it, link the two under `## Related ideas` in both.
-5. **Decide whether to create.** Only for candidates that fit no existing idea or learning. A learning may be created from one source; at most **8 new learnings per pass** (`[ideas] max_new_learnings_per_pass`), with the same hold-back rule as ideas below. Create a new idea when:
+5. **Decide whether to create.** Only for candidates that fit no existing idea or learning. A learning or an event may be created from one source; at most **8 new learnings** (`[ideas] max_new_learnings_per_pass`) and **8 new events** (`[ideas] max_new_events_per_pass`) per pass, with the same hold-back rule as ideas below. Create a new idea when:
    - **two or more independent sources** point to it, or
    - **one source** describes a clearly actionable practice, tool, book or project idea (the kind made on the first run). It gets `support: 1` and ranks below multi-source ideas.
    - At most **5 new ideas per pass**. If there are more candidates, keep the best-supported ones, and leave the notes behind the others out of the reported `considered` list, so the next pass sees them again.
 6. **Write or update** the notes (format below).
-7. **Report** in the JSON format the prompt asks for: created files and updated files (ideas and learnings together; the app tells them apart by the `idea-`/`learning-` prefix), every post id you considered (including those that gave nothing), and in `notes` one line per considered note saying what it led to: `<post id> → updated idea-…; new learning-… (no existing learning fits: <why>)`, or `<post id> → nothing`.
+7. **Report** in the JSON format the prompt asks for: created files and updated files (all kinds together; the app tells them apart by the `idea-`/`learning-`/`event-` prefix), every post id you considered (including those that gave nothing), and in `notes` one line per considered note saying what it led to: `<post id> → updated idea-…; new learning-… (no existing learning fits: <why>)`, or `<post id> → nothing`.
 
 ## Counting sources
 
@@ -183,6 +200,10 @@ tags:
 
 - [[idea-…]]
 
+## Events that show it
+
+- [[event-…]]
+
 ## Related learnings
 
 - [[learning-…]]
@@ -197,10 +218,64 @@ tags:
 
 - Counting sources, `status` (Marco's values: `new`, `kept`, `dropped`), tags (always `learning`), omitting empty sections (`## Where they differ`, `## Use it`, `## Related learnings`) and language follow the idea rules above.
 - `## Use it` lists only existing ideas. If no idea applies the learning, leave the section out; never invent advice to fill it.
+- `## Events that show it` (optional) lists the events that illustrate the learning.
+
+## Event note format
+
+```markdown
+---
+description: <one line, at most ~15 words: the event, when and where, and when to open the note>
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+when: YYYY-MM-DD          # first day; YYYY-MM or YYYY if that is all that is known; empty if unknown
+until: YYYY-MM-DD         # last day, only for an event of several days
+where: <place as the video gives it, or "online"; empty if unknown>
+support: <number of independent sources>
+sources:
+  - "[[video-…]]"
+status: new
+tags:
+  - event
+  - <1–2 topic tags from commonplace.md>
+---
+
+# <The event, as a short noun phrase>
+
+> [!note] AI-generated event note drawn from the videos below. Dates, places and figures are not verified: check them before relying on them.
+
+<2–4 lines: what happened or will happen, who is involved, and why the videos talk about it.>
+
+## What each source says
+
+- [[video-a]] — <one line: what this source reports or claims about it>
+
+## Where they differ
+
+- [[video-c]] — <one line: a different date, figure or account>
+
+## Learnings it shows
+
+- [[learning-…]]
+
+## Related events
+
+- [[event-…]]
+
+## Log
+
+- YYYY-MM-DD — created from [[video-a]]
+
+## My notes
+
+```
+
+- `status` (Marco's values: `new`, `going` for something he plans to attend or watch, `kept`, `dropped`), counting sources, tags (always `event`), omitting empty sections (`## Where they differ`, `## Learnings it shows`, `## Related events`) and language follow the idea rules above.
+- When a new source joins, update `updated:`, `support`, the source line and the Log as for an idea; correct `when:`, `until:` or `where:` only when the new source is better supported, and log it (`- YYYY-MM-DD — date corrected from [[video-b]]`).
 
 ## Tone and honesty
 
 - A learning reports what its sources claim and how well supported it is; it never upgrades an opinion or an anecdote into a fact.
+- An event reports what the videos say happened, and carries over the note's checks: "the note's sources confirm the strikes; the bot claim is disputed". A figure or a cause that only the video gives is attributed to it ("the video says…").
 - An idea's title is an action, but the body reports what the sources say: "Three posts recommend…", "The Jim Rohn talk suggests…". No advice of your own beyond what the sources say.
 - If a source's note rated a related claim in its **Checked** section, carry the verdict over: "the '65% less anxiety' figure comes from a small commercial study (see the note)". Never present a disputed claim as fact.
 - Keep it short. An idea or learning note is a pointer to its sources, not an essay.

@@ -7,7 +7,7 @@
   <div class="sheet narrow stack">
     <p>This reverts the run's brain {{ 'commit' if commits|length == 1 else 'commits' }}
       {% for c in commits %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %} with a new commit.</p>
-    <p>Notes it wrote go back in the queue, and the notes it checked for ideas and learnings will be checked again.</p>
+    <p>Notes it wrote go back in the queue, and the notes it checked for ideas, learnings and events will be checked again.</p>
     <p class="muted">If you've edited the same files since, the undo stops and changes nothing.</p>
     <form method="post" action="/runs/{{ run.id }}/undo" class="form-foot form-foot-start">
       <a class="button" href="/runs/{{ run.id }}">Cancel</a>

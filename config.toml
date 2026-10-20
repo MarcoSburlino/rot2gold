@@ -26,11 +26,12 @@ stop_at_plan_usage = 0.9   # subscription: don't start another batch once the 5-
 
 [ideas]
 since = "2026-10-19"      # ideas: notes marked done on or after this date are new; older notes need a rebuild
-                          # (learnings have no date limit: every Extract checks unchecked notes of any age)
-batch_size = 25           # notes considered per batch of the ideas and learnings pass
+                          # (learnings and events have no date limit: every Extract checks unchecked notes of any age)
+batch_size = 25           # notes considered per batch of the ideas, learnings and events pass
 model = "opus"           # passed to claude --model
 max_new_per_pass = 5      # new ideas allowed in each batch
 max_new_learnings_per_pass = 8  # new learnings allowed in each batch
+max_new_events_per_pass = 8     # new events allowed in each batch
 
 [app]
 port = 8740                # http://127.0.0.1:8740 — free among Marco's projects (docs/app-spec.md)

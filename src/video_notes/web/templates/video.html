@@ -82,6 +82,17 @@
         {% endif %}
       </section>
 
+      {% if related_events %}
+        <section class="rail-section">
+          <h2 class="rail-title">Events in this video</h2>
+          <ul class="mini-list">
+            {% for event in related_events %}
+              <li><a href="/events/{{ event.name }}">{{ event.title }}</a> <span class="muted num">{{ event.when|event_date(event.until) }}</span></li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
       {% if images or segments %}
         <section class="rail-section">
           <h2 class="rail-title">What was read from the video</h2>

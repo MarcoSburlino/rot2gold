@@ -5,6 +5,7 @@
 {% block main %}
   {% set new_ideas = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'idea')|list|length %}
   {% set new_learnings = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'learning')|list|length %}
+  {% set new_events = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'event')|list|length %}
   {% set update_count = rows|selectattr('is_update')|list|length %}
   <a class="back-link back-link-page" href="/ideas">{{ icon('back') }} Ideas</a>
 
@@ -12,8 +13,8 @@
     <div>
       <h1>Dry run {{ run_id }}</h1>
       <p class="lede">
-        {{ new_ideas }} new {{ 'idea' if new_ideas == 1 else 'ideas' }}, {{ new_learnings }} new {{ 'learning' if new_learnings == 1 else 'learnings' }}
-        and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
+        {{ new_ideas }} new {{ 'idea' if new_ideas == 1 else 'ideas' }}, {{ new_learnings }} new {{ 'learning' if new_learnings == 1 else 'learnings' }},
+        {{ new_events }} new {{ 'event' if new_events == 1 else 'events' }} and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
         from {{ checked }} notes.
         {% if not manifest.applied %}Nothing is in your brain yet.{% endif %}
       </p>
@@ -27,7 +28,7 @@
     <p class="banner">Applied to your brain ({{ manifest.applied }}).</p>
   {% elif rows or checked %}
     <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
-      <p>Apply copies these into <code>Inbox/ideas/</code> and <code>Inbox/learnings/</code> and marks the notes as checked, without calling Claude again. Anything you edited since the dry run is skipped, never overwritten.</p>
+      <p>Apply copies these into <code>Inbox/ideas/</code>, <code>Inbox/learnings/</code> and <code>Inbox/events/</code> and marks the notes as checked, without calling Claude again. Anything you edited since the dry run is skipped, never overwritten.</p>
       <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>
         Apply {{ rows|length }} {{ 'note' if rows|length == 1 else 'notes' }} to the brain
       </button>
@@ -39,7 +40,8 @@
       <p class="meta-line">
         <span class="pill {{ 'pill-mark' if not idea.is_update }}">{{ 'updated' if idea.is_update else 'new' }} {{ idea.kind }}</span>
         {{ idea_pill(idea.status) if idea.status != 'new' }}
-        <span>updated {{ idea.updated or 'unknown' }}</span>
+        {% if idea.kind == 'event' %}<span class="num">{{ idea.when|event_date(idea.until) }}{% if idea.where %} · {{ idea.where }}{% endif %}</span>
+        {% else %}<span>updated {{ idea.updated or 'unknown' }}</span>{% endif %}
       </p>
       <h2 id="proposal-{{ loop.index }}" class="reading-title">{{ idea.title }}</h2>
       {{ source_strip(idea, open=True) }}
@@ -48,6 +50,6 @@
       <div class="prose">{{ idea.html|safe }}</div>
     </article>
   {% else %}
-    <div class="empty"><p>This dry run didn't propose any ideas or learnings.</p></div>
+    <div class="empty"><p>This dry run didn't propose any ideas, learnings or events.</p></div>
   {% endfor %}
 {% endblock %}

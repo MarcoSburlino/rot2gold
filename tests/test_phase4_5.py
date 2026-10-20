@@ -239,20 +239,26 @@ def test_v4_batches_table_is_rebuilt_to_allow_delete(tmp_path, monkeypatch):
     assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
-def test_v5_to_v6_adds_learnings_after_a_backup(tmp_path, monkeypatch):
+EVENT_COLUMNS = (("posts", "events_checked_at"), ("runs", "events_created"), ("runs", "events_updated"),
+                 ("batches", "events_seen"))
+LEARNING_COLUMNS = (("posts", "learnings_checked_at"), ("runs", "learnings_created"), ("runs", "learnings_updated"),
+                    ("batches", "learned"))
+
+
+@pytest.mark.parametrize("version", [5, 6])
+def test_v5_and_v6_to_v7_add_learnings_and_events_after_a_backup(tmp_path, monkeypatch, version):
     path = tmp_path / "vn.sqlite"
     monkeypatch.setattr(db, "load", lambda: {})
     con = db.connect(path)
     con.execute("INSERT INTO runs (origin, started_at) VALUES ('app', 'x')")
-    for table, column in (("posts", "learnings_checked_at"), ("runs", "learnings_created"),
-                          ("runs", "learnings_updated"), ("batches", "learned")):
+    for table, column in EVENT_COLUMNS + (LEARNING_COLUMNS if version == 5 else ()):
         con.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
-    con.execute("PRAGMA user_version = 5")
+    con.execute(f"PRAGMA user_version = {version}")
     con.commit()
     con.close()
     con = db.connect(path)
-    assert "learnings_checked_at" in db.columns(con, "posts") and "learned" in db.columns(con, "batches")
-    assert {"learnings_created", "learnings_updated"} <= db.columns(con, "runs")
-    assert con.execute("SELECT learnings_created FROM runs").fetchone()[0] == 0
-    assert (tmp_path / "vn.sqlite.bak-v5").exists()
-    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 6
+    for table, column in EVENT_COLUMNS + LEARNING_COLUMNS:
+        assert column in db.columns(con, table)
+    assert tuple(con.execute("SELECT learnings_created, events_created FROM runs").fetchone()) == (0, 0)
+    assert (tmp_path / f"vn.sqlite.bak-v{version}").exists()
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 7

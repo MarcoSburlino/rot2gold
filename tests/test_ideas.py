@@ -49,9 +49,9 @@ def test_themes_and_candidates(vault, con):
     con.execute("INSERT INTO connection_posts VALUES (1, '2', 'x')")
     con.commit()
     cfg = {"ideas": {"since": "2026-10-19"}}
-    # Learnings have no date limit: every note not checked for learnings is a candidate, new ones for ideas first.
+    # Learnings and events have no date limit: every note not checked for them is a candidate, new ones for ideas first.
     assert ideas.candidates_new(con, cfg=cfg) == ["2", "1", "3"]
-    con.execute("UPDATE posts SET learnings_checked_at = 'x'")
+    con.execute("UPDATE posts SET learnings_checked_at = 'x', events_checked_at = 'x'")
     assert ideas.candidates_new(con, cfg=cfg) == ["2"]
     assert ideas.candidates_new(con, [1], cfg) == ["2"]
     assert ideas.candidates_new(con, [99], cfg) == []
@@ -60,7 +60,12 @@ def test_themes_and_candidates(vault, con):
     con.execute("UPDATE posts SET learnings_checked_at = NULL WHERE id = '3'")  # checked for ideas, not learnings
     assert ideas.candidates_new(con, cfg=cfg) == ["2", "3"]
     assert ideas.candidates_rebuild(con, None) == ["1", "2", "3"]
-    assert ideas._checks(con, ["2", "3"]) == {"2": {"ideas": True, "learnings": False}, "3": {"ideas": False, "learnings": True}}
+    assert ideas._checks(con, ["2", "3"]) == {"2": {"idea": True, "learning": False, "event": False},
+                                              "3": {"idea": False, "learning": True, "event": False}}
+    con.execute("UPDATE posts SET learnings_checked_at = 'x', events_checked_at = NULL WHERE id = '3'")  # only events left
+    assert ideas.candidates_new(con, cfg=cfg) == ["2", "3"]
+    assert ideas.look_for(ideas._checks(con, ["3"])["3"]) == "events"
+    assert ideas.look_for(ideas._checks(con, ["2"])["2"]) == "ideas"
     with pytest.raises(ValueError, match="Known themes:.*Learning and memory"):
         ideas.candidates_rebuild(con, ["Unknown"])
 
@@ -117,21 +122,29 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
     folder = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/ideas"
 
     learnings = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/learnings"
+    events = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/events"
     (vault / "Inbox/learnings").mkdir(exist_ok=True)
     (vault / "Inbox/learnings/learning-old.md").write_text(
         "---\ndescription: Old one\nstatus: kept\nsources:\n  - \"[[video-zero]]\"\n---\n# Old learning\n")
+    (vault / "Inbox/events").mkdir(exist_ok=True)
+    (vault / "Inbox/events/event-old.md").write_text(
+        "---\ndescription: An old event\nwhen: 1983-06\nsources:\n  - \"[[video-zero]]\"\n---\n# Old event\n")
 
     def fake(prompt, **kwargs):
-        assert "1  Resources/commonplace/videos/video-one.md  [ideas and learnings]" in prompt
-        assert str(folder) in prompt and str(learnings) in prompt
+        assert "1  Resources/commonplace/videos/video-one.md  [ideas, learnings and events]" in prompt
+        assert str(folder) in prompt and str(learnings) in prompt and str(events) in prompt
         assert "learning-old.md · Old learning · Old one · kept · video-zero" in prompt  # existing learnings listed
+        assert "event-old.md · Old event · 1983-06 · An old event · new · video-zero" in prompt  # events with their date
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "idea-proof.md").write_text(
             "---\ndescription: Try proof\nsupport: 1\nsources:\n  - \"[[video-one]]\"\n---\n# Try proof\n")
         (learnings / "learning-proof-helps.md").write_text(
             "---\ndescription: Proof helps\nsupport: 1\nsources:\n  - \"[[video-one]]\"\n---\n# Proof helps\n")
+        (events / "event-proof-day.md").write_text(
+            "---\ndescription: Proof day\nwhen: 2026-11-12\nsupport: 1\nsources:\n  - \"[[video-one]]\"\n---\n# Proof day\n")
         other.write_text("unrelated change\n")
-        return claude_cli.Result(ok=True, structured={"created": [str(folder / "idea-proof.md"), "learning-proof-helps.md"],
+        return claude_cli.Result(ok=True, structured={"created": [str(folder / "idea-proof.md"), "learning-proof-helps.md",
+                                                                  "Inbox/events/event-proof-day.md"],
                                                       "updated": [], "considered": ["1"], "notes": ["done"]})
     monkeypatch.setattr(claude_cli, "run", fake)
     cfg = {"brain": {"path": str(vault)}, "ideas": {"batch_size": 25, "model": "opus", "max_new_per_pass": 5},
@@ -139,27 +152,30 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
     messages = []
     found = ideas.run_pass(con, ["1"], cfg, lambda msg, **kw: messages.append(msg), 1, dry_run)
     assert len(found["created"]) == 1 and len(found["learnings_created"]) == 1 and found["considered"] == ["1"]
+    assert len(found["events_created"]) == 1  # a path relative to the brain is accepted too
     batch = con.execute("SELECT * FROM batches WHERE run_id = 1").fetchone()
     assert batch["kind"] == "ideas" and batch["post_ids"] == "1"
-    assert batch["considered"] == ("" if dry_run else "1") and batch["learned"] == ("" if dry_run else "1")
-    run = con.execute("SELECT ideas_created, learnings_created FROM runs WHERE id = 1").fetchone()
-    assert tuple(run) == (1, 1)
-    checked = tuple(con.execute("SELECT ideas_checked_at, learnings_checked_at FROM posts WHERE id = '1'").fetchone())
+    assert batch["considered"] == batch["learned"] == batch["events_seen"] == ("" if dry_run else "1")
+    run = con.execute("SELECT ideas_created, learnings_created, events_created FROM runs WHERE id = 1").fetchone()
+    assert tuple(run) == (1, 1, 1)
+    columns = "ideas_checked_at, learnings_checked_at, events_checked_at"
+    checked = tuple(con.execute(f"SELECT {columns} FROM posts WHERE id = '1'").fetchone())
     if dry_run:
-        assert checked == (None, None)
+        assert checked == (None, None, None)
         assert git("log", "-1", "--format=%s").strip() == "init"
         manifest = ideas.read_manifest(folder)
-        assert manifest["considered"] == ["1"] and manifest["learned"] == ["1"]
-        assert "learning-old.md" in manifest["base"]
+        assert manifest["considered"] == manifest["learned"] == manifest["events_seen"] == ["1"]
+        assert "learning-old.md" in manifest["base"] and "event-old.md" in manifest["base"]
     else:
         assert all(checked)
         assert git("show", "--format=", "--name-only", "HEAD").split() == [
-            "Inbox/ideas/idea-proof.md", "Inbox/learnings/learning-proof-helps.md"]  # learning-old was already uncommitted
+            "Inbox/events/event-proof-day.md", "Inbox/ideas/idea-proof.md",
+            "Inbox/learnings/learning-proof-helps.md"]  # the old ones were already uncommitted
         con.execute("UPDATE runs SET status = 'ok' WHERE id = 1")
-        undo.undo_run(con, 1, lambda *a, **k: None)  # both checks come back, so the notes are read again
-        checked = tuple(con.execute("SELECT ideas_checked_at, learnings_checked_at FROM posts WHERE id = '1'").fetchone())
-        assert checked == (None, None)
-        assert not (learnings / "learning-proof-helps.md").exists()
+        undo.undo_run(con, 1, lambda *a, **k: None)  # every check comes back, so the notes are read again
+        checked = tuple(con.execute(f"SELECT {columns} FROM posts WHERE id = '1'").fetchone())
+        assert checked == (None, None, None)
+        assert not (learnings / "learning-proof-helps.md").exists() and not (events / "event-proof-day.md").exists()
     assert "Projects/other.md" in git("status", "--porcelain")
 
 
@@ -206,10 +222,25 @@ def test_apply_dry_run_copies_new_and_never_overwrites_edits(vault, con, monkeyp
 
     done = ideas.apply_dry_run(con, 5, lambda *a, **k: None)
     assert sorted(done["copied"]) == ["idea-kept.md", "idea-new.md"] and done["skipped"] == ["idea-edited.md"]
-    assert done["counts"] == {"ideas_created": 1, "ideas_updated": 1, "learnings_created": 0, "learnings_updated": 0}
+    assert done["counts"] == {"ideas_created": 1, "ideas_updated": 1, "learnings_created": 0, "learnings_updated": 0,
+                              "events_created": 0, "events_updated": 0}
     assert edited.read_text() == "Marco changed status: trying\n"
     assert (vault / "Inbox/ideas/idea-new.md").read_text() == "from the dry run\n"
     assert con.execute("SELECT COUNT(*) FROM posts WHERE ideas_checked_at IS NOT NULL").fetchone()[0] == 2
     assert done["commit"]
     with pytest.raises(ValueError, match="already applied"):
         ideas.apply_dry_run(con, 5, lambda *a, **k: None)
+
+
+def test_event_timing_and_date_order():
+    """Coming up until the last day has passed; a month or year alone only until it begins."""
+    from datetime import date
+    today = date(2026, 10, 20)
+    cases = {("2026-10-20", ""): "upcoming", ("2026-10-19", ""): "past", ("2026-10-01", "2026-10-25"): "upcoming",
+             ("2026-11", ""): "upcoming", ("2026-10", ""): "past", ("2027", ""): "upcoming", ("2026", ""): "past",
+             ("1983-06", ""): "past", ("", ""): "undated", ("soon", ""): "undated"}
+    for (when, until), timing in cases.items():
+        assert ideas.event_timing(when, until, today) == timing, (when, until)
+    items = [{"name": n, "when": w, "until": "", "timing": ideas.event_timing(w, "", today)}
+             for n, w in (("a", "1983"), ("b", "2026-12-01"), ("c", ""), ("d", "2026-11-02"), ("e", "2026-09-30"))]
+    assert [i["name"] for i in ideas._sort_events(items)] == ["d", "b", "e", "a", "c"]

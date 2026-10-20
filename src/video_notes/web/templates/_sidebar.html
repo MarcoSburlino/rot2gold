@@ -13,6 +13,9 @@
     <a href="/learnings" {% if path.startswith('/learnings') %}aria-current="page"{% endif %}>
       Learnings <span class="count">{{ learning_count }}</span>
     </a>
+    <a href="/events" {% if path.startswith('/events') %}aria-current="page"{% endif %}>
+      Events <span class="count">{{ event_count }}</span>
+    </a>
     <a href="/videos" {% if path.startswith('/videos') %}aria-current="page"{% endif %}>
       Videos <span class="count">{{ post_count }}</span>
     </a>
@@ -45,9 +48,10 @@
                 {%- elif r.status in ('failed', 'interrupted') %}Last extract {{ r.started_at|relative_time }} failed
                 {%- elif r.status == 'stopped' %}Last extract {{ r.started_at|relative_time }} was stopped
                 {%- else %}Last extract {{ r.started_at|relative_time }}:
-                  {% if r.posts_noted or r.ideas_created or r.learnings_created -%}
+                  {% if r.posts_noted or r.ideas_created or r.learnings_created or r.events_created -%}
                     {{ r.posts_noted }} {{ 'note' if r.posts_noted == 1 else 'notes' }}, {{ r.ideas_created }} {{ 'idea' if r.ideas_created == 1 else 'ideas' }}
                     {%- if r.learnings_created %}, {{ r.learnings_created }} {{ 'learning' if r.learnings_created == 1 else 'learnings' }}{% endif %}
+                    {%- if r.events_created %}, {{ r.events_created }} {{ 'event' if r.events_created == 1 else 'events' }}{% endif %}
                   {%- else %}nothing new{% endif %}
                 {%- endif -%}
               </a>
@@ -67,7 +71,7 @@
       {% if not active %}
         <form method="post" action="/extract" class="extract">
           <button type="submit" class="button button-primary button-block">{{ icon('play') }} Extract new videos</button>
-          <p class="hint">Reads {{ 'your collection' if sidebar_conns|length == 1 else 'all ' ~ sidebar_conns|length ~ ' collections' }}, writes a note for each new video, then looks for ideas and learnings.</p>
+          <p class="hint">Reads {{ 'your collection' if sidebar_conns|length == 1 else 'all ' ~ sidebar_conns|length ~ ' collections' }}, writes a note for each new video, then looks for ideas, learnings and events.</p>
         </form>
       {% endif %}
     {% else %}

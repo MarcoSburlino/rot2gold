@@ -1156,6 +1156,24 @@ a.last-run-alert:hover {
   color: var(--alert);
 }
 
+/* Events: when and where, in mono like other dates; what's coming up reads in ink, the past in graphite. */
+.row-when {
+  color: var(--graphite);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.row-when-upcoming {
+  color: var(--ink);
+}
+
+/* "Coming up" and "Past": group labels inside the events list. */
+.rows-label {
+  padding: var(--s-3) var(--s-4) var(--s-2);
+  background: var(--paper);
+}
+
 .video-row {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;

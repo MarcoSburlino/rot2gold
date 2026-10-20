@@ -1,12 +1,12 @@
 # App spec
 
-The app is the local UI for the `vn` pipeline in this repo. Marco adds a connection (for now, a TikTok collection) and presses **Extract**. The app then runs every step the pipeline runs today: sync, fetch, OCR and transcription, note writing, and an ideas and learnings pass. It also has screens for browsing posts, notes, ideas and learnings.
+The app is the local UI for the `vn` pipeline in this repo. Marco adds a connection (for now, a TikTok collection) and presses **Extract**. The app then runs every step the pipeline runs today: sync, fetch, OCR and transcription, note writing, and a pass that finds ideas, learnings and events. It also has screens for browsing posts, notes, ideas, learnings and events.
 
 Other docs:
 
 - The pipeline stages and their decisions: `spec.md`.
 - Note writing: `note-writing.md`.
-- The ideas and learnings pass: `ideas.md`.
+- The ideas, learnings and events pass: `ideas.md`.
 
 The brain holds the knowledge. The app reads notes from it and writes notes to it, and never keeps its own copy.
 
@@ -142,7 +142,7 @@ The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool
 Each batch of notes is committed on its own, and Git is the review and undo tool.
 
 - **Review:** `git show` and Obsidian.
-- **Undo:** an "Undo this run" button and `vn undo` revert a run's commits, re-open its noted posts if their note files are gone, and clear its ideas and learnings checks. Undo refuses staged or conflicting changes and is itself a locked, recorded run.
+- **Undo:** an "Undo this run" button and `vn undo` revert a run's commits, re-open its noted posts if their note files are gone, and clear its ideas, learnings and events checks. Undo refuses staged or conflicting changes and is itself a locked, recorded run.
 
 A true "hold before commit" mode would need a staging copy of `commonplace.md` and `quotes.md`, which every batch also edits. It is not built: undo provides review after the fact without a second commit path.
 
@@ -150,7 +150,7 @@ A true "hold before commit" mode would need a staging copy of `commonplace.md` a
 
 The tracked `config.toml` holds project defaults only. Editable preferences are validated and saved atomically in gitignored `data/settings.json`, then merged over defaults and `config.toml`. The API key stays in the GNOME keyring.
 
-## Data model (schema v5)
+## Data model (schema v7)
 
 All state stays in `data/vn.sqlite`.
 
@@ -168,6 +168,7 @@ All state stays in `data/vn.sqlite`.
 - Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
 - Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/vn.sqlite.bak-v4`. `runs.kind` gains `delete`.
 - Schema v6 (2026-10-20) adds learnings: `posts.learnings_checked_at`, `runs.learnings_created`, `runs.learnings_updated`, and `batches.learned` (the posts a batch checked for learnings, so Undo clears just those). Additive, after a one-time backup `data/vn.sqlite.bak-v5`.
+- Schema v7 (2026-10-20) adds events the same way: `posts.events_checked_at`, `runs.events_created`, `runs.events_updated`, and `batches.events_seen`. Additive, after a one-time backup `data/vn.sqlite.bak-v6`.
 
 ### Changes to `posts`
 
@@ -176,6 +177,7 @@ All state stays in `data/vn.sqlite`.
   - Other platforms use `<platform>:<id>` (e.g. `yt:abc123`), so ids can't collide.
 - `ideas_checked_at`: when the ideas pass last considered the post's note for ideas. NULL means it still has to.
 - `learnings_checked_at`: the same for learnings. NULL means it still has to, whatever the note's age.
+- `events_checked_at`: the same for events, also whatever the note's age.
 
 ### Status values
 
@@ -222,7 +224,7 @@ For the selected connections, `extract.py`:
    3. Check every post of the batch in the database: either `done` with a `note_path` that exists, or `skipped`.
    4. Run `brain-index`, then `brain-index --check`.
    5. Stage only the paths that changed since the snapshot *and* are under `Resources/commonplace/` or are generated indexes. Commit as `agent: video notes batch (run N)`. Anything else that changed (Obsidian, another agent) stays unstaged.
-6. **Ideas and learnings pass.** Batches of up to 25 notes: those marked done on or after `[ideas] since` and not checked for ideas, then notes of any age not checked for learnings, each tagged with what to look for. One `claude -p` call per batch with `prompts/ideas.md` (see `ideas.md`). Each completed batch is indexed, checked and committed from `Inbox/ideas/`, `Inbox/learnings/` and the indexes as `agent: ideas pass N (run N)`.
+6. **Ideas, learnings and events pass.** Batches of up to 25 notes: those marked done on or after `[ideas] since` and not checked for ideas, then notes of any age not checked for learnings or events, each tagged with what to look for. One `claude -p` call per batch with `prompts/ideas.md` (see `ideas.md`). Each completed batch is indexed, checked and committed from `Inbox/ideas/`, `Inbox/learnings/`, `Inbox/events/` and the indexes as `agent: ideas pass N (run N)`.
 7. **Finish.** Totals the usage on the `runs` row and releases the lock.
 
 Posts that belong to no selected connection are left alone, even if they are waiting.
@@ -263,7 +265,7 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, collections in a sidebar, Settings as a card, runs linked to collections). Simplified 2026-10-20 (Marco: "the app is kind of complicated to use"): one Extract button, plain words instead of pipeline terms, technical detail folded away, no dry-run step in the app. Visual rules: `.claude/skills/design-system/` — read it before any UI change.
 
 **App shell.** A sidebar on every page (a top bar plus drawer under 768 px):
-- Ideas, Learnings and Videos with counts, and History.
+- Ideas, Learnings, Events and Videos with counts, and History.
 - **Collections**: one row per connection: its name (→ its videos), "N videos" (plus "M waiting for a note" when some are), and its last extract in words ("Last extract yesterday: 7 notes, 0 ideas", → the run). The ⋯ button opens a card with links (its videos, its history, TikTok), Name and Link, an "Advanced" fold (Firefox cookies and profile, backup video links), "Extract only this one" when there are several collections, and Remove. + adds one: link and optional name; cookies under "Private collection?". The platform choice appears only once a second platform exists.
 - **Extract new videos**: one button that reads every collection, with a sentence saying what it does. Hidden while a run holds the lock.
 - A live run widget while a run holds the lock (from the app or a terminal): what it's doing, the last log line, See progress and Stop.
@@ -274,29 +276,31 @@ Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, coll
 
 **Learnings** (`/learnings`, `/learnings/<name>`, added 2026-10-20): the same page as Ideas (`ideas.html`, labels from `KIND_PAGES` in `web/app.py`) for `~/Projects/brain/Inbox/learnings/`: what the videos taught, combined across the videos that say the same thing. While notes aren't checked for learnings, a banner says the next Extract checks them, 25 at a time, and offers "Check them now" (the same rebuild card). Its ⋯ menu holds "Delete learning…", which works like deleting an idea.
 
-**Deleting an idea** (2026-10-20): the ⋯ menu at the top right of the reading pane holds "Delete idea…", which opens a card. It deletes the idea file and removes `## Related ideas` links to it from other ideas. Ticking "Also delete its videos" also deletes those video notes from the brain and their lines in `commonplace.md`, except videos that support another idea or learning (listed as kept). Links to it under `## Related ideas`, `## Learnings behind it`, `## Use it` and `## Related learnings` are removed. Deleted videos stay in the database as `skipped` ("deleted by you with the idea …"), so Extract never writes them again; their media in `data/media/` stays. Links to them inside other video notes are left as unresolved links. It runs as a `delete` run with one brain commit, so History lists it and Undo restores the files and sets the videos back to noted (code: `src/video_notes/delete.py`, `undo.py`).
+**Events** (`/events`, `/events/<name>`, added 2026-10-20): the same page for `~/Projects/brain/Inbox/events/`: things the videos report (news, releases, history) or announce (conferences, festivals, launches). Each row shows its date and place in mono. The list is grouped **Coming up** (soonest first) until an event's last day (`until:`, else `when:`) has passed (with only a month or year, until that period begins), then **Past** (most recent first), then **No date**; the chips filter by those groups instead of by status. An upcoming event with a full date has **Add to calendar**, which downloads an `.ics` file (`/events/<name>/calendar.ics`, built by `ideas.calendar_file`). Same unchecked-notes banner and ⋯ menu as Learnings.
 
-**Videos** (`/videos`): rows with a 9:16 thumbnail, title, description, creator, date and type; a status pill only when a video isn't noted. Chips only for groups that have videos (All · Waiting · Skipped), search, and a removable "In <collection>" filter when there are several collections. **Video detail** (`/videos/<id>`): header with thumbnail, title, Open in Obsidian and Open on TikTok; the note (rendered with raw HTML switched off, wikilinks to app pages or Obsidian); a rail with frames or slides, **Ideas from this video**, **Learnings from this video**, the text and speech read from the video, and folded details.
+**Deleting an idea** (2026-10-20): the ⋯ menu at the top right of the reading pane holds "Delete idea…", which opens a card. It deletes the idea file and removes `## Related ideas` links to it from other ideas. Ticking "Also delete its videos" also deletes those video notes from the brain and their lines in `commonplace.md`, except videos that support another idea or learning (listed as kept). List links to it in any idea, learning or event (`## Related ideas`, `## Learnings behind it`, `## Use it`, `## Related learnings`, `## Learnings it shows`, `## Related events`, …) are removed. Deleted videos stay in the database as `skipped` ("deleted by you with the idea …"), so Extract never writes them again; their media in `data/media/` stays. Links to them inside other video notes are left as unresolved links. It runs as a `delete` run with one brain commit, so History lists it and Undo restores the files and sets the videos back to noted (code: `src/video_notes/delete.py`, `undo.py`).
 
-**History** (`/runs`, `/runs?conn=<id>`, `/runs/<id>`): every run as a row with a plain title ("Extract · Material", "Ideas and learnings from older notes", "Downloader update", "Deleted a learning") and one sentence of what it did ("Checked 111 videos, wrote 7 notes, 2 new learnings."); a pill only when it didn't end ok. A run page leads with that sentence (or the live stages and last log line while running), Stop or Undo (a confirmation card), and folds the Log and the Details (counts, collections, AI and its API value, brain commits, plan windows, batches). `/runs?kind=ideas` still works but isn't linked.
+**Videos** (`/videos`): rows with a 9:16 thumbnail, title, description, creator, date and type; a status pill only when a video isn't noted. Chips only for groups that have videos (All · Waiting · Skipped), search, and a removable "In <collection>" filter when there are several collections. **Video detail** (`/videos/<id>`): header with thumbnail, title, Open in Obsidian and Open on TikTok; the note (rendered with raw HTML switched off, wikilinks to app pages or Obsidian); a rail with frames or slides, **Ideas from this video**, **Learnings from this video**, **Events in this video** (only when there are some), the text and speech read from the video, and folded details.
+
+**History** (`/runs`, `/runs?conn=<id>`, `/runs/<id>`): every run as a row with a plain title ("Extract · Material", "Ideas, learnings and events from older notes", "Downloader update", "Deleted a learning") and one sentence of what it did ("Checked 111 videos, wrote 7 notes, 2 new learnings."); a pill only when it didn't end ok. A run page leads with that sentence (or the live stages and last log line while running), Stop or Undo (a confirmation card), and folds the Log and the Details (counts, collections, AI and its API value, brain commits, plan windows, batches). `/runs?kind=ideas` still works but isn't linked.
 
 ## Files
 
 ```
 docs/app-spec.md           this file
-docs/ideas.md              rules for the ideas and learnings pass
+docs/ideas.md              rules for the ideas, learnings and events pass
 prompts/write-notes.md     prompt for one note-writing batch
-prompts/ideas.md           prompt for the ideas and learnings pass
+prompts/ideas.md           prompt for the ideas, learnings and events pass
 src/video_notes/
-  db.py                    schema v5, migration, WAL                (changed)
-  delete.py                delete an idea or learning and, optionally, its videos
+  db.py                    schema v7, migration, WAL                (changed)
+  delete.py                delete an idea, learning or event and, optionally, its videos
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
   cli.py                   extract, ui, conn add|list|rm, lock      (changed)
   lock.py events.py errors.py
   extract.py               the Extract run
   runs.py                  shared lock, run row and final status
   notes.py                 note-writing batches
-  ideas.py                 ideas and learnings pass; reading idea and learning notes
+  ideas.py                 ideas, learnings and events pass; reading their notes; event dates and .ics
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
   secrets.py               keyring access through secret-tool
   settings.py              validated preferences in data/settings.json

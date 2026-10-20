@@ -1,14 +1,16 @@
-"""Find ideas (things to do) and learnings (things understood) across finished notes, and commit each batch.
+"""Find ideas (things to do), learnings (things understood) and events (things that happened or will happen)
+across finished notes, and commit each batch.
 
-One pass looks for both kinds, so the same Claude call can link a learning to the ideas that apply it.
-Each kind has its own folder and file prefix: Inbox/ideas/idea-*.md and Inbox/learnings/learning-*.md.
+One pass looks for all three kinds, so the same Claude call can link them to each other.
+Each kind has its own folder and file prefix: Inbox/ideas/idea-*.md, Inbox/learnings/learning-*.md
+and Inbox/events/event-*.md.
 """
 
 import hashlib
 import json
 import re
 import shutil
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from . import brain, db, notefile, notes
@@ -22,7 +24,13 @@ REPORT_SCHEMA = {"type": "object", "properties": {
     "required": ["created", "updated", "considered", "notes"]}
 
 
-KINDS = {"idea": "Inbox/ideas", "learning": "Inbox/learnings"}
+KINDS = {"idea": "Inbox/ideas", "learning": "Inbox/learnings", "event": "Inbox/events"}
+# Per kind: the posts column set once a note was checked for it, and the name its post ids go under
+# in a batch row and in a dry-run manifest ("considered" is the ideas check, from before the others existed).
+CHECKS = {"idea": ("ideas_checked_at", "considered"), "learning": ("learnings_checked_at", "learned"),
+          "event": ("events_checked_at", "events_seen")}
+# The runs counters: ideas_created, ideas_updated, learnings_created, …
+COUNTERS = tuple(f"{kind}s_{action}" for kind in KINDS for action in ("created", "updated"))
 
 
 def kind_dir(kind: str) -> Path:
@@ -34,7 +42,7 @@ def ideas_dir() -> Path:
 
 
 def kind_of(name: str) -> str | None:
-    """'idea-try-x' → 'idea', 'learning-y.md' → 'learning', anything else → None."""
+    """'idea-try-x' → 'idea', 'learning-y.md' → 'learning', 'event-z' → 'event', anything else → None."""
     prefix = Path(name).name.split("-", 1)[0]
     return prefix if prefix in KINDS and "-" in Path(name).name else None
 
@@ -59,11 +67,12 @@ def themes() -> dict[str, list[str]]:
 
 
 def candidates_new(con, conn_ids=None, cfg=None) -> list[str]:
-    """Notes new since `[ideas] since` not yet checked for ideas, then notes of any age not yet
-    checked for learnings: so Extract also works through older notes for learnings, batch by batch."""
+    """Notes new since `[ideas] since` not yet checked for ideas, then notes of any age not yet checked
+    for learnings or events: so Extract also works through older notes for those, batch by batch."""
     since = (cfg or load())["ideas"]["since"]
     sql = ("SELECT p.id FROM posts p WHERE p.status = 'done' AND p.note_path IS NOT NULL"
-           " AND ((p.ideas_checked_at IS NULL AND substr(p.updated_at, 1, 10) >= ?) OR p.learnings_checked_at IS NULL)")
+           " AND ((p.ideas_checked_at IS NULL AND substr(p.updated_at, 1, 10) >= ?)"
+           " OR p.learnings_checked_at IS NULL OR p.events_checked_at IS NULL)")
     args = [since]
     if conn_ids is not None:
         if not conn_ids:
@@ -71,7 +80,7 @@ def candidates_new(con, conn_ids=None, cfg=None) -> list[str]:
         sql += (f" AND EXISTS (SELECT 1 FROM connection_posts cp WHERE cp.post_id = p.id"
                 f" AND cp.connection_id IN ({db.placeholders(conn_ids)}))")
         args.extend(conn_ids)
-    # New notes (due for ideas) first, then the older ones waiting only for learnings.
+    # New notes (due for ideas) first, then the older ones waiting only for learnings or events.
     order = " ORDER BY NOT (p.ideas_checked_at IS NULL AND substr(p.updated_at, 1, 10) >= ?), p.rowid"
     return [r[0] for r in con.execute(sql + order, args + [since])]
 
@@ -84,7 +93,7 @@ def candidates_rebuild(con, chosen: list[str] | None) -> list[str]:
         raise ValueError(f"Unknown themes: {', '.join(sorted(unknown))}. Known themes: {', '.join(mapping)}")
     names = {name for theme in (chosen if chosen is not None else mapping) for name in mapping[theme]}
     return [r["id"] for r in con.execute("SELECT id, note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL"
-                                           " AND (ideas_checked_at IS NULL OR learnings_checked_at IS NULL) ORDER BY rowid")
+                                           f" AND ({unchecked_sql()}) ORDER BY rowid")
             if Path(r["note_path"]).stem in names]
 
 
@@ -125,31 +134,47 @@ def read_manifest(folder: Path) -> dict:
     return json.loads(path.read_text()) if path.is_file() else {}
 
 
+def unchecked_sql(kinds=KINDS) -> str:
+    """'ideas_checked_at IS NULL OR …': a note still to check for any of `kinds`."""
+    return " OR ".join(f"{CHECKS[kind][0]} IS NULL" for kind in kinds)
+
+
 def note_files(folder: Path) -> list[Path]:
-    """Idea and learning files directly inside `folder` (a dry run keeps both kinds side by side)."""
+    """Idea, learning and event files directly inside `folder` (a dry run keeps the kinds side by side)."""
     return sorted(p for kind in KINDS for p in folder.glob(f"{kind}-*.md"))
 
 
 def _checks(con, ids) -> dict[str, dict]:
-    """Which checks each post still needs: {'ideas': bool, 'learnings': bool}."""
-    rows = con.execute(f"SELECT id, ideas_checked_at, learnings_checked_at FROM posts WHERE id IN ({db.placeholders(ids)})",
-                       list(ids)) if ids else []
-    return {r["id"]: {"ideas": r["ideas_checked_at"] is None, "learnings": r["learnings_checked_at"] is None} for r in rows}
+    """Which checks each post still needs: {'idea': bool, 'learning': bool, 'event': bool}."""
+    columns = ", ".join(column for column, _ in CHECKS.values())
+    rows = con.execute(f"SELECT id, {columns} FROM posts WHERE id IN ({db.placeholders(ids)})", list(ids)) if ids else []
+    return {r["id"]: {kind: r[column] is None for kind, (column, _) in CHECKS.items()} for r in rows}
 
 
-def _mark(con, ideas_ids, learning_ids) -> None:
+def _mark(con, checked: dict[str, list]) -> None:
+    """Mark posts checked, per kind: {'idea': [post ids], 'learning': [...], 'event': [...]}."""
     stamp = db.now()
-    con.executemany("UPDATE posts SET ideas_checked_at = ? WHERE id = ? AND ideas_checked_at IS NULL",
-                    [(stamp, pid) for pid in ideas_ids])
-    con.executemany("UPDATE posts SET learnings_checked_at = ? WHERE id = ? AND learnings_checked_at IS NULL",
-                    [(stamp, pid) for pid in learning_ids])
+    for kind, ids in checked.items():
+        column = CHECKS[kind][0]
+        con.executemany(f"UPDATE posts SET {column} = ? WHERE id = ? AND {column} IS NULL", [(stamp, pid) for pid in ids])
     con.commit()
+
+
+def look_for(needs: dict) -> str:
+    """What the prompt asks for in a note: 'ideas, learnings and events', 'learnings and events', …"""
+    wanted = [f"{kind}s" for kind in KINDS if needs.get(kind)] or ["learnings", "events"]
+    return ", ".join(wanted[:-1]) + " and " + wanted[-1] if len(wanted) > 1 else wanted[0]
+
+
+def counts(result: dict) -> dict:
+    """A pass result as the runs counters: {'ideas_created': 2, …, 'events_updated': 0}."""
+    return {key: len(result.get(key.removeprefix("ideas_"), [])) for key in COUNTERS}  # ideas use "created" and "updated"
 
 
 def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> dict:
     """Copy a reviewed dry run into the brain and mark its notes checked, without calling Claude again.
 
-    An idea or learning Marco changed (or deleted) after the dry run is skipped, so his edits are never overwritten.
+    An item Marco changed (or deleted) after the dry run is skipped, so his edits are never overwritten.
     """
     folder = dry_run_dir(run_id)
     manifest = read_manifest(folder)
@@ -160,7 +185,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
     base = manifest.get("base", {})
     before = brain.snapshot()
     copied, skipped = [], []
-    counts = dict.fromkeys(("ideas_created", "ideas_updated", "learnings_created", "learnings_updated"), 0)
+    counts = dict.fromkeys(COUNTERS, 0)
     for src in note_files(folder):
         target = kind_dir(kind_of(src.name))
         target.mkdir(parents=True, exist_ok=True)
@@ -174,19 +199,20 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
         copied.append(src.name)
         counts[f"{kind_of(src.name)}s_{'updated' if current else 'created'}"] += 1
         report(f"{'updated' if current else 'created'} {kind_of(src.name)} {src.name}")
-    # Dry runs from before learnings existed list only "considered" (checked for ideas).
-    needs = _checks(con, set(manifest.get("considered", [])) | set(manifest.get("learned", [])))
-    considered = [pid for pid in manifest.get("considered", []) if needs.get(pid, {}).get("ideas")]
-    learned = [pid for pid in manifest.get("learned", []) if needs.get(pid, {}).get("learnings")]
-    _mark(con, considered, learned)
-    sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS, f"agent: ideas and learnings from dry run {run_id}")
+    # Older dry runs list only "considered" (checked for ideas), or no events.
+    needs = _checks(con, {pid for _, key in CHECKS.values() for pid in manifest.get(key, [])})
+    checked = {kind: [pid for pid in manifest.get(key, []) if needs.get(pid, {}).get(kind)] for kind, (_, key) in CHECKS.items()}
+    _mark(con, checked)
+    sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS, f"agent: ideas, learnings and events from dry run {run_id}")
     if sha:
         report(f"brain commit {sha}: {len(changed)} files")
     notes.add_commit(con, apply_run_id, sha)
-    db.add_batch(con, apply_run_id, "apply", 1, post_ids=[str(run_id)], considered=considered, learned=learned)
+    db.add_batch(con, apply_run_id, "apply", 1, post_ids=[str(run_id)], considered=checked["idea"],
+                 learned=checked["learning"], events_seen=checked["event"])
     manifest["applied"] = sha or "nothing to commit"
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
-    return {"copied": copied, "skipped": skipped, "counts": counts, "considered": considered, "learned": learned, "commit": sha}
+    return {"copied": copied, "skipped": skipped, "counts": counts, "commit": sha,
+            **{key: checked[kind] for kind, (_, key) in CHECKS.items()}}
 
 
 def _known(kind: str, folder: Path | None) -> list[dict]:
@@ -201,37 +227,39 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
     """Run one Claude call per batch and keep finished work on a usage limit."""
     size = max(1, int(cfg["ideas"]["batch_size"]))
     batches = [post_ids[i:i + size] for i in range(0, len(post_ids), size)]
-    result = {"created": [], "updated": [], "learnings_created": [], "learnings_updated": [], "considered": []}
+    result = {"created": [], "updated": [], "considered": []} | {key: [] for key in COUNTERS if not key.startswith("ideas_")}
     folder = dry_run_dir(run_id) if dry_run else None
     if dry_run:
         folder.mkdir(parents=True, exist_ok=True)
         manifest = read_manifest(folder) or {
-            "run_id": run_id, "considered": [], "learned": [],
-            "base": {p.name: _sha(p) for kind in KINDS for p in kind_dir(kind).glob(f"{kind}-*.md")}}
-        manifest.setdefault("learned", [])
+            "run_id": run_id, "base": {p.name: _sha(p) for kind in KINDS for p in kind_dir(kind).glob(f"{kind}-*.md")}}
+        for _, key in CHECKS.values():
+            manifest.setdefault(key, [])
     else:
-        kind_dir("learning").mkdir(parents=True, exist_ok=True)
+        for kind in KINDS:
+            kind_dir(kind).mkdir(parents=True, exist_ok=True)
     for n, batch in enumerate(batches, start=1):
         report(f"ideas batch {n}/{len(batches)}: {' '.join(batch)}")
         before = brain.snapshot()  # in a dry run too: proves the brain was left alone
         rows = con.execute(f"SELECT id, note_path FROM posts WHERE id IN ({db.placeholders(batch)})", batch)
         paths = {r["id"]: r["note_path"] for r in rows}
         needs = _checks(con, batch)
-        look_for = {pid: " and ".join(k for k in ("ideas", "learnings") if needs.get(pid, {}).get(k)) or "learnings"
-                    for pid in batch}
-        mode = ("This is a dry run. Write every idea and learning you would create or update into "
+        mode = ("This is a dry run. Write every idea, learning and event you would create or update into "
                 f"{folder}. For updates, write a full copy under the existing file name. Change nothing in ~/Projects/brain."
-                if dry_run else f"Write ideas into {ideas_dir()} and learnings into {kind_dir('learning')}.")
+                if dry_run else f"Write ideas into {ideas_dir()}, learnings into {kind_dir('learning')}"
+                                f" and events into {kind_dir('event')}.")
         # Re-read every batch: the previous batch may have created or updated some.
-        known_ideas, known_learnings = _known("idea", folder), _known("learning", folder)
+        known = {kind: _known(kind, folder) for kind in KINDS}
         prompt = notes.render("ideas.md", count=len(batch),
-                              notes="\n".join(f"{pid}  {paths.get(pid) or ''}  [{look_for[pid]}]" for pid in batch),
+                              notes="\n".join(f"{pid}  {paths.get(pid) or ''}  [{look_for(needs.get(pid, {}))}]" for pid in batch),
                               today=date.today().isoformat(), ideas_dir=folder or ideas_dir(),
-                              learnings_dir=folder or kind_dir("learning"), mode=mode,
+                              learnings_dir=folder or kind_dir("learning"), events_dir=folder or kind_dir("event"), mode=mode,
                               max_new=cfg["ideas"]["max_new_per_pass"],
                               max_new_learnings=cfg["ideas"].get("max_new_learnings_per_pass", 8),
-                              existing_count=len(known_ideas), existing=catalog(known_ideas),
-                              existing_learnings_count=len(known_learnings), existing_learnings=catalog(known_learnings))
+                              max_new_events=cfg["ideas"].get("max_new_events_per_pass", 8),
+                              existing_count=len(known["idea"]), existing=catalog(known["idea"]),
+                              existing_learnings_count=len(known["learning"]), existing_learnings=catalog(known["learning"]),
+                              existing_events_count=len(known["event"]), existing_events=catalog(known["event"]))
         limit = None
         try:
             res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(ROOT),
@@ -245,20 +273,20 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
         if res:
             report(f"ideas batch {n} usage: {notes.describe_usage(res)}")
         structured = (res.structured or {}) if res else {}
-        batch_counts = dict.fromkeys(("ideas_created", "ideas_updated", "learnings_created", "learnings_updated"), 0)
+        batch_counts = dict.fromkeys(COUNTERS, 0)
         names = notefile.brain_names()
         for key in ("created", "updated"):
             for item in structured.get(key, []):
                 kind = kind_of(item)
                 path = _file_path(item, folder or kind_dir(kind)) if kind else None
                 if path is None:
-                    report(f"reported {key} file is not an idea or learning in its folder, or is missing: {item}", level="warn")
+                    report(f"reported {key} file is not an idea, learning or event in its folder, or is missing: {item}", level="warn")
                     continue
-                result[key if kind == "idea" else f"learnings_{key}"].append(str(path))
+                result[key if kind == "idea" else f"{kind}s_{key}"].append(str(path))
                 batch_counts[f"{kind}s_{key}"] += 1
                 report(f"{key} {kind} {path.name}")
                 meta = notefile.read(path, head_only=True).meta
-                for field in ("description", "support", "sources"):
+                for field in ("description", "support", "sources") + (("when",) if kind == "event" else ()):
                     if not meta.get(field):
                         report(f"{path.name}: missing {field} front matter", level="warn")
                 for source in _source_names(meta.get("sources")):
@@ -268,24 +296,24 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
             report(f"  {remark}")
         considered = set(structured.get("considered", [])) & set(batch)
         result["considered"].extend(pid for pid in batch if pid in considered)
-        checked_ideas = [pid for pid in batch if pid in considered and needs.get(pid, {}).get("ideas")]
-        checked_learnings = [pid for pid in batch if pid in considered and needs.get(pid, {}).get("learnings")]
+        checked = {kind: [pid for pid in batch if pid in considered and needs.get(pid, {}).get(kind)] for kind in KINDS}
         if dry_run:
-            manifest["considered"] += checked_ideas
-            manifest["learned"] += checked_learnings
+            for kind, (_, key) in CHECKS.items():
+                manifest[key] += checked[kind]
             (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
             touched = brain.changed_since(before, ("",))
             if touched:  # never committed; Marco decides what to keep
                 report(f"brain files changed during the dry run (by the agent, or by you in Obsidian; nothing was committed): {', '.join(touched)}", level="error")
         else:
-            _mark(con, checked_ideas, checked_learnings)
+            _mark(con, checked)
             sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS,
                                                    f"agent: ideas pass {n} (run {run_id})")
             notes.add_commit(con, run_id, sha)
             if sha:
                 report(f"brain commit {sha}: {len(changed)} files")
-        db.add_batch(con, run_id, "ideas", n, batch, considered=() if dry_run else checked_ideas,
-                     learned=() if dry_run else checked_learnings, res=res, error=limit)
+        saved = {} if dry_run else checked
+        db.add_batch(con, run_id, "ideas", n, batch, considered=saved.get("idea", ()), learned=saved.get("learning", ()),
+                     events_seen=saved.get("event", ()), res=res, error=limit)
         if run_id:
             con.execute("UPDATE runs SET " + ", ".join(f"{k} = {k} + ?" for k in batch_counts) + " WHERE id = ?",
                         (*batch_counts.values(), run_id))
@@ -303,11 +331,55 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
 
 
 def catalog(items: list[dict]) -> str:
-    """One line per existing idea or learning, for the prompt: enough to compare a candidate with all of them."""
+    """One line per existing item of a kind, for the prompt: enough to compare a candidate with all of them.
+    Events also give their date, so the same happening is recognised even under another name."""
     if not items:
         return "(none yet)"
-    return "\n".join(f"- {i['name']}.md · {i['title']} · {i['description'] or '—'} · {i['status']} · "
+    return "\n".join(f"- {i['name']}.md · {i['title']} · " + (f"{i['when'] or 'no date'} · " if i["kind"] == "event" else "")
+                     + f"{i['description'] or '—'} · {i['status']} · "
                      + (", ".join(i["sources"]) or "no sources") for i in sorted(items, key=lambda i: i["name"]))
+
+
+DATE = re.compile(r"\d{4}(-\d{2}(-\d{2})?)?")
+
+
+def event_timing(when: str, until: str = "", today: date | None = None) -> str:
+    """'upcoming' until the event's last day has passed, then 'past'; 'undated' without a usable date.
+
+    A date known only by month or year ('2026-10', '1983') is upcoming only until that period begins:
+    news "from October" read in October has most likely happened already.
+    """
+    end = until if DATE.fullmatch(until or "") else when
+    if not DATE.fullmatch(end or ""):
+        return "undated"
+    now = (today or date.today()).isoformat()[:len(end)]
+    return "upcoming" if end > now or (end == now and len(end) == 10) else "past"
+
+
+def _sort_events(items: list[dict]) -> list[dict]:
+    """Coming up first (soonest first), then past (most recent first), then those without a date."""
+    upcoming = sorted((i for i in items if i["timing"] == "upcoming"), key=lambda i: i["when"])
+    past = sorted((i for i in items if i["timing"] == "past"), key=lambda i: i["until"] or i["when"], reverse=True)
+    return upcoming + past + [i for i in items if i["timing"] == "undated"]
+
+
+def calendar_file(item: dict) -> str | None:
+    """An iCalendar file for an upcoming event with a full date, so it can be added to a calendar."""
+    if item["timing"] != "upcoming" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["when"]):
+        return None
+    last = item["until"] if re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["until"] or "") else item["when"]
+    day = lambda value: value.replace("-", "")
+    text = lambda value: re.sub(r"([,;\\])", r"\\\1", str(value)).replace("\n", " ")
+    end = (date.fromisoformat(last) + timedelta(days=1)).isoformat()  # DTEND is the day after the last day
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//video-notes-app//events//EN", "BEGIN:VEVENT",
+             f"UID:{item['name']}@video-notes-app", f"DTSTAMP:{date.today().strftime('%Y%m%d')}T000000Z",
+             f"DTSTART;VALUE=DATE:{day(item['when'])}", f"DTEND;VALUE=DATE:{day(end)}", f"SUMMARY:{text(item['title'])}"]
+    if item["where"]:
+        lines.append(f"LOCATION:{text(item['where'])}")
+    lines += ["DESCRIPTION:" + "\\n\\n".join(text(part) for part in (item["description"],
+              "From your saved videos: check the date before relying on it.") if part), "END:VEVENT", "END:VCALENDAR"]
+    # Long lines are folded: a line break and a space every 60 characters (the limit is 75 bytes).
+    return "".join("\r\n ".join(line[i:i + 60] for i in range(0, len(line), 60)) + "\r\n" for line in lines)
 
 
 def list_items(kind: str, folder=None) -> list[dict]:
@@ -320,11 +392,18 @@ def list_items(kind: str, folder=None) -> list[dict]:
             support = int(meta.get("support", len(sources)))
         except (ValueError, TypeError):
             support = len(sources)
-        out.append({"name": path.stem, "kind": kind, "path": path, "title": note.title,
-                    "description": meta.get("description", ""), "status": meta.get("status", "new"),
-                    "support": support, "created": str(meta.get("created", "")),
-                    "updated": str(meta.get("updated", "")), "sources": sources,
-                    "tags": meta.get("tags", [])})
+        item = {"name": path.stem, "kind": kind, "path": path, "title": note.title,
+                "description": meta.get("description", ""), "status": meta.get("status", "new"),
+                "support": support, "created": str(meta.get("created", "")),
+                "updated": str(meta.get("updated", "")), "sources": sources,
+                "tags": meta.get("tags", [])}
+        if kind == "event":
+            when, until = (str(meta.get(f) or "").strip() for f in ("when", "until"))
+            item |= {"when": when, "until": until, "where": str(meta.get("where") or "").strip(),
+                     "timing": event_timing(when, until)}
+        out.append(item)
+    if kind == "event":
+        return _sort_events(out)
     return sorted(out, key=lambda x: (x["support"], x["updated"]), reverse=True)
 
 
@@ -334,3 +413,7 @@ def list_ideas(folder=None) -> list[dict]:
 
 def list_learnings(folder=None) -> list[dict]:
     return list_items("learning", folder)
+
+
+def list_events(folder=None) -> list[dict]:
+    return list_items("event", folder)

@@ -1,4 +1,4 @@
-"""Delete an idea or learning Marco no longer wants, and optionally the video notes behind it.
+"""Delete an idea, learning or event Marco no longer wants, and optionally the video notes behind it.
 
 Deleting is a recorded run with its own brain commit, so History lists it and Undo brings the
 files back. A deleted video's post stays in the database as skipped, so the next Extract
@@ -14,13 +14,13 @@ SKIP_REASON = "deleted by you with the {kind} “{title}”"
 
 
 def plan(con, name: str) -> dict:
-    """What deleting `name` would remove: the idea or learning, and which of its videos could go with it.
+    """What deleting `name` would remove: the item, and which of its videos could go with it.
 
-    A video that also supports another idea or learning is kept, so nothing else loses a source.
+    A video that also supports another idea, learning or event is kept, so nothing else loses a source.
     """
     kind = ideas.kind_of(name)
     if not kind or Path(name).name != name or not (ideas.kind_dir(kind) / f"{name}.md").is_file():
-        raise ValueError(f"No idea or learning named {name}. It may have been renamed or moved in Obsidian.")
+        raise ValueError(f"No idea, learning or event named {name}. It may have been renamed or moved in Obsidian.")
     everything = [item for k in ideas.KINDS for item in ideas.list_items(k)]
     idea = next(i for i in everything if i["name"] == name)
     used_elsewhere = {}
@@ -58,14 +58,14 @@ def _drop_list_lines(path: Path, names: set[str]) -> bool:
 
 
 def delete_idea(con, name: str, with_videos: bool, report, run_id: int) -> dict:
-    """Delete the idea or learning file (and its videos' notes), clean the lists that link to them, and commit."""
+    """Delete the idea, learning or event file (and its videos' notes), clean the lists that link to them, and commit."""
     found = plan(con, name)
     idea, videos = found["idea"], found["videos"] if with_videos else []
     before = brain.snapshot()
 
     idea["path"].unlink()
     report(f"deleted {idea['kind']} {idea['path'].name}")
-    # List entries pointing at it: Related ideas, Learnings behind it, Use it, Related learnings.
+    # List entries pointing at it: Related ideas, Learnings behind it, Use it, Related learnings, Events, Related events.
     for other in (p for kind in ideas.KINDS for p in ideas.kind_dir(kind).glob(f"{kind}-*.md")):
         if _drop_list_lines(other, {name}):
             report(f"removed the link to it from {other.name}")

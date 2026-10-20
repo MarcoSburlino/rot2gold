@@ -142,7 +142,7 @@ def test_simple_pages(sample):
             assert "Trying" not in ideas_page  # no idea is "trying", so there is no chip for it
             assert "1 older note hasn" in ideas_page and "Check them" in ideas_page  # video-one is under a theme, unchecked
             history = (await client.get("/runs")).text
-            assert "Extract · Collection 1" in history and "No new notes, no new ideas or learnings." in history
+            assert "Extract · Collection 1" in history and "No new notes, no new ideas, learnings or events." in history
             run = (await client.get("/runs/2")).text
             assert "Extract · Collection 11" in run and "<summary" in run
             panel = (await client.get("/settings/panel")).text
@@ -243,4 +243,46 @@ def test_learnings_page_video_rail_and_delete(sample, monkeypatch):
             assert "[[learning-one]]" not in (vault / "Inbox/ideas/idea-one.md").read_text()
             history = (await client.get("/runs")).text
             assert "Deleted a learning" in history and "Learning deleted." in history
+    asyncio.run(check())
+
+
+def test_events_page_groups_by_date_and_offers_a_calendar_file(sample, monkeypatch):
+    """Events sort into Coming up and Past by their date; only an upcoming dated one gets Add to calendar."""
+    import subprocess
+    from datetime import date, timedelta
+    vault = sample
+    soon = (date.today() + timedelta(days=30)).isoformat()
+    (vault / "Inbox/events").mkdir()
+    (vault / "Inbox/events/event-design-week.md").write_text(
+        f'---\ndescription: A design fair\nwhen: {soon}\nwhere: Milan, Italy\nstatus: new\n'
+        'sources:\n  - "[[video-one]]"\nsupport: 1\n---\n# Design week\n')
+    (vault / "Inbox/events/event-old-strike.md").write_text(
+        '---\ndescription: A strike\nwhen: 1983-06\nstatus: new\nsources:\n  - "[[video-one]]"\nsupport: 1\n---\n# Old strike\n')
+    for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    assert [e["timing"] for e in ideas.list_events()] == ["upcoming", "past"]
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            listing = (await client.get("/events")).text
+            assert "<h1>Events</h1>" in listing and 'href="/events" aria-current="page"' in listing
+            assert listing.index("Coming up") < listing.index("Design week") < listing.index(">Past<") < listing.index("Old strike")
+            assert "Milan, Italy" in listing and "Jun 1983" in listing and "Add to calendar" in listing
+            past = (await client.get("/events?status=past")).text
+            assert "Old strike" in past and "Design week" not in past.split('class="list-pane"')[1]
+            assert "Add to calendar" not in (await client.get("/events/event-old-strike")).text
+            ics = await client.get("/events/event-design-week/calendar.ics")
+            assert ics.status_code == 200 and ics.headers["content-type"].startswith("text/calendar")
+            assert f"DTSTART;VALUE=DATE:{soon.replace('-', '')}" in ics.text and "LOCATION:Milan\\, Italy" in ics.text
+            assert (await client.get("/events/event-old-strike/calendar.ics")).status_code == 404
+            assert (await client.get("/events/idea-one")).status_code == 404
+            video = (await client.get("/videos/101")).text
+            assert "Events in this video" in video and 'href="/events/event-design-week"' in video
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/events/event-old-strike"}
+            done = await client.post("/events/event-old-strike/delete", headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/events?msg=")
+            assert not (vault / "Inbox/events/event-old-strike.md").exists()
+            history = (await client.get("/runs")).text
+            assert "Deleted an event" in history and "Event deleted." in history
     asyncio.run(check())

@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -90,7 +90,8 @@ def plan_windows(plan_json: str | None) -> list[dict]:
     return out
 
 
-RUN_TITLES = {"extract": "Extract", "ideas": "Ideas and learnings from older notes", "ideas-dry-run": "Ideas and learnings preview",
+RUN_TITLES = {"extract": "Extract", "ideas": "Ideas, learnings and events from older notes",
+              "ideas-dry-run": "Ideas, learnings and events preview",
               "update": "Downloader update", "undo": "Undo", "delete": "Deleted an idea"}
 
 
@@ -101,8 +102,8 @@ def plural(n: int, word: str) -> str:
 def run_title(run: dict, names: dict) -> str:
     """"Extract · Material", "Ideas from older notes", …"""
     title = RUN_TITLES.get(run.get("kind"), (run.get("kind") or "Run").capitalize())
-    if run.get("kind") == "delete" and run.get("deleted_kind") == "learning":
-        title = "Deleted a learning"
+    if run.get("kind") == "delete" and run.get("deleted_kind") in ("learning", "event"):
+        title = f"Deleted {'a learning' if run['deleted_kind'] == 'learning' else 'an event'}"
     picked = [names.get(int(i), "a deleted collection") for i in (run.get("connection_ids") or "").split(",") if i.isdigit()]
     return f"{title} · {', '.join(picked)}" if run.get("kind") == "extract" and picked else title
 
@@ -117,7 +118,7 @@ def run_summary(run: dict) -> str:
                  ideas_phrase(run)]
     elif kind and kind.startswith("ideas"):
         parts = [ideas_phrase(run) + (" proposed for review" if kind == "ideas-dry-run" and
-                                      (run["ideas_created"] or run["ideas_updated"]) else "")]
+                                      any(run.get(key) for key in ideas.COUNTERS) else "")]
     elif kind == "update":
         parts = ["downloaders updated" if status == "ok" else "downloaders not updated"]
     elif kind == "delete":
@@ -133,26 +134,47 @@ def run_summary(run: dict) -> str:
 
 
 def ideas_phrase(run: dict) -> str:
-    """"2 new ideas, 1 learning updated and 3 new learnings", or "no new ideas or learnings"."""
+    """"2 new ideas, 1 learning updated and 3 new events", or "no new ideas, learnings or events"."""
     parts = []
-    for kind in ("idea", "learning"):
+    for kind in ideas.KINDS:
         created, updated = run.get(f"{kind}s_created") or 0, run.get(f"{kind}s_updated") or 0
         if created:
             parts.append(plural(created, f"new {kind}"))
         if updated:
             parts.append(f"{plural(updated, kind)} updated")
     if not parts:
-        return "no new ideas or learnings"
+        return "no new ideas, learnings or events"
     return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
 
 
 def deleted_kind(con, run: dict) -> dict:
     """A delete run, marked with what it deleted, so History can say "Deleted a learning"."""
     if run.get("kind") == "delete":
-        found = con.execute("SELECT 1 FROM run_events WHERE run_id = ? AND message LIKE 'deleted learning %' LIMIT 1",
-                            (run["id"],)).fetchone()
-        run["deleted_kind"] = "learning" if found else "idea"
+        found = con.execute("SELECT message FROM run_events WHERE run_id = ? AND (message LIKE 'deleted learning %'"
+                            " OR message LIKE 'deleted event %') LIMIT 1", (run["id"],)).fetchone()
+        run["deleted_kind"] = found["message"].split()[1] if found else "idea"
     return run
+
+
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def event_date(when: str, until: str = "") -> str:
+    """'2026-11-12' → '12 Nov 2026'; with until '2026-11-14' → '12–14 Nov 2026'; '2026-11' → 'Nov 2026'."""
+    def parts(value):
+        bits = (value or "").split("-")
+        if not ideas.DATE.fullmatch(value or "") or (len(bits) > 1 and not 1 <= int(bits[1]) <= 12):
+            return None
+        return [bits[0], MONTHS[int(bits[1]) - 1] if len(bits) > 1 else "", str(int(bits[2])) if len(bits) > 2 else ""]
+    start, end = parts(when), parts(until)
+    if not start:
+        return "Date unknown"
+    show = lambda p, year=True: " ".join(x for x in (p[2], p[1], p[0] if year else "") if x)
+    if not end or end == start:
+        return show(start)
+    if start[0] == end[0] and start[1] == end[1] and start[2] and end[2]:
+        return f"{start[2]}–{show(end)}"
+    return f"{show(start, year=start[0] != end[0])} – {show(end)}"
 
 
 def asset_version() -> str:
@@ -162,6 +184,7 @@ def asset_version() -> str:
 
 templates.env.filters["local_time"] = local_time
 templates.env.filters["relative_time"] = relative_time
+templates.env.filters["event_date"] = event_date
 templates.env.globals.update(APP_NAME=APP_NAME, LABELS=connections.LABELS, STATUSES=connections.STATUSES,
                              plan_windows=plan_windows, asset_version=asset_version, run_summary=run_summary)
 
@@ -198,7 +221,8 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
             "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES,
             "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
-            "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
+            "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()),
+            "event_count": len(ideas.list_events()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
     ctx |= {"msg": request.query_params.get("msg"), "err": request.query_params.get("err")}
     return templates.TemplateResponse(request, name, ctx)
 
@@ -541,7 +565,7 @@ async def video(request: Request, post_id: str):
     related = {kind: [r for r in ideas.list_items(kind) if stem in r["sources"]] for kind in ideas.KINDS}
     return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
                 note=note, note_html=note_html, obsidian=obsidian,
-                related_ideas=related["idea"], related_learnings=related["learning"])
+                related_ideas=related["idea"], related_learnings=related["learning"], related_events=related["event"])
 
 
 @app.get("/media/{post_id}/{name}")
@@ -562,7 +586,7 @@ def idea_rows(con, folder=None, kinds=("idea",)):
             for item in items], lookup)
 
 
-# What differs between the Ideas and the Learnings page; both use ideas.html.
+# What differs between the Ideas, Learnings and Events pages; all three use ideas.html.
 KIND_PAGES = {
     "idea": {"kind": "idea", "base": "/ideas", "label": "Ideas", "one": "idea", "many": "ideas",
              "lede": "What your saved videos keep pointing to. New ones appear here after each Extract.",
@@ -572,7 +596,13 @@ KIND_PAGES = {
                  "lede": "What your saved videos taught, combined across the videos that say the same thing.",
                  "empty": "No learnings yet. Press <strong>Extract new videos</strong> in the sidebar: each Extract also checks your notes for what they teach.",
                  "status_hint": "To mark it as kept or dropped, change <code>status</code> in Obsidian."},
+    "event": {"kind": "event", "base": "/events", "label": "Events", "one": "event", "many": "events",
+              "lede": "What your saved videos report or announce: things that happened, and things coming up.",
+              "empty": "No events yet. Press <strong>Extract new videos</strong> in the sidebar: each Extract also checks your notes for events.",
+              "status_hint": "To mark it as going, kept or dropped, change <code>status</code> in Obsidian."},
 }
+# Events are filtered by when they happen, not by status.
+EVENT_GROUPS = {"upcoming": "Coming up", "past": "Past", "undated": "No date"}
 
 
 def idea_view(request, name=None, status="all", q="", kind="idea"):
@@ -581,19 +611,23 @@ def idea_view(request, name=None, status="all", q="", kind="idea"):
     all_rows = idea_rows(con, kinds=(kind,))
     searched = [r for r in all_rows if not q.strip() or q.strip().lower() in
                 " ".join(str(r[f]) for f in ("title", "description", "name")).lower()]
-    counts = {s: sum(r["status"] == s for r in searched) for s in ("new", "trying", "kept", "dropped")}
-    rows = [r for r in searched if status not in counts or r["status"] == status]
+    if kind == "event":
+        field, options = "timing", EVENT_GROUPS
+    else:
+        field, options = "status", {"new": "New", "trying": "Trying", "kept": "Kept", "dropped": "Dropped"}
+    counts = {key: sum(r[field] == key for r in searched) for key in options}
+    rows = [r for r in searched if status not in counts or r[field] == status]
     selected = next((r for r in all_rows if r["name"] == name), None) if name else (rows[0] if rows else None)
     if name and not selected:
         return back(k["base"], err=f"No {k['one']} named {name}. It may have been renamed or moved in Obsidian.")
     html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
     removal = delete.plan(con, selected["name"]) if selected else None  # for the Delete card
-    column = "ideas_checked_at" if kind == "idea" else "learnings_checked_at"
+    column = ideas.CHECKS[kind][0]
     pending = {Path(r["note_path"]).stem for r in con.execute(
         f"SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND {column} IS NULL")}
     themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
     # Ideas: only older notes under a theme need the button (new ones are checked by Extract).
-    # Learnings: every unchecked note counts, since Extract works through them of any age.
+    # Learnings and events: every unchecked note counts, since Extract works through them of any age.
     unchecked = len(pending & {name for names in ideas.themes().values() for name in names}) if kind == "idea" else len(pending)
 
     def query(**params):
@@ -603,10 +637,12 @@ def idea_view(request, name=None, status="all", q="", kind="idea"):
     # Only statuses that have items get a chip, so a new list shows just "All 28 · New 28".
     chips = [{"label": label, "href": k["base"] + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
               "current": status == key or (key == "all" and status not in counts)}
-             for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))
+             for key, label in {"all": "All", **options}.items()
              if key == "all" or counts[key] or status == key]
+    calendar = selected and kind == "event" and ideas.calendar_file(selected) is not None
     return page(request, "ideas.html", k=k, rows=rows, selected=selected, html=html, removal=removal, themes=themes,
-                unchecked=unchecked, chips=chips, keep=query(status=status, q=q), status=status, q=q, detail_page=bool(name))
+                unchecked=unchecked, chips=chips, keep=query(status=status, q=q), status=status if status in counts else "",
+                q=q, detail_page=bool(name), groups=EVENT_GROUPS, calendar=calendar)
 
 
 @app.get("/ideas", response_class=HTMLResponse)
@@ -617,6 +653,11 @@ async def idea_index(request: Request, status: str = "all", q: str = ""):
 @app.get("/learnings", response_class=HTMLResponse)
 async def learning_index(request: Request, status: str = "all", q: str = ""):
     return idea_view(request, status=status, q=q, kind="learning")
+
+
+@app.get("/events", response_class=HTMLResponse)
+async def event_index(request: Request, status: str = "all", q: str = ""):
+    return idea_view(request, status=status, q=q, kind="event")
 
 
 @app.post("/ideas/rebuild")
@@ -646,9 +687,9 @@ async def idea_preview(request: Request, run_id: int):
         note = notefile.read(item["path"])
         item["html"] = notefile.render(note.body, note_links(con))
         item["is_update"] = (ideas.kind_dir(item["kind"]) / item["path"].name).is_file()
-    rows.sort(key=lambda item: item["is_update"])  # new ideas and learnings first
+    rows.sort(key=lambda item: item["is_update"])  # new items first
     manifest = ideas.read_manifest(folder) if folder.is_dir() else {}
-    checked = len(set(manifest.get("considered", [])) | set(manifest.get("learned", [])))
+    checked = len({pid for _, key in ideas.CHECKS.values() for pid in manifest.get(key, [])})
     return page(request, "idea-preview.html", rows=rows, run_id=run_id, manifest=manifest, checked=checked)
 
 
@@ -720,6 +761,31 @@ async def learning_detail(request: Request, name: str, status: str = "all", q: s
     if not name.startswith("learning-") or Path(name).name != name:
         return HTMLResponse("Not found", status_code=404)
     return idea_view(request, name, status, q, kind="learning")
+
+
+@app.post("/events/{name}/delete")
+def delete_event(request: Request, name: str, with_videos: str = Form("")):
+    if ideas.kind_of(name) != "event":
+        return HTMLResponse("Not found", status_code=404)
+    return delete_item(request, name, with_videos)
+
+
+@app.get("/events/{name}/calendar.ics")
+def event_calendar(name: str):
+    """Add to calendar: an .ics file for an upcoming event with a full date."""
+    item = next((e for e in ideas.list_events() if e["name"] == name), None) if ideas.kind_of(name) == "event" else None
+    text = ideas.calendar_file(item) if item else None
+    if not text:
+        return HTMLResponse("Not found", status_code=404)
+    return Response(text, media_type="text/calendar",
+                    headers={"Content-Disposition": f'attachment; filename="{name.removeprefix("event-")}.ics"'})
+
+
+@app.get("/events/{name}", response_class=HTMLResponse)
+async def event_detail(request: Request, name: str, status: str = "all", q: str = ""):
+    if not name.startswith("event-") or Path(name).name != name:
+        return HTMLResponse("Not found", status_code=404)
+    return idea_view(request, name, status, q, kind="event")
 
 
 @app.get("/runs", response_class=HTMLResponse)

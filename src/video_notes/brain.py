@@ -14,9 +14,9 @@ from urllib.parse import quote
 from .config import brain_dir
 from .errors import BrainError, ToolMissing
 
-# Paths a note-writing batch or an ideas pass (ideas and learnings) may commit (relative to the brain).
+# Paths a note-writing batch or an ideas pass (ideas, learnings and events) may commit (relative to the brain).
 NOTE_PATHS = ("Resources/commonplace/",)
-IDEA_PATHS = ("Inbox/ideas/", "Inbox/learnings/")
+IDEA_PATHS = ("Inbox/ideas/", "Inbox/learnings/", "Inbox/events/")
 INDEX_FILES = ("index.md", "Resources/resources-index.md", "Inbox/inbox-index.md")
 
 

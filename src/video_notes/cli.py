@@ -163,8 +163,7 @@ def cmd_ideas(args) -> None:
     if args.action == "themes":
         pending = {Path(r[0]).stem for r in con.execute(
             "SELECT note_path FROM posts WHERE status = 'done'"
-            " AND (ideas_checked_at IS NULL OR learnings_checked_at IS NULL)"
-            " AND note_path IS NOT NULL")}
+            f" AND ({ideas.unchecked_sql()}) AND note_path IS NOT NULL")}
         for theme, names in ideas.themes().items():
             unchecked = len(set(names) & pending)
             print(f"{theme}: {unchecked} of {len(names)} not checked")
@@ -180,8 +179,9 @@ def cmd_ideas(args) -> None:
                 raise SystemExit(str(exc)) from None
             run.counts.update(done["counts"])
             run.report.set_stage("done")
-        print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas and learnings copied, {len(done['skipped'])} skipped,"
-              f" {len(set(done['considered']) | set(done['learned']))} notes marked checked; commit {done['commit'] or '-'}")
+        marked = {pid for _, key in ideas.CHECKS.values() for pid in done[key]}
+        print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas, learnings and events copied,"
+              f" {len(done['skipped'])} skipped, {len(marked)} notes marked checked; commit {done['commit'] or '-'}")
         return
     ids = conn_ids(args.conn) if args.action == "pass" else None
     chosen = ([x.strip() for x in args.themes.split(",") if x.strip()] if args.themes else None)
@@ -198,14 +198,12 @@ def cmd_ideas(args) -> None:
         if todo:
             api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
             result = ideas.run_pass(run.con, todo, cfg, run.report, run.run_id, args.dry_run, api_key)
-            run.counts["ideas_created"] = len(result["created"])
-            run.counts["ideas_updated"] = len(result["updated"])
-            run.counts["learnings_created"] = len(result["learnings_created"])
-            run.counts["learnings_updated"] = len(result["learnings_updated"])
+            run.counts.update(ideas.counts(result))
         run.report.set_stage("done")
     row = run.row()
     print(f"run {row['id']} {row['status']}: ideas created {row['ideas_created']}, updated {row['ideas_updated']};"
-          f" learnings created {row['learnings_created']}, updated {row['learnings_updated']}"
+          f" learnings created {row['learnings_created']}, updated {row['learnings_updated']};"
+          f" events created {row['events_created']}, updated {row['events_updated']}"
           + (f"; {row['error']}" if row["error"] else ""))
     if row["status"] == "failed":
         raise SystemExit(1)
@@ -282,7 +280,7 @@ def main() -> None:
     cp.add_argument("--yes", action="store_true")
     cp = csub.add_parser("links", help="replace a connection's hand-pasted post URLs (read from stdin)")
     cp.add_argument("id", type=int)
-    sp = sub.add_parser("ideas", help="list ideas, themes, or run the ideas pass")
+    sp = sub.add_parser("ideas", help="list ideas, learnings and events, themes, or run the pass that finds them")
     isub = sp.add_subparsers(dest="action", required=True)
     isub.add_parser("list")
     isub.add_parser("themes")
