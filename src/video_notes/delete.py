@@ -1,4 +1,4 @@
-"""Delete an idea Marco no longer wants, and optionally the video notes behind it.
+"""Delete an idea or learning Marco no longer wants, and optionally the video notes behind it.
 
 Deleting is a recorded run with its own brain commit, so History lists it and Undo brings the
 files back. A deleted video's post stays in the database as skipped, so the next Extract
@@ -10,21 +10,21 @@ from pathlib import Path
 
 from . import brain, db, ideas, notefile, notes
 
-SKIP_REASON = "deleted by you with the idea “{title}”"
+SKIP_REASON = "deleted by you with the {kind} “{title}”"
 
 
 def plan(con, name: str) -> dict:
-    """What deleting `name` would remove: the idea, and which of its videos could go with it.
+    """What deleting `name` would remove: the idea or learning, and which of its videos could go with it.
 
-    A video that also supports another idea is kept, so no other idea loses a source.
+    A video that also supports another idea or learning is kept, so nothing else loses a source.
     """
-    path = ideas.ideas_dir() / f"{name}.md"
-    if not name.startswith("idea-") or Path(name).name != name or not path.is_file():
-        raise ValueError(f"No idea named {name}. It may have been renamed or moved in Obsidian.")
-    all_ideas = ideas.list_ideas()
-    idea = next(i for i in all_ideas if i["name"] == name)
+    kind = ideas.kind_of(name)
+    if not kind or Path(name).name != name or not (ideas.kind_dir(kind) / f"{name}.md").is_file():
+        raise ValueError(f"No idea or learning named {name}. It may have been renamed or moved in Obsidian.")
+    everything = [item for k in ideas.KINDS for item in ideas.list_items(k)]
+    idea = next(i for i in everything if i["name"] == name)
     used_elsewhere = {}
-    for other in all_ideas:
+    for other in everything:
         if other["name"] != name:
             for source in other["sources"]:
                 used_elsewhere.setdefault(source, other["title"])
@@ -58,21 +58,22 @@ def _drop_list_lines(path: Path, names: set[str]) -> bool:
 
 
 def delete_idea(con, name: str, with_videos: bool, report, run_id: int) -> dict:
-    """Delete the idea file (and its videos' notes), clean the lists that link to them, and commit."""
+    """Delete the idea or learning file (and its videos' notes), clean the lists that link to them, and commit."""
     found = plan(con, name)
     idea, videos = found["idea"], found["videos"] if with_videos else []
     before = brain.snapshot()
 
     idea["path"].unlink()
-    report(f"deleted idea {idea['path'].name}")
-    for other in ideas.ideas_dir().glob("idea-*.md"):  # "## Related ideas" entries pointing at it
+    report(f"deleted {idea['kind']} {idea['path'].name}")
+    # List entries pointing at it: Related ideas, Learnings behind it, Use it, Related learnings.
+    for other in (p for kind in ideas.KINDS for p in ideas.kind_dir(kind).glob(f"{kind}-*.md")):
         if _drop_list_lines(other, {name}):
             report(f"removed the link to it from {other.name}")
 
     for video in videos:
         brain.note_file(video["note_path"]).unlink()
         con.execute("UPDATE posts SET status = 'skipped', skip_reason = ?, updated_at = ? WHERE id = ?",
-                    (SKIP_REASON.format(title=idea["title"]), db.now(), video["post_id"]))
+                    (SKIP_REASON.format(kind=idea["kind"], title=idea["title"]), db.now(), video["post_id"]))
         report(f"deleted video note {video['note_path']}")
     con.commit()
     if videos and _drop_list_lines(brain.brain_dir() / "Resources/commonplace/commonplace.md", {v["name"] for v in videos}):

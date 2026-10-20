@@ -155,13 +155,15 @@ def cmd_runs(args) -> None:
 def cmd_ideas(args) -> None:
     con = db.connect()
     if args.action == "list":
-        print(f"{'Support':>7}  {'Status':<8}  {'Name':<36}  Title")
-        for idea in ideas.list_ideas():
-            print(f"{idea['support']:>7}  {idea['status']:<8}  {idea['name']:<36}  {idea['title']}")
+        print(f"{'Support':>7}  {'Status':<8}  {'Name':<44}  Title")
+        for kind in ideas.KINDS:
+            for item in ideas.list_items(kind):
+                print(f"{item['support']:>7}  {item['status']:<8}  {item['name']:<44}  {item['title']}")
         return
     if args.action == "themes":
         pending = {Path(r[0]).stem for r in con.execute(
-            "SELECT note_path FROM posts WHERE status = 'done' AND ideas_checked_at IS NULL"
+            "SELECT note_path FROM posts WHERE status = 'done'"
+            " AND (ideas_checked_at IS NULL OR learnings_checked_at IS NULL)"
             " AND note_path IS NOT NULL")}
         for theme, names in ideas.themes().items():
             unchecked = len(set(names) & pending)
@@ -179,7 +181,7 @@ def cmd_ideas(args) -> None:
             run.counts["ideas_created"] = len(done["copied"])
             run.report.set_stage("done")
         print(f"applied dry run {args.run_id}: {len(done['copied'])} ideas copied, {len(done['skipped'])} skipped,"
-              f" {len(done['considered'])} notes marked checked; commit {done['commit'] or '-'}")
+              f" {len(set(done['considered']) | set(done['learned']))} notes marked checked; commit {done['commit'] or '-'}")
         return
     ids = conn_ids(args.conn) if args.action == "pass" else None
     chosen = ([x.strip() for x in args.themes.split(",") if x.strip()] if args.themes else None)
@@ -198,9 +200,12 @@ def cmd_ideas(args) -> None:
             result = ideas.run_pass(run.con, todo, cfg, run.report, run.run_id, args.dry_run, api_key)
             run.counts["ideas_created"] = len(result["created"])
             run.counts["ideas_updated"] = len(result["updated"])
+            run.counts["learnings_created"] = len(result["learnings_created"])
+            run.counts["learnings_updated"] = len(result["learnings_updated"])
         run.report.set_stage("done")
     row = run.row()
-    print(f"run {row['id']} {row['status']}: ideas created {row['ideas_created']}, updated {row['ideas_updated']}"
+    print(f"run {row['id']} {row['status']}: ideas created {row['ideas_created']}, updated {row['ideas_updated']};"
+          f" learnings created {row['learnings_created']}, updated {row['learnings_updated']}"
           + (f"; {row['error']}" if row["error"] else ""))
     if row["status"] == "failed":
         raise SystemExit(1)

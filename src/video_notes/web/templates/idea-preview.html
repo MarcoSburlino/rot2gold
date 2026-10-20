@@ -3,7 +3,8 @@
 {% block title %}Dry run {{ run_id }} · {{ APP_NAME }}{% endblock %}
 
 {% block main %}
-  {% set new_count = rows|rejectattr('is_update')|list|length %}
+  {% set new_ideas = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'idea')|list|length %}
+  {% set new_learnings = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'learning')|list|length %}
   {% set update_count = rows|selectattr('is_update')|list|length %}
   <a class="back-link back-link-page" href="/ideas">{{ icon('back') }} Ideas</a>
 
@@ -11,8 +12,9 @@
     <div>
       <h1>Dry run {{ run_id }}</h1>
       <p class="lede">
-        {{ new_count }} new {{ 'idea' if new_count == 1 else 'ideas' }} and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
-        from {{ (manifest.considered or [])|length }} notes.
+        {{ new_ideas }} new {{ 'idea' if new_ideas == 1 else 'ideas' }}, {{ new_learnings }} new {{ 'learning' if new_learnings == 1 else 'learnings' }}
+        and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
+        from {{ checked }} notes.
         {% if not manifest.applied %}Nothing is in your brain yet.{% endif %}
       </p>
     </div>
@@ -23,11 +25,11 @@
 
   {% if manifest.applied %}
     <p class="banner">Applied to your brain ({{ manifest.applied }}).</p>
-  {% elif rows or manifest.considered %}
+  {% elif rows or checked %}
     <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
-      <p>Apply copies these into <code>Inbox/ideas/</code> and marks the notes as checked, without calling Claude again. Ideas you edited since the dry run are skipped, never overwritten.</p>
+      <p>Apply copies these into <code>Inbox/ideas/</code> and <code>Inbox/learnings/</code> and marks the notes as checked, without calling Claude again. Anything you edited since the dry run is skipped, never overwritten.</p>
       <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>
-        Apply {{ rows|length }} {{ 'idea' if rows|length == 1 else 'ideas' }} to the brain
+        Apply {{ rows|length }} {{ 'note' if rows|length == 1 else 'notes' }} to the brain
       </button>
     </form>
   {% endif %}
@@ -35,7 +37,7 @@
   {% for idea in rows %}
     <article class="reading-pane proposal" aria-labelledby="proposal-{{ loop.index }}">
       <p class="meta-line">
-        <span class="pill {{ 'pill-mark' if not idea.is_update }}">{{ 'update' if idea.is_update else 'new' }}</span>
+        <span class="pill {{ 'pill-mark' if not idea.is_update }}">{{ 'updated' if idea.is_update else 'new' }} {{ idea.kind }}</span>
         {{ idea_pill(idea.status) if idea.status != 'new' }}
         <span>updated {{ idea.updated or 'unknown' }}</span>
       </p>
@@ -46,6 +48,6 @@
       <div class="prose">{{ idea.html|safe }}</div>
     </article>
   {% else %}
-    <div class="empty"><p>This dry run didn't propose any ideas.</p></div>
+    <div class="empty"><p>This dry run didn't propose any ideas or learnings.</p></div>
   {% endfor %}
 {% endblock %}

@@ -43,7 +43,8 @@ def recorded_run(origin, command, kind, connection_ids, cfg, quiet=False):
         held.update(run_id=run_id)
         run = Run(run_id, Reporter(run_id, quiet=quiet),
                   dict.fromkeys(("posts_listed", "posts_fetched", "posts_processed", "posts_noted",
-                                 "posts_skipped", "ideas_created", "ideas_updated"), 0), con)
+                                 "posts_skipped", "ideas_created", "ideas_updated",
+                                 "learnings_created", "learnings_updated"), 0), con)
         status, error = "ok", None
         try:
             yield run
@@ -62,7 +63,7 @@ def recorded_run(origin, command, kind, connection_ids, cfg, quiet=False):
         finally:
             try:
                 saved = run.row()
-                for key in ("ideas_created", "ideas_updated"):
+                for key in ("ideas_created", "ideas_updated", "learnings_created", "learnings_updated"):
                     run.counts[key] = max(run.counts[key], saved[key])
                 run.con.execute(f"UPDATE runs SET status = ?, error = ?, finished_at = ?,"
                                 f" {', '.join(f'{k} = ?' for k in run.counts)} WHERE id = ?",

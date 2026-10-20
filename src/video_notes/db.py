@@ -1,6 +1,6 @@
 """SQLite state. Each stage reads posts in its input status and commits after every post.
 
-Schema v4 adds per-batch usage and run undo state. See docs/app-spec.md.
+Schema v4 adds per-batch usage and run undo state; v6 adds learnings. See docs/app-spec.md.
 """
 
 import sqlite3
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from .config import DATA, DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -164,7 +164,7 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """Add v2 through v5 fields; back up an existing v1 database only once."""
+    """Add v2 through v6 fields; back up an existing v1 database only once."""
     version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
@@ -172,16 +172,23 @@ def migrate(con, path) -> None:
     if version < 2 and has_posts and not backup.exists():
         with sqlite3.connect(backup) as dst:
             con.backup(dst)
+    backup_v5 = path.with_name(path.name + ".bak-v5")
+    if version == 5 and not backup_v5.exists():
+        with sqlite3.connect(backup_v5) as dst:
+            con.backup(dst)
     con.executescript(SCHEMA_V2)
     cols = columns(con, "posts")
     if "platform" not in cols:
         con.execute("ALTER TABLE posts ADD COLUMN platform TEXT NOT NULL DEFAULT 'tiktok'")
-    if "ideas_checked_at" not in cols:
-        con.execute("ALTER TABLE posts ADD COLUMN ideas_checked_at TEXT")
+    for name in ("ideas_checked_at", "learnings_checked_at"):  # learnings: v6
+        if name not in cols:
+            con.execute(f"ALTER TABLE posts ADD COLUMN {name} TEXT")
     run_cols = columns(con, "runs")
     for name, decl in (("kind", "TEXT NOT NULL DEFAULT 'extract'"),
                        ("ideas_created", "INTEGER NOT NULL DEFAULT 0"),
                        ("ideas_updated", "INTEGER NOT NULL DEFAULT 0"),
+                       ("learnings_created", "INTEGER NOT NULL DEFAULT 0"),
+                       ("learnings_updated", "INTEGER NOT NULL DEFAULT 0"),
                        ("undone_at", "TEXT")):
         if name not in run_cols:
             con.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
@@ -195,6 +202,8 @@ def migrate(con, path) -> None:
                 con.backup(dst)
         con.executescript("BEGIN; ALTER TABLE batches RENAME TO batches_v4; DROP INDEX IF EXISTS batches_run;"
                           + SCHEMA_V4 + "INSERT INTO batches SELECT * FROM batches_v4; DROP TABLE batches_v4; COMMIT;")
+    if "learned" not in columns(con, "batches"):  # v6: the posts a batch checked for learnings
+        con.execute("ALTER TABLE batches ADD COLUMN learned TEXT")
     # The single collection of v1 becomes the first connection, with every existing post in it.
     url = load().get("collection_url") if version < 2 else None
     if url and not con.execute("SELECT 1 FROM connections").fetchone():
@@ -215,15 +224,15 @@ def migrate(con, path) -> None:
     con.commit()
 
 
-def add_batch(con, run_id, kind, n, post_ids=(), noted=(), considered=(), res=None, error=None) -> None:
+def add_batch(con, run_id, kind, n, post_ids=(), noted=(), considered=(), res=None, error=None, learned=()) -> None:
     if run_id is None:
         return
     usage = res.usage if res else {}
     plan = (((res.plan or {}).get("unifiedWindows") or {}).get("five_hour") or {}) if res else {}
-    con.execute("INSERT INTO batches (run_id, kind, n, post_ids, noted, considered, turns, duration_ms,"
+    con.execute("INSERT INTO batches (run_id, kind, n, post_ids, noted, considered, learned, turns, duration_ms,"
                 " tokens_in, tokens_out, cache_read, cache_write, cost_usd, five_hour, ok, error, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (run_id, kind, n, " ".join(post_ids), " ".join(noted), " ".join(considered),
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, kind, n, " ".join(post_ids), " ".join(noted), " ".join(considered), " ".join(learned),
                  res.turns if res else None, res.duration_ms if res else None,
                  usage.get("tokens_in"), usage.get("tokens_out"), usage.get("cache_read"), usage.get("cache_write"),
                  res.cost_usd if res else None, plan.get("utilization"), int(bool(res.ok if res else kind in ("apply", "delete")) and not error),

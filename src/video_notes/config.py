@@ -16,7 +16,8 @@ DEFAULTS = {
     "brain": {"path": "~/Projects/brain"},
     "notes": {"backend": "subscription", "model": "opus", "batch_size": 5, "max_per_run": 20,
               "stop_at_plan_usage": 0.9},
-    "ideas": {"since": "2026-10-19", "batch_size": 25, "model": "opus", "max_new_per_pass": 5},
+    "ideas": {"since": "2026-10-19", "batch_size": 25, "model": "opus", "max_new_per_pass": 5,
+              "max_new_learnings_per_pass": 8},
     "app": {"port": 8740},
 }
 

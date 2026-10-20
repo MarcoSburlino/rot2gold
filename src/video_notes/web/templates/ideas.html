@@ -1,19 +1,24 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, idea_pill, source_strip, distinct %}
-{% block title %}{{ selected.title ~ ' · ' if detail_page and selected else '' }}Ideas · {{ APP_NAME }}{% endblock %}
+{% block title %}{{ selected.title ~ ' · ' if detail_page and selected else '' }}{{ k.label }} · {{ APP_NAME }}{% endblock %}
 
 {% block main %}
   <header class="page-head">
     <div>
-      <h1>Ideas</h1>
-      <p class="lede">What your saved videos keep pointing to. New ones appear here after each Extract.</p>
+      <h1>{{ k.label }}</h1>
+      <p class="lede">{{ k.lede }}</p>
     </div>
   </header>
 
   {% if unchecked %}
     <div class="banner banner-action">
-      <p>{{ unchecked }} older {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for ideas yet.</p>
-      <button type="button" class="button button-small" data-dialog="find-ideas">Check them</button>
+      {% if k.kind == 'idea' %}
+        <p>{{ unchecked }} older {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for ideas yet.</p>
+        <button type="button" class="button button-small" data-dialog="find-ideas">Check them</button>
+      {% else %}
+        <p>{{ unchecked }} {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for learnings yet. The next Extract checks them, 25 at a time.</p>
+        <button type="button" class="button button-small" data-dialog="find-ideas">Check them now</button>
+      {% endif %}
     </div>
   {% endif %}
 
@@ -27,22 +32,22 @@
       {% endfor %}
     </nav>
     {% endif %}
-    <form method="get" action="/ideas" class="search" role="search">
+    <form method="get" action="{{ k.base }}" class="search" role="search">
       {% if status in ('new', 'trying', 'kept', 'dropped') %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
-      <label class="visually-hidden" for="idea-search">Search ideas</label>
+      <label class="visually-hidden" for="idea-search">Search {{ k.many }}</label>
       {{ icon('search') }}
-      <input id="idea-search" type="search" name="q" value="{{ q }}" placeholder="Search ideas">
+      <input id="idea-search" type="search" name="q" value="{{ q }}" placeholder="Search {{ k.many }}">
     </form>
   </div>
 
   {% if rows or selected %}
     <div class="ideas-layout" data-view="{{ 'detail' if detail_page else 'list' }}">
-      <section class="list-pane" aria-label="Ideas">
+      <section class="list-pane" aria-label="{{ k.label }}">
         {% if rows %}
           <ul class="rows">
             {% for idea in rows %}
               <li>
-                <a class="row idea-row" href="/ideas/{{ idea.name }}{{ keep }}"
+                <a class="row idea-row" href="{{ k.base }}/{{ idea.name }}{{ keep }}"
                    {% if selected and selected.name == idea.name %}aria-current="true"{% endif %}>
                   <span class="row-top">
                     <span class="row-title">{{ idea.title }}</span>
@@ -56,20 +61,20 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="empty">No ideas match. <a href="/ideas">Show all ideas</a></p>
+          <p class="empty">No {{ k.many }} match. <a href="{{ k.base }}">Show all {{ k.many }}</a></p>
         {% endif %}
       </section>
 
       {% if selected %}
         <article class="reading-pane" aria-labelledby="idea-title">
-          <a class="back-link" href="/ideas{{ keep }}">{{ icon('back') }} All ideas</a>
+          <a class="back-link" href="{{ k.base }}{{ keep }}">{{ icon('back') }} All {{ k.many }}</a>
           <div class="reading-head">
             <h2 id="idea-title" class="reading-title">{{ selected.title }}</h2>
             {% if removal %}
               <details class="menu" data-menu>
-                <summary class="icon-button" aria-label="More actions for this idea">{{ icon('more') }}</summary>
+                <summary class="icon-button" aria-label="More actions for this {{ k.one }}">{{ icon('more') }}</summary>
                 <div class="menu-list">
-                  <button type="button" class="menu-item menu-item-danger" data-dialog="delete-idea">Delete idea…</button>
+                  <button type="button" class="menu-item menu-item-danger" data-dialog="delete-idea">Delete {{ k.one }}…</button>
                 </div>
               </details>
             {% endif %}
@@ -81,7 +86,7 @@
           {{ source_strip(selected, open=True) }}
           <div class="reading-actions">
             {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
-            <p class="hint">To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.</p>
+            <p class="hint">{{ k.status_hint|safe }}</p>
           </div>
           {% set d = distinct(selected.description, selected.title) %}
           {% if d %}<p class="description">{{ d }}</p>{% endif %}
@@ -91,7 +96,7 @@
     </div>
   {% else %}
     <div class="empty">
-      <p>No ideas yet. Press <strong>Extract new videos</strong> in the sidebar: ideas appear here once a few videos point the same way.</p>
+      <p>{{ k.empty|safe }}</p>
     </div>
   {% endif %}
 {% endblock %}
@@ -100,9 +105,9 @@
 {% if removal %}
 {% set videos = removal.videos %}
 <dialog id="delete-idea" class="dialog" aria-labelledby="delete-idea-title">
-  <form method="post" action="/ideas/{{ selected.name }}/delete" class="dialog-form">
+  <form method="post" action="{{ k.base }}/{{ selected.name }}/delete" class="dialog-form">
     <div class="dialog-head">
-      <h2 id="delete-idea-title">Delete this idea?</h2>
+      <h2 id="delete-idea-title">Delete this {{ k.one }}?</h2>
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
@@ -122,7 +127,7 @@
       {% if removal.kept %}
         <p class="muted">
           {{ 'This video stays' if removal.kept|length == 1 else 'These videos stay' }} because
-          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other ideas:
+          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other ideas or learnings:
           {% for v in removal.kept %}{{ v.title }} (“{{ v.other_idea }}”){% if not loop.last %}; {% endif %}{% endfor %}.
         </p>
       {% endif %}
@@ -130,7 +135,7 @@
     </div>
     <div class="dialog-foot">
       <button type="button" class="button" data-close>Cancel</button>
-      <button type="submit" class="button button-danger" {% if active %}disabled title="A run is in progress"{% endif %}>Delete idea</button>
+      <button type="submit" class="button button-danger" {% if active %}disabled title="A run is in progress"{% endif %}>Delete {{ k.one }}</button>
     </div>
   </form>
 </dialog>
@@ -139,11 +144,11 @@
 <dialog id="find-ideas" class="dialog" aria-labelledby="find-ideas-title">
   <form method="post" action="/ideas/rebuild" class="dialog-form">
     <div class="dialog-head">
-      <h2 id="find-ideas-title">Check older notes for ideas</h2>
+      <h2 id="find-ideas-title">Check {{ 'older notes for ideas' if k.kind == 'idea' else 'notes for learnings' }}</h2>
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas {{ 'it points' if unchecked == 1 else 'they point' }} to.
+      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas and learnings {{ 'it points' if unchecked == 1 else 'they point' }} to.
         If your plan's limit gets close it stops, and next time it carries on where it left off.</p>
       <details class="advanced">
         <summary>Only some themes</summary>
@@ -162,7 +167,7 @@
     </div>
     <div class="dialog-foot">
       <button type="button" class="button" data-close>Cancel</button>
-      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>Check for ideas</button>
+      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>Check for {{ k.many }}</button>
     </div>
   </form>
 </dialog>

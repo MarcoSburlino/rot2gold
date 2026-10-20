@@ -14,9 +14,10 @@ EDITABLE = [
     dict(section="notes", key="max_per_run", label="Notes per run", help="Most notes to write in one Extract.", type="int", min=1, max=200),
     dict(section="notes", key="stop_at_plan_usage", label="Stop at plan usage", help="Stop before the next batch at this five-hour usage fraction.", type="float", min=0.5, max=1.0, step=0.01),
     dict(section="notes", key="max_budget_usd_per_batch", label="API budget per batch", help="API only; leave empty for no cap.", type="float", min=0.1, max=50, step=0.1, optional=True),
-    dict(section="ideas", key="model", label="Ideas model", help="Claude model for the ideas pass.", type="choice", choices=("opus", "sonnet", "haiku")),
-    dict(section="ideas", key="batch_size", label="Ideas batch size", help="Notes considered per ideas call.", type="int", min=5, max=50),
+    dict(section="ideas", key="model", label="Ideas model", help="Claude model for finding ideas and learnings.", type="choice", choices=("opus", "sonnet", "haiku")),
+    dict(section="ideas", key="batch_size", label="Ideas batch size", help="Notes considered per ideas and learnings call.", type="int", min=5, max=50),
     dict(section="ideas", key="max_new_per_pass", label="New ideas per pass", help="Most new ideas in each batch.", type="int", min=1, max=20),
+    dict(section="ideas", key="max_new_learnings_per_pass", label="New learnings per pass", help="Most new learnings in each batch.", type="int", min=1, max=20),
 ]
 
 

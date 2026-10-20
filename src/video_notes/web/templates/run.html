@@ -40,7 +40,7 @@
 
   {% if preview and preview.count and not preview.applied %}
     <div class="banner banner-action">
-      <p>This run only proposed ideas; they aren't in your brain.</p>
+      <p>This run only proposed ideas and learnings; they aren't in your brain.</p>
       <a class="button button-small" href="/ideas/preview/{{ run.id }}">See the {{ preview.count }} proposals</a>
     </div>
   {% endif %}
@@ -68,6 +68,8 @@
       {% if run.kind == 'extract' or run.kind.startswith('ideas') %}
         <div><dt>new ideas</dt><dd class="num" data-count="ideas_created">{{ run.ideas_created }}</dd></div>
         <div><dt>ideas updated</dt><dd class="num" data-count="ideas_updated">{{ run.ideas_updated }}</dd></div>
+        <div><dt>new learnings</dt><dd class="num" data-count="learnings_created">{{ run.learnings_created }}</dd></div>
+        <div><dt>learnings updated</dt><dd class="num" data-count="learnings_updated">{{ run.learnings_updated }}</dd></div>
       {% endif %}
     </dl>
 
@@ -134,9 +136,9 @@
         </div>
         <div class="dialog-body stack">
           {% if run.kind != 'delete' %}<p>The notes and ideas this run wrote are taken back out of your brain. Git keeps a record, so nothing is lost for good.</p>{% endif %}
-          {% if run.kind == 'delete' %}<p>The deleted idea, and any videos deleted with it, come back.</p>
+          {% if run.kind == 'delete' %}<p>The deleted {{ run.deleted_kind or 'idea' }}, and any videos deleted with it, come back.</p>
           {% elif run.kind == 'extract' %}<p>Its videos go back in the queue for the next Extract.</p>
-          {% elif run.kind.startswith('ideas') %}<p>The notes it read will be checked for ideas again next time.</p>{% endif %}
+          {% elif run.kind.startswith('ideas') %}<p>The notes it read will be checked for ideas and learnings again next time.</p>{% endif %}
           <p class="muted">If you've edited the same notes since, the undo stops and changes nothing.</p>
         </div>
         <div class="dialog-foot">

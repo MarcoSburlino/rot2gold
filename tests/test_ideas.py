@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from video_notes import brain, db, extract, ideas, lock, notefile
+from video_notes import brain, db, extract, ideas, lock, notefile, undo
 from video_notes.ai import claude_cli
 
 
@@ -49,11 +49,18 @@ def test_themes_and_candidates(vault, con):
     con.execute("INSERT INTO connection_posts VALUES (1, '2', 'x')")
     con.commit()
     cfg = {"ideas": {"since": "2026-10-19"}}
+    # Learnings have no date limit: every note not checked for learnings is a candidate, new ones for ideas first.
+    assert ideas.candidates_new(con, cfg=cfg) == ["2", "1", "3"]
+    con.execute("UPDATE posts SET learnings_checked_at = 'x'")
     assert ideas.candidates_new(con, cfg=cfg) == ["2"]
     assert ideas.candidates_new(con, [1], cfg) == ["2"]
     assert ideas.candidates_new(con, [99], cfg) == []
     assert ideas.candidates_rebuild(con, None) == ["1", "2"]
     assert ideas.candidates_rebuild(con, ["Learning and memory"]) == ["1"]
+    con.execute("UPDATE posts SET learnings_checked_at = NULL WHERE id = '3'")  # checked for ideas, not learnings
+    assert ideas.candidates_new(con, cfg=cfg) == ["2", "3"]
+    assert ideas.candidates_rebuild(con, None) == ["1", "2", "3"]
+    assert ideas._checks(con, ["2", "3"]) == {"2": {"ideas": True, "learnings": False}, "3": {"ideas": False, "learnings": True}}
     with pytest.raises(ValueError, match="Known themes:.*Learning and memory"):
         ideas.candidates_rebuild(con, ["Unknown"])
 
@@ -109,31 +116,50 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
     monkeypatch.setattr(brain, "brain_index", lambda: None)
     folder = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/ideas"
 
+    learnings = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/learnings"
+    (vault / "Inbox/learnings").mkdir(exist_ok=True)
+    (vault / "Inbox/learnings/learning-old.md").write_text(
+        "---\ndescription: Old one\nstatus: kept\nsources:\n  - \"[[video-zero]]\"\n---\n# Old learning\n")
+
     def fake(prompt, **kwargs):
-        assert "1  Resources/commonplace/videos/video-one.md" in prompt
-        assert str(folder) in prompt
+        assert "1  Resources/commonplace/videos/video-one.md  [ideas and learnings]" in prompt
+        assert str(folder) in prompt and str(learnings) in prompt
+        assert "learning-old.md · Old learning · Old one · kept · video-zero" in prompt  # existing learnings listed
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "idea-proof.md").write_text(
             "---\ndescription: Try proof\nsupport: 1\nsources:\n  - \"[[video-one]]\"\n---\n# Try proof\n")
+        (learnings / "learning-proof-helps.md").write_text(
+            "---\ndescription: Proof helps\nsupport: 1\nsources:\n  - \"[[video-one]]\"\n---\n# Proof helps\n")
         other.write_text("unrelated change\n")
-        return claude_cli.Result(ok=True, structured={"created": [str(folder / "idea-proof.md")],
+        return claude_cli.Result(ok=True, structured={"created": [str(folder / "idea-proof.md"), "learning-proof-helps.md"],
                                                       "updated": [], "considered": ["1"], "notes": ["done"]})
     monkeypatch.setattr(claude_cli, "run", fake)
     cfg = {"brain": {"path": str(vault)}, "ideas": {"batch_size": 25, "model": "opus", "max_new_per_pass": 5},
            "notes": {"backend": "subscription", "stop_at_plan_usage": 0.9}}
     messages = []
     found = ideas.run_pass(con, ["1"], cfg, lambda msg, **kw: messages.append(msg), 1, dry_run)
-    assert len(found["created"]) == 1 and found["considered"] == ["1"]
+    assert len(found["created"]) == 1 and len(found["learnings_created"]) == 1 and found["considered"] == ["1"]
     batch = con.execute("SELECT * FROM batches WHERE run_id = 1").fetchone()
     assert batch["kind"] == "ideas" and batch["post_ids"] == "1"
-    assert batch["considered"] == ("" if dry_run else "1")
-    checked = con.execute("SELECT ideas_checked_at FROM posts WHERE id = '1'").fetchone()[0]
+    assert batch["considered"] == ("" if dry_run else "1") and batch["learned"] == ("" if dry_run else "1")
+    run = con.execute("SELECT ideas_created, learnings_created FROM runs WHERE id = 1").fetchone()
+    assert tuple(run) == (1, 1)
+    checked = tuple(con.execute("SELECT ideas_checked_at, learnings_checked_at FROM posts WHERE id = '1'").fetchone())
     if dry_run:
-        assert checked is None
+        assert checked == (None, None)
         assert git("log", "-1", "--format=%s").strip() == "init"
+        manifest = ideas.read_manifest(folder)
+        assert manifest["considered"] == ["1"] and manifest["learned"] == ["1"]
+        assert "learning-old.md" in manifest["base"]
     else:
-        assert checked
-        assert git("show", "--format=", "--name-only", "HEAD").strip() == "Inbox/ideas/idea-proof.md"
+        assert all(checked)
+        assert git("show", "--format=", "--name-only", "HEAD").split() == [
+            "Inbox/ideas/idea-proof.md", "Inbox/learnings/learning-proof-helps.md"]  # learning-old was already uncommitted
+        con.execute("UPDATE runs SET status = 'ok' WHERE id = 1")
+        undo.undo_run(con, 1, lambda *a, **k: None)  # both checks come back, so the notes are read again
+        checked = tuple(con.execute("SELECT ideas_checked_at, learnings_checked_at FROM posts WHERE id = '1'").fetchone())
+        assert checked == (None, None)
+        assert not (learnings / "learning-proof-helps.md").exists()
     assert "Projects/other.md" in git("status", "--porcelain")
 
 
@@ -149,9 +175,11 @@ def test_extract_records_ideas_stage(tmp_path, con, monkeypatch):
     monkeypatch.setattr(extract, "fetch", lambda *a, **kw: 0)
     monkeypatch.setattr(extract, "process", lambda *a, **kw: 0)
     monkeypatch.setattr(ideas, "candidates_new", lambda *a, **kw: ["1"])
-    monkeypatch.setattr(ideas, "run_pass", lambda *a, **kw: {"created": ["idea-a"], "updated": [], "considered": ["1"]})
+    monkeypatch.setattr(ideas, "run_pass", lambda *a, **kw: {"created": ["idea-a"], "updated": [], "considered": ["1"],
+                                                              "learnings_created": ["l1", "l2"], "learnings_updated": []})
     row = extract.extract([1], quiet=True)
     assert row["kind"] == "extract" and row["ideas_created"] == 1 and row["status"] == "ok"
+    assert row["learnings_created"] == 2
     assert [r[0] for r in con.execute("SELECT stage FROM run_events WHERE stage IS NOT NULL AND message LIKE '── %'")][-2:] == ["ideas", "done"]
 
 

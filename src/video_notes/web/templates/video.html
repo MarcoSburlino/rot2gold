@@ -69,6 +69,19 @@
         {% endif %}
       </section>
 
+      <section class="rail-section">
+        <h2 class="rail-title">Learnings from this video</h2>
+        {% if related_learnings %}
+          <ul class="mini-list">
+            {% for learning in related_learnings %}
+              <li><a href="/learnings/{{ learning.name }}">{{ learning.title }}</a> {{ idea_pill(learning.status) }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">None yet.</p>
+        {% endif %}
+      </section>
+
       {% if images or segments %}
         <section class="rail-section">
           <h2 class="rail-title">What was read from the video</h2>

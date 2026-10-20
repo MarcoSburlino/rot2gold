@@ -57,9 +57,10 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
             todo = ideas.candidates_new(con, ids, cfg=cfg)
             if todo:
                 report.set_stage("ideas")
-                report(f"{len(todo)} notes waiting for the ideas pass")
+                report(f"{len(todo)} notes waiting to be checked for ideas and learnings")
                 api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
                 found = ideas.run_pass(con, todo, cfg, report, run_id, api_key=api_key)
                 counts["ideas_created"], counts["ideas_updated"] = len(found["created"]), len(found["updated"])
+                counts["learnings_created"], counts["learnings_updated"] = len(found["learnings_created"]), len(found["learnings_updated"])
         report.set_stage("done")
     return run.row()

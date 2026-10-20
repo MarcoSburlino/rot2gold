@@ -10,6 +10,9 @@
     <a href="/ideas" {% if path.startswith('/ideas') or path == '/' %}aria-current="page"{% endif %}>
       Ideas <span class="count">{{ idea_count }}</span>
     </a>
+    <a href="/learnings" {% if path.startswith('/learnings') %}aria-current="page"{% endif %}>
+      Learnings <span class="count">{{ learning_count }}</span>
+    </a>
     <a href="/videos" {% if path.startswith('/videos') %}aria-current="page"{% endif %}>
       Videos <span class="count">{{ post_count }}</span>
     </a>
@@ -42,8 +45,9 @@
                 {%- elif r.status in ('failed', 'interrupted') %}Last extract {{ r.started_at|relative_time }} failed
                 {%- elif r.status == 'stopped' %}Last extract {{ r.started_at|relative_time }} was stopped
                 {%- else %}Last extract {{ r.started_at|relative_time }}:
-                  {% if r.posts_noted or r.ideas_created -%}
+                  {% if r.posts_noted or r.ideas_created or r.learnings_created -%}
                     {{ r.posts_noted }} {{ 'note' if r.posts_noted == 1 else 'notes' }}, {{ r.ideas_created }} {{ 'idea' if r.ideas_created == 1 else 'ideas' }}
+                    {%- if r.learnings_created %}, {{ r.learnings_created }} {{ 'learning' if r.learnings_created == 1 else 'learnings' }}{% endif %}
                   {%- else %}nothing new{% endif %}
                 {%- endif -%}
               </a>
@@ -63,7 +67,7 @@
       {% if not active %}
         <form method="post" action="/extract" class="extract">
           <button type="submit" class="button button-primary button-block">{{ icon('play') }} Extract new videos</button>
-          <p class="hint">Reads {{ 'your collection' if sidebar_conns|length == 1 else 'all ' ~ sidebar_conns|length ~ ' collections' }}, writes a note for each new video, then looks for ideas.</p>
+          <p class="hint">Reads {{ 'your collection' if sidebar_conns|length == 1 else 'all ' ~ sidebar_conns|length ~ ' collections' }}, writes a note for each new video, then looks for ideas and learnings.</p>
         </form>
       {% endif %}
     {% else %}
@@ -78,7 +82,7 @@
       <p class="live-head">
         <span class="dot" aria-hidden="true"></span>
         {% if run %}
-          <strong>{{ {'extract': 'Extracting', 'ideas': 'Finding ideas', 'ideas-dry-run': 'Finding ideas', 'update': 'Updating downloaders', 'undo': 'Undoing'}.get(run.kind, 'Working') }}</strong>
+          <strong>{{ {'extract': 'Extracting', 'ideas': 'Checking notes', 'ideas-dry-run': 'Checking notes', 'delete': 'Deleting', 'update': 'Updating downloaders', 'undo': 'Undoing'}.get(run.kind, 'Working') }}</strong>
           <span class="live-stage">· <span data-live-stage>{{ run.stage or 'starting' }}</span></span>
         {% else %}
           <strong>Running in a terminal</strong>

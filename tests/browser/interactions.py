@@ -106,6 +106,26 @@ check("Delete idea asks first (menu closed), with the videos unticked", is_open(
 q("#delete-idea [data-close].button").click()
 check("…and Cancel keeps the idea", not is_open("delete-idea") and q(".reading-title").text == title)
 
+# 8c. Learnings: their own page in the sidebar, with the same list, menu and "check notes" card.
+d.get(B + "/learnings")
+check("the sidebar has Learnings, marked as the current page", q(".nav a[aria-current='page']").text.startswith("Learnings"), q(".nav").text)
+check("the Learnings page says what it holds", q("h1").text == "Learnings" and "taught" in q(".lede").text)
+if qs(".idea-row"):
+    qs(".idea-row")[0].click()
+    wait.until(lambda _: "/learnings/learning-" in d.current_url)
+    q(".reading-head .menu > summary").click()
+    check("a learning's ⋯ menu offers Delete learning", "Delete learning" in q(".menu-list").text)
+    ActionChains(d).send_keys(Keys.ESCAPE).perform()
+else:
+    check("with no learnings yet, the page says how they arrive", "Extract new videos" in q("main .empty").text)
+if qs(".banner-action [data-dialog='find-ideas']"):
+    check("the banner says the next Extract checks the notes", "next Extract" in q(".banner-action").text)
+    q(".banner-action [data-dialog='find-ideas']").click()
+    check("'Check them now' opens its card", is_open("find-ideas") and "learnings" in q("#find-ideas-title").text)
+    q("#find-ideas [data-close].button").click()
+    check("…and Cancel closes it", not is_open("find-ideas"))
+d.get(B + "/ideas")
+
 # 9. Filters stay while browsing ideas.
 next(e for e in qs(".chip") if e.text.startswith("New")).click()
 wait.until(lambda _: "status=new" in d.current_url)

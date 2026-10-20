@@ -90,7 +90,7 @@ def plan_windows(plan_json: str | None) -> list[dict]:
     return out
 
 
-RUN_TITLES = {"extract": "Extract", "ideas": "Ideas from older notes", "ideas-dry-run": "Ideas preview",
+RUN_TITLES = {"extract": "Extract", "ideas": "Ideas and learnings from older notes", "ideas-dry-run": "Ideas and learnings preview",
               "update": "Downloader update", "undo": "Undo", "delete": "Deleted an idea"}
 
 
@@ -101,6 +101,8 @@ def plural(n: int, word: str) -> str:
 def run_title(run: dict, names: dict) -> str:
     """"Extract · Material", "Ideas from older notes", …"""
     title = RUN_TITLES.get(run.get("kind"), (run.get("kind") or "Run").capitalize())
+    if run.get("kind") == "delete" and run.get("deleted_kind") == "learning":
+        title = "Deleted a learning"
     picked = [names.get(int(i), "a deleted collection") for i in (run.get("connection_ids") or "").split(",") if i.isdigit()]
     return f"{title} · {', '.join(picked)}" if run.get("kind") == "extract" and picked else title
 
@@ -120,7 +122,8 @@ def run_summary(run: dict) -> str:
         parts = ["downloaders updated" if status == "ok" else "downloaders not updated"]
     elif kind == "delete":
         gone = run.get("posts_skipped") or 0
-        parts = [("idea deleted" + (f" with {plural(gone, 'video')}" if gone else "")) if status == "ok" else "nothing was deleted"]
+        parts = [(f"{run.get('deleted_kind') or 'idea'} deleted" + (f" with {plural(gone, 'video')}" if gone else ""))
+                 if status == "ok" else "nothing was deleted"]
     elif kind == "undo":
         parts = ["brain changes reverted" if status == "ok" else "nothing was reverted"]
     else:
@@ -130,11 +133,26 @@ def run_summary(run: dict) -> str:
 
 
 def ideas_phrase(run: dict) -> str:
-    created, updated = run.get("ideas_created") or 0, run.get("ideas_updated") or 0
-    if not created and not updated:
-        return "no new ideas"
-    return " and ".join(p for p in (plural(created, "new idea") if created else "",
-                                    f"{updated} updated" if updated else "") if p)
+    """"2 new ideas, 1 learning updated and 3 new learnings", or "no new ideas or learnings"."""
+    parts = []
+    for kind in ("idea", "learning"):
+        created, updated = run.get(f"{kind}s_created") or 0, run.get(f"{kind}s_updated") or 0
+        if created:
+            parts.append(plural(created, f"new {kind}"))
+        if updated:
+            parts.append(f"{plural(updated, kind)} updated")
+    if not parts:
+        return "no new ideas or learnings"
+    return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
+
+
+def deleted_kind(con, run: dict) -> dict:
+    """A delete run, marked with what it deleted, so History can say "Deleted a learning"."""
+    if run.get("kind") == "delete":
+        found = con.execute("SELECT 1 FROM run_events WHERE run_id = ? AND message LIKE 'deleted learning %' LIMIT 1",
+                            (run["id"],)).fetchone()
+        run["deleted_kind"] = "learning" if found else "idea"
+    return run
 
 
 def asset_version() -> str:
@@ -180,7 +198,7 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
             "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES,
             "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
-            "idea_count": len(ideas.list_ideas()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
+            "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
     ctx |= {"msg": request.query_params.get("msg"), "err": request.query_params.get("err")}
     return templates.TemplateResponse(request, name, ctx)
 
@@ -519,9 +537,11 @@ async def video(request: Request, post_id: str):
         note = notefile.read(path)
         note_html = notefile.render(note.body, note_links(con))
         obsidian = notefile.obsidian_link(path)
-    related = [r for r in ideas.list_ideas() if post["note_path"] and Path(post["note_path"]).stem in r["sources"]]
+    stem = Path(post["note_path"]).stem if post["note_path"] else None
+    related = {kind: [r for r in ideas.list_items(kind) if stem in r["sources"]] for kind in ideas.KINDS}
     return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
-                note=note, note_html=note_html, obsidian=obsidian, related_ideas=related)
+                note=note, note_html=note_html, obsidian=obsidian,
+                related_ideas=related["idea"], related_learnings=related["learning"])
 
 
 @app.get("/media/{post_id}/{name}")
@@ -533,8 +553,8 @@ def media(post_id: str, name: str):
     return FileResponse(path)
 
 
-def idea_rows(con, folder=None):
-    items = ideas.list_ideas(folder)
+def idea_rows(con, folder=None, kinds=("idea",)):
+    items = [item for kind in kinds for item in ideas.list_items(kind, folder)]
     wanted = {name for item in items for name in item["sources"]}
     lookup = source_lookup(con, wanted)
     return decorate_ideas([item | {"source_links": [{"name": name, "url": lookup.get(name, {}).get("url")} for name in item["sources"]],
@@ -542,39 +562,61 @@ def idea_rows(con, folder=None):
             for item in items], lookup)
 
 
-def idea_view(request, name=None, status="all", q=""):
+# What differs between the Ideas and the Learnings page; both use ideas.html.
+KIND_PAGES = {
+    "idea": {"kind": "idea", "base": "/ideas", "label": "Ideas", "one": "idea", "many": "ideas",
+             "lede": "What your saved videos keep pointing to. New ones appear here after each Extract.",
+             "empty": "No ideas yet. Press <strong>Extract new videos</strong> in the sidebar: ideas appear here once a few videos point the same way.",
+             "status_hint": "To mark it as trying, kept or dropped, change <code>status</code> in Obsidian."},
+    "learning": {"kind": "learning", "base": "/learnings", "label": "Learnings", "one": "learning", "many": "learnings",
+                 "lede": "What your saved videos taught, combined across the videos that say the same thing.",
+                 "empty": "No learnings yet. Press <strong>Extract new videos</strong> in the sidebar: each Extract also checks your notes for what they teach.",
+                 "status_hint": "To mark it as kept or dropped, change <code>status</code> in Obsidian."},
+}
+
+
+def idea_view(request, name=None, status="all", q="", kind="idea"):
     con = db.connect()
-    all_rows = idea_rows(con)
+    k = KIND_PAGES[kind]
+    all_rows = idea_rows(con, kinds=(kind,))
     searched = [r for r in all_rows if not q.strip() or q.strip().lower() in
-                " ".join(str(r[k]) for k in ("title", "description", "name")).lower()]
+                " ".join(str(r[f]) for f in ("title", "description", "name")).lower()]
     counts = {s: sum(r["status"] == s for r in searched) for s in ("new", "trying", "kept", "dropped")}
     rows = [r for r in searched if status not in counts or r["status"] == status]
     selected = next((r for r in all_rows if r["name"] == name), None) if name else (rows[0] if rows else None)
     if name and not selected:
-        return back("/ideas", err=f"No idea named {name}. It may have been renamed or moved in Obsidian.")
+        return back(k["base"], err=f"No {k['one']} named {name}. It may have been renamed or moved in Obsidian.")
     html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
     removal = delete.plan(con, selected["name"]) if selected else None  # for the Delete card
+    column = "ideas_checked_at" if kind == "idea" else "learnings_checked_at"
     pending = {Path(r["note_path"]).stem for r in con.execute(
-        "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
+        f"SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND {column} IS NULL")}
     themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
-    unchecked = len(pending & {name for names in ideas.themes().values() for name in names})
+    # Ideas: only older notes under a theme need the button (new ones are checked by Extract).
+    # Learnings: every unchecked note counts, since Extract works through them of any age.
+    unchecked = len(pending & {name for names in ideas.themes().values() for name in names}) if kind == "idea" else len(pending)
 
     def query(**params):
-        params = {k: v for k, v in params.items() if v and v != "all"}
+        params = {key: v for key, v in params.items() if v and v != "all"}
         return "?" + urlencode(params) if params else ""
 
-    # Only statuses that have ideas get a chip, so a new list shows just "All 28 · New 28".
-    chips = [{"label": label, "href": "/ideas" + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
+    # Only statuses that have items get a chip, so a new list shows just "All 28 · New 28".
+    chips = [{"label": label, "href": k["base"] + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
               "current": status == key or (key == "all" and status not in counts)}
              for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))
              if key == "all" or counts[key] or status == key]
-    return page(request, "ideas.html", rows=rows, selected=selected, html=html, removal=removal, themes=themes, unchecked=unchecked,
-                chips=chips, keep=query(status=status, q=q), status=status, q=q, detail_page=bool(name))
+    return page(request, "ideas.html", k=k, rows=rows, selected=selected, html=html, removal=removal, themes=themes,
+                unchecked=unchecked, chips=chips, keep=query(status=status, q=q), status=status, q=q, detail_page=bool(name))
 
 
 @app.get("/ideas", response_class=HTMLResponse)
 async def idea_index(request: Request, status: str = "all", q: str = ""):
     return idea_view(request, status=status, q=q)
+
+
+@app.get("/learnings", response_class=HTMLResponse)
+async def learning_index(request: Request, status: str = "all", q: str = ""):
+    return idea_view(request, status=status, q=q, kind="learning")
 
 
 @app.post("/ideas/rebuild")
@@ -599,13 +641,15 @@ async def idea_preview(request: Request, run_id: int):
     folder = (root / f"run-{run_id}").resolve()
     if not folder.is_relative_to(root):
         return HTMLResponse("Not found", status_code=404)
-    rows = idea_rows(con, folder) if folder.is_dir() else []
+    rows = idea_rows(con, folder, kinds=tuple(ideas.KINDS)) if folder.is_dir() else []
     for item in rows:
         note = notefile.read(item["path"])
         item["html"] = notefile.render(note.body, note_links(con))
-        item["is_update"] = (ideas.ideas_dir() / item["path"].name).is_file()
+        item["is_update"] = (ideas.kind_dir(item["kind"]) / item["path"].name).is_file()
+    rows.sort(key=lambda item: item["is_update"])  # new ideas and learnings first
     manifest = ideas.read_manifest(folder) if folder.is_dir() else {}
-    return page(request, "idea-preview.html", rows=rows, run_id=run_id, manifest=manifest)
+    checked = len(set(manifest.get("considered", [])) | set(manifest.get("learned", [])))
+    return page(request, "idea-preview.html", rows=rows, run_id=run_id, manifest=manifest, checked=checked)
 
 
 @app.post("/ideas/preview/{run_id}/apply")
@@ -617,20 +661,20 @@ def apply_preview(run_id: int):
         with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
             run.report.set_stage("ideas")
             done = ideas.apply_dry_run(run.con, run_id, run.report, run.run_id)
-            run.counts["ideas_created"] = len(done["copied"])
+            run.counts["ideas_created"] = sum(ideas.kind_of(n) == "idea" for n in done["copied"])
+            run.counts["learnings_created"] = sum(ideas.kind_of(n) == "learning" for n in done["copied"])
             run.report.set_stage("done")
     except (ValueError, VNError) as exc:  # e.g. the lock is held: no run was recorded
         return back(f"/ideas/preview/{run_id}", err=str(exc))
     # recorded_run stores a failure in the run's history instead of raising it: check how it ended.
     if done is None:
         return back(f"/ideas/preview/{run_id}", err=run_failure(run))
-    return back("/ideas", msg=f"Applied dry run {run_id}: {len(done['copied'])} ideas written to the brain"
+    return back("/ideas", msg=f"Applied dry run {run_id}: {plural(len(done['copied']), 'note')} written to the brain"
                 + (f", {len(done['skipped'])} skipped because you changed them since" if done["skipped"] else "")
                 + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
 
 
-@app.post("/ideas/{name}/delete")
-def delete_idea(request: Request, name: str, with_videos: str = Form("")):
+def delete_item(request: Request, name: str, with_videos: str):
     """Quick (no AI): runs in the request, under the pipeline lock, as a run Undo can revert."""
     from ..runs import recorded_run
     done = None
@@ -646,8 +690,23 @@ def delete_idea(request: Request, name: str, with_videos: str = Form("")):
     if done is None:
         return back_to(request, err=run_failure(run))
     videos = len(done["videos"])
-    return back("/ideas", msg=f"Deleted “{title}”" + (f" and {videos} {'video' if videos == 1 else 'videos'}" if videos else "")
+    return back(KIND_PAGES[ideas.kind_of(name)]["base"],
+                msg=f"Deleted “{title}”" + (f" and {videos} {'video' if videos == 1 else 'videos'}" if videos else "")
                 + f". You can undo it from History.")
+
+
+@app.post("/ideas/{name}/delete")
+def delete_idea(request: Request, name: str, with_videos: str = Form("")):
+    if ideas.kind_of(name) != "idea":
+        return HTMLResponse("Not found", status_code=404)
+    return delete_item(request, name, with_videos)
+
+
+@app.post("/learnings/{name}/delete")
+def delete_learning(request: Request, name: str, with_videos: str = Form("")):
+    if ideas.kind_of(name) != "learning":
+        return HTMLResponse("Not found", status_code=404)
+    return delete_item(request, name, with_videos)
 
 
 @app.get("/ideas/{name}", response_class=HTMLResponse)
@@ -655,6 +714,13 @@ async def idea_detail(request: Request, name: str, status: str = "all", q: str =
     if not name.startswith("idea-") or Path(name).name != name:
         return HTMLResponse("Not found", status_code=404)
     return idea_view(request, name, status, q)
+
+
+@app.get("/learnings/{name}", response_class=HTMLResponse)
+async def learning_detail(request: Request, name: str, status: str = "all", q: str = ""):
+    if not name.startswith("learning-") or Path(name).name != name:
+        return HTMLResponse("Not found", status_code=404)
+    return idea_view(request, name, status, q, kind="learning")
 
 
 @app.get("/runs", response_class=HTMLResponse)
@@ -668,8 +734,10 @@ async def runs(request: Request, conn: str = "", kind: str = ""):
     if kind == "ideas":
         where.append("kind LIKE 'ideas%'")
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections")}
-    rows = [dict(r) | {"title": run_title(dict(r), names)} for r in con.execute(
+    rows = [deleted_kind(con, dict(r)) for r in con.execute(
         "SELECT * FROM runs" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT 50", args)]
+    for r in rows:
+        r["title"] = run_title(r, names)
     conn_name = names.get(int(conn)) if conn.isdigit() else None
     return page(request, "runs.html", runs=rows, active=active, conn_name=conn_name, kind=kind)
 
@@ -689,8 +757,9 @@ async def run_page(request: Request, run_id: int):
               ["ideas", "done"])
     preview = None
     if row["kind"] == "ideas-dry-run" and (folder := ideas.dry_run_dir(run_id)).is_dir():
-        preview = {"applied": ideas.read_manifest(folder).get("applied"), "count": len(list(folder.glob("idea-*.md")))}
-    return page(request, "run.html", run=dict(row), title=run_title(dict(row), names), events=events, batches=batches,
+        preview = {"applied": ideas.read_manifest(folder).get("applied"), "count": len(ideas.note_files(folder))}
+    run = deleted_kind(con, dict(row))
+    return page(request, "run.html", run=run, title=run_title(run, names), events=events, batches=batches,
                 stages=stages, names=names, active=active, preview=preview, last_event=events[-1]["id"] if events else 0)
 
 

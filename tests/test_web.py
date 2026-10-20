@@ -142,7 +142,7 @@ def test_simple_pages(sample):
             assert "Trying" not in ideas_page  # no idea is "trying", so there is no chip for it
             assert "1 older note hasn" in ideas_page and "Check them" in ideas_page  # video-one is under a theme, unchecked
             history = (await client.get("/runs")).text
-            assert "Extract · Collection 1" in history and "No new notes, no new ideas." in history
+            assert "Extract · Collection 1" in history and "No new notes, no new ideas or learnings." in history
             run = (await client.get("/runs/2")).text
             assert "Extract · Collection 11" in run and "<summary" in run
             panel = (await client.get("/settings/panel")).text
@@ -204,3 +204,43 @@ def test_ideas_prompt_lists_every_existing_idea(sample):
     text = ideas.catalog(ideas.list_ideas())
     assert "idea-one.md · Try this idea · A useful idea · new · video-one" in text
     assert "{{existing}}" in web.ROOT.joinpath("prompts/ideas.md").read_text()
+
+
+def test_learnings_page_video_rail_and_delete(sample, monkeypatch):
+    """Learnings get their own page and ⋯ menu; a video a learning uses is never deleted with an idea."""
+    import subprocess
+    vault = sample
+    (vault / "Inbox/learnings").mkdir()
+    (vault / "Inbox/learnings/learning-one.md").write_text(
+        '---\ndescription: What the video taught\nstatus: new\nupdated: 2026-10-20\n'
+        'sources:\n  - "[[video-one]]"\nsupport: 1\n---\n# Explaining shows the gaps\n\n## Use it\n\n- [[idea-one]]\n')
+    (vault / "Inbox/ideas/idea-one.md").write_text((vault / "Inbox/ideas/idea-one.md").read_text()
+                                                   + "\n## Learnings behind it\n\n- [[learning-one]]\n")
+    for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    con = web.db.connect()
+    found = web.delete.plan(con, "idea-one")
+    assert found["videos"] == [] and found["kept"][0]["other_idea"] == "Explaining shows the gaps"
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            listing = (await client.get("/learnings")).text
+            assert "<h1>Learnings</h1>" in listing and "Explaining shows the gaps" in listing
+            assert 'href="/learnings/learning-one"' in listing and "Delete learning…" in listing
+            assert "1 note hasn" in listing and "checked for learnings yet" in listing
+            assert 'href="/learnings" aria-current="page"' in listing
+            assert (await client.get("/learnings/learning-one")).status_code == 200
+            assert (await client.get("/learnings/idea-one")).status_code == 404
+            assert (await client.get("/learnings/learning-missing", follow_redirects=False)).status_code == 303
+            video = (await client.get("/videos/101")).text
+            assert "Learnings from this video" in video and 'href="/learnings/learning-one"' in video
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/learnings/learning-one"}
+            assert (await client.post("/ideas/learning-one/delete", headers=here)).status_code == 404
+            done = await client.post("/learnings/learning-one/delete", headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/learnings?msg=")
+            assert not (vault / "Inbox/learnings/learning-one.md").exists()
+            assert "[[learning-one]]" not in (vault / "Inbox/ideas/idea-one.md").read_text()
+            history = (await client.get("/runs")).text
+            assert "Deleted a learning" in history and "Learning deleted." in history
+    asyncio.run(check())
