@@ -150,7 +150,7 @@ A true "hold before commit" mode would need a staging copy of `commonplace.md` a
 
 The tracked `config.toml` holds project defaults only. Editable preferences are validated and saved atomically in gitignored `data/settings.json`, then merged over defaults and `config.toml`. The API key stays in the GNOME keyring.
 
-## Data model (schema v4)
+## Data model (schema v5)
 
 All state stays in `data/vn.sqlite`.
 
@@ -166,6 +166,7 @@ All state stays in `data/vn.sqlite`.
 - `run_events(run_id, ts, level, stage, post_id, message)`.
 - Schema v3 adds `runs.kind` (`extract`, `ideas`, `ideas-dry-run`) and `runs.ideas_created`, `runs.ideas_updated`. Existing runs default to `extract`; v2→v3 is additive and needs no backup.
 - Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
+- Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/vn.sqlite.bak-v4`. `runs.kind` gains `delete`.
 
 ### Changes to `posts`
 
@@ -264,10 +265,12 @@ Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, coll
 - **Collections**: one row per connection: its name (→ its videos), "N videos" (plus "M waiting for a note" when some are), and its last extract in words ("Last extract yesterday: 7 notes, 0 ideas", → the run). The ⋯ button opens a card with links (its videos, its history, TikTok), Name and Link, an "Advanced" fold (Firefox cookies and profile, backup video links), "Extract only this one" when there are several collections, and Remove. + adds one: link and optional name; cookies under "Private collection?". The platform choice appears only once a second platform exists.
 - **Extract new videos**: one button that reads every collection, with a sentence saying what it does. Hidden while a run holds the lock.
 - A live run widget while a run holds the lock (from the app or a terminal): what it's doing, the last log line, See progress and Stop.
-- ⚙ **Settings** opens a card with tabs: General (AI backend, models, notes per run; batch sizes, plan-usage stop and API budget under Advanced; the API key folded unless the API backend is picked), Usage (plan windows), About (downloader versions and update, brain path, Firefox profiles). Settings forms return to the page you were on with the card reopened. `/settings` renders the same panel as a page without JavaScript.
+- ⚙ **Settings** opens a card of fixed size (only the tab's content scrolls, the tabs stay put) with tabs: General (AI backend, models, notes per run; batch sizes, plan-usage stop and API budget under Advanced; the API key folded unless the API backend is picked), Usage (plan windows), About (downloader versions and update, brain path, Firefox profiles). Settings forms return to the page you were on with the card reopened. `/settings` renders the same panel as a page without JavaScript.
 - Quit.
 
 **Ideas** (`/`, `/ideas`, `/ideas/<name>`): the home page. Status chips (only statuses that have ideas) and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. When notes under the themes haven't been checked for ideas, a banner offers "Check them": a card that runs `vn ideas rebuild` (all themes, or some under a fold) and writes straight to the brain — Undo is the safety net, so the app has no dry-run step (the CLI keeps `--dry-run`, and old previews stay reachable from their run page). Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up; status is changed in Obsidian.
+
+**Deleting an idea** (2026-10-20): "Delete idea" in the reading pane opens a card. It deletes the idea file and removes `## Related ideas` links to it from other ideas. Ticking "Also delete its videos" also deletes those video notes from the brain and their lines in `commonplace.md`, except videos that support another idea (listed as kept). Deleted videos stay in the database as `skipped` ("deleted by you with the idea …"), so Extract never writes them again; their media in `data/media/` stays. Links to them inside other video notes are left as unresolved links. It runs as a `delete` run with one brain commit, so History lists it and Undo restores the files and sets the videos back to noted (code: `src/video_notes/delete.py`, `undo.py`).
 
 **Videos** (`/videos`): rows with a 9:16 thumbnail, title, description, creator, date and type; a status pill only when a video isn't noted. Chips only for groups that have videos (All · Waiting · Skipped), search, and a removable "In <collection>" filter when there are several collections. **Video detail** (`/videos/<id>`): header with thumbnail, title, Open in Obsidian and Open on TikTok; the note (rendered with raw HTML switched off, wikilinks to app pages or Obsidian); a rail with frames or slides, **Ideas from this video**, the text and speech read from the video, and folded details.
 
@@ -281,7 +284,8 @@ docs/ideas.md              rules for the ideas pass
 prompts/write-notes.md     prompt for one note-writing batch
 prompts/ideas.md           prompt for the ideas pass
 src/video_notes/
-  db.py                    schema v4, migration, WAL                (changed)
+  db.py                    schema v5, migration, WAL                (changed)
+  delete.py                delete an idea and, optionally, its videos (new)
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
   cli.py                   extract, ui, conn add|list|rm, lock      (changed)
   lock.py events.py errors.py

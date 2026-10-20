@@ -133,8 +133,9 @@
           <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
         </div>
         <div class="dialog-body stack">
-          <p>The notes and ideas this run wrote are taken back out of your brain. Git keeps a record, so nothing is lost for good.</p>
-          {% if run.kind == 'extract' %}<p>Its videos go back in the queue for the next Extract.</p>
+          {% if run.kind != 'delete' %}<p>The notes and ideas this run wrote are taken back out of your brain. Git keeps a record, so nothing is lost for good.</p>{% endif %}
+          {% if run.kind == 'delete' %}<p>The deleted idea, and any videos deleted with it, come back.</p>
+          {% elif run.kind == 'extract' %}<p>Its videos go back in the queue for the next Extract.</p>
           {% elif run.kind.startswith('ideas') %}<p>The notes it read will be checked for ideas again next time.</p>{% endif %}
           <p class="muted">If you've edited the same notes since, the undo stops and changes nothing.</p>
         </div>

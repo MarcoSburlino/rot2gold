@@ -71,6 +71,7 @@
           {{ source_strip(selected, open=True) }}
           <div class="reading-actions">
             {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
+            {% if removal %}<button type="button" class="button button-danger-quiet" data-dialog="delete-idea">Delete idea</button>{% endif %}
             <p class="hint">To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.</p>
           </div>
           {% set d = distinct(selected.description, selected.title) %}
@@ -87,6 +88,44 @@
 {% endblock %}
 
 {% block dialogs %}
+{% if removal %}
+{% set videos = removal.videos %}
+<dialog id="delete-idea" class="dialog" aria-labelledby="delete-idea-title">
+  <form method="post" action="/ideas/{{ selected.name }}/delete" class="dialog-form">
+    <div class="dialog-head">
+      <h2 id="delete-idea-title">Delete this idea?</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body stack">
+      <p>“{{ selected.title }}” is deleted from your brain.</p>
+      {% if videos %}
+        <fieldset class="delete-videos">
+          <legend class="visually-hidden">Its videos</legend>
+          <label class="check">
+            <input type="checkbox" name="with_videos" value="1">
+            <span>Also delete {{ 'its video' if videos|length == 1 else 'its ' ~ videos|length ~ ' videos' }}: their notes are removed from your brain</span>
+          </label>
+          <ul class="plain-list delete-list">
+            {% for v in videos %}<li>{{ v.title }}</li>{% endfor %}
+          </ul>
+        </fieldset>
+      {% endif %}
+      {% if removal.kept %}
+        <p class="muted">
+          {{ 'This video stays' if removal.kept|length == 1 else 'These videos stay' }} because
+          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other ideas:
+          {% for v in removal.kept %}{{ v.title }} (“{{ v.other_idea }}”){% if not loop.last %}; {% endif %}{% endfor %}.
+        </p>
+      {% endif %}
+      <p class="muted">Deleted videos stay listed in the app as skipped, so Extract won't bring them back. You can undo this from History.</p>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="submit" class="button button-danger" {% if active %}disabled title="A run is in progress"{% endif %}>Delete idea</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
 {% if unchecked %}
 <dialog id="find-ideas" class="dialog" aria-labelledby="find-ideas-title">
   <form method="post" action="/ideas/rebuild" class="dialog-form">

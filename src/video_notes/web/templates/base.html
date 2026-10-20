@@ -41,7 +41,7 @@
 
   {# Only a Settings form's result is shown inside the card (it reopens with ?settings=<tab>). #}
   {% set settings_result = request.query_params.get('settings') %}
-  <dialog id="settings" class="dialog dialog-wide" aria-labelledby="settings-title"
+  <dialog id="settings" class="dialog dialog-wide dialog-settings" aria-labelledby="settings-title"
           data-msg="{{ msg if settings_result and msg else '' }}" data-err="{{ err if settings_result and err else '' }}">
     <div class="dialog-head">
       <h2 id="settings-title">Settings</h2>

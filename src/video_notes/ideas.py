@@ -165,9 +165,14 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
         mode = ("This is a dry run. Write every idea you would create or update into the target folder. "
                 "For updates, write a full copy under the existing file name. Change nothing in ~/Projects/brain."
                 if dry_run else "Write the ideas into the target folder.")
+        # Re-read every batch: the previous batch may have created or updated ideas.
+        known = list_ideas()
+        if dry_run:  # a dry run's own proposals stand in for the brain's copies of the same ideas
+            known = list({i["name"]: i for i in known + list_ideas(folder)}.values())
         prompt = notes.render("ideas.md", count=len(batch), notes="\n".join(f"{pid}  {paths.get(pid) or ''}" for pid in batch),
                               today=date.today().isoformat(), ideas_dir=folder, mode=mode,
-                              max_new=cfg["ideas"]["max_new_per_pass"])
+                              max_new=cfg["ideas"]["max_new_per_pass"],
+                              existing_count=len(known), existing=catalog(known))
         limit = None
         try:
             res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(ROOT),
@@ -236,6 +241,14 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
             raise UsageLimit(f"Plan 5-hour window is {fh:.0%} used; stopping before the next batch"
                              f"{claude_cli.resets((res.plan or {}).get('unifiedWindows', {}).get('five_hour'))}")
     return result
+
+
+def catalog(items: list[dict]) -> str:
+    """One line per existing idea, for the prompt: enough to compare a candidate with all of them."""
+    if not items:
+        return "(none yet)"
+    return "\n".join(f"- {i['name']}.md · {i['title']} · {i['description'] or '—'} · {i['status']} · "
+                     + (", ".join(i["sources"]) or "no sources") for i in sorted(items, key=lambda i: i["name"]))
 
 
 def list_ideas(folder=None) -> list[dict]:

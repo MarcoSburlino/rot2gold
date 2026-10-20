@@ -117,7 +117,7 @@ def test_v3_to_v4_idempotent(tmp_path, monkeypatch):
     assert "undone_at" in db.columns(con, "runs")
     assert "cost_usd" in db.columns(con, "batches")
     db.connect(path)
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert not (tmp_path / "vn.sqlite.bak-v1").exists()
 
 
@@ -220,3 +220,20 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     assert str(tmp_path / ".local/bin/vn ui") in desktop.read_text()
     launcher.uninstall(home=tmp_path)
     assert not desktop.exists() and not icon.exists()
+
+
+def test_v4_batches_table_is_rebuilt_to_allow_delete(tmp_path, monkeypatch):
+    """v5 rebuilds batches so a deleted idea can be recorded, keeping every existing row."""
+    import sqlite3
+    path = tmp_path / "vn.sqlite"
+    monkeypatch.setattr(db, "load", lambda: {})
+    db.connect(path).close()
+    old = sqlite3.connect(path)
+    old.executescript("DROP TABLE batches;" + db.SCHEMA_V4.replace(", 'delete'", "") +
+                      "INSERT INTO batches (kind, n, created_at) VALUES ('notes', 1, 'x'); PRAGMA user_version = 4;")
+    old.close()
+    con = db.connect(path)
+    assert [tuple(r) for r in con.execute("SELECT kind, n FROM batches")] == [("notes", 1)]
+    con.execute("INSERT INTO batches (kind, n, created_at) VALUES ('delete', 1, 'y')")
+    assert (tmp_path / "vn.sqlite.bak-v4").exists()
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 5

@@ -83,7 +83,7 @@ def test_v2_to_v3_without_backup(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(db, "LINKS", tmp_path / "no-links")
     con = db.connect(path)
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert {"kind", "ideas_created", "ideas_updated"} <= db.columns(con, "runs")
     assert not (tmp_path / "vn.sqlite.bak-v1").exists()
     db.connect(path)

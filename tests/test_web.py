@@ -148,3 +148,59 @@ def test_simple_pages(sample):
             panel = (await client.get("/settings/panel")).text
             assert 'id="tab-general"' in panel and 'id="tab-key"' not in panel and "Advanced" in panel
     asyncio.run(check())
+
+
+def test_delete_an_idea_with_its_videos_and_undo_it(sample, monkeypatch):
+    """Deleting an idea removes its file and, if asked, the notes of videos no other idea uses;
+    the videos stay as skipped so Extract won't redo them, and Undo brings everything back."""
+    import subprocess
+    vault = sample
+    videos = vault / "Resources/commonplace/videos"
+    (videos / "video-two.md").write_text('---\ndescription: Shared\n---\n# Shared video\n')
+    (vault / "Inbox/ideas/idea-one.md").write_text((vault / "Inbox/ideas/idea-one.md").read_text().replace(
+        'sources:\n  - "[[video-one]]"', 'sources:\n  - "[[video-one]]"\n  - "[[video-two]]"'))
+    (vault / "Inbox/ideas/idea-two.md").write_text(
+        '---\ndescription: Another\nstatus: new\nsources:\n  - "[[video-two]]"\nsupport: 1\n---\n# Keep this idea\n\n'
+        '## Related ideas\n\n- [[idea-one]]\n')
+    (vault / "Resources/commonplace/commonplace.md").write_text(
+        '## Posts by theme\n### Useful\n- [[video-one]] — one\n- [[video-two]] — two\n')
+    con = web.db.connect()
+    con.execute("INSERT INTO posts (id, url, status, note_path, added_at, updated_at) VALUES ('102', 'https://example.com/2',"
+                " 'done', 'Resources/commonplace/videos/video-two.md', '2026-10-19', '2026-10-19')")
+    con.commit()
+    for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    monkeypatch.setattr(brain, "brain_index", lambda: None)
+
+    found = web.delete.plan(con, "idea-one")
+    assert [v["name"] for v in found["videos"]] == ["video-one"]  # video-two also supports idea-two: kept
+    assert found["kept"][0]["other_idea"] == "Keep this idea"
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/ideas/idea-one"}
+            page = (await client.get("/ideas/idea-one")).text
+            assert 'id="delete-idea"' in page and "Also delete its video" in page
+            done = await client.post("/ideas/idea-one/delete", data={"with_videos": "1"}, headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/ideas?msg=")
+            assert not (vault / "Inbox/ideas/idea-one.md").exists() and not (videos / "video-one.md").exists()
+            assert (videos / "video-two.md").exists()
+            assert "[[idea-one]]" not in (vault / "Inbox/ideas/idea-two.md").read_text()
+            assert "video-one" not in (vault / "Resources/commonplace/commonplace.md").read_text()
+            assert con.execute("SELECT status FROM posts WHERE id = '101'").fetchone()[0] == "skipped"
+            assert subprocess.run(["git", "-C", str(vault), "status", "--porcelain"], capture_output=True, text=True).stdout == ""
+            run_id = con.execute("SELECT id FROM runs WHERE kind = 'delete'").fetchone()[0]
+            history = (await client.get("/runs")).text
+            assert "Deleted an idea" in history and "Idea deleted with 1 video." in history
+            undone = await client.post(f"/runs/{run_id}/undo", headers=here, follow_redirects=False)
+            assert "err=" not in undone.headers["location"]
+            assert (vault / "Inbox/ideas/idea-one.md").exists() and (videos / "video-one.md").exists()
+            assert con.execute("SELECT status FROM posts WHERE id = '101'").fetchone()[0] == "done"
+    asyncio.run(check())
+
+
+def test_ideas_prompt_lists_every_existing_idea(sample):
+    """The ideas pass compares each new video with all existing ideas before creating one."""
+    text = ideas.catalog(ideas.list_ideas())
+    assert "idea-one.md · Try this idea · A useful idea · new · video-one" in text
+    assert "{{existing}}" in web.ROOT.joinpath("prompts/ideas.md").read_text()

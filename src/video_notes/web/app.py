@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import brain, connections, db, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
+from .. import brain, connections, db, delete, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
 from ..ai import claude_cli
 from ..config import DATA, LOGS, MEDIA, ROOT, brain_dir, load, media_dir
 from ..errors import VNError
@@ -91,7 +91,7 @@ def plan_windows(plan_json: str | None) -> list[dict]:
 
 
 RUN_TITLES = {"extract": "Extract", "ideas": "Ideas from older notes", "ideas-dry-run": "Ideas preview",
-              "update": "Downloader update", "undo": "Undo"}
+              "update": "Downloader update", "undo": "Undo", "delete": "Deleted an idea"}
 
 
 def plural(n: int, word: str) -> str:
@@ -118,6 +118,9 @@ def run_summary(run: dict) -> str:
                                       (run["ideas_created"] or run["ideas_updated"]) else "")]
     elif kind == "update":
         parts = ["downloaders updated" if status == "ok" else "downloaders not updated"]
+    elif kind == "delete":
+        gone = run.get("posts_skipped") or 0
+        parts = [("idea deleted" + (f" with {plural(gone, 'video')}" if gone else "")) if status == "ok" else "nothing was deleted"]
     elif kind == "undo":
         parts = ["brain changes reverted" if status == "ok" else "nothing was reverted"]
     else:
@@ -550,6 +553,7 @@ def idea_view(request, name=None, status="all", q=""):
     if name and not selected:
         return back("/ideas", err=f"No idea named {name}. It may have been renamed or moved in Obsidian.")
     html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
+    removal = delete.plan(con, selected["name"]) if selected else None  # for the Delete card
     pending = {Path(r["note_path"]).stem for r in con.execute(
         "SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND ideas_checked_at IS NULL")}
     themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
@@ -564,7 +568,7 @@ def idea_view(request, name=None, status="all", q=""):
               "current": status == key or (key == "all" and status not in counts)}
              for key, label in (("all", "All"), ("new", "New"), ("trying", "Trying"), ("kept", "Kept"), ("dropped", "Dropped"))
              if key == "all" or counts[key] or status == key]
-    return page(request, "ideas.html", rows=rows, selected=selected, html=html, themes=themes, unchecked=unchecked,
+    return page(request, "ideas.html", rows=rows, selected=selected, html=html, removal=removal, themes=themes, unchecked=unchecked,
                 chips=chips, keep=query(status=status, q=q), status=status, q=q, detail_page=bool(name))
 
 
@@ -625,6 +629,27 @@ def apply_preview(run_id: int):
                 + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
 
 
+@app.post("/ideas/{name}/delete")
+def delete_idea(request: Request, name: str, with_videos: str = Form("")):
+    """Quick (no AI): runs in the request, under the pipeline lock, as a run Undo can revert."""
+    from ..runs import recorded_run
+    done = None
+    try:
+        title = delete.plan(db.connect(), name)["idea"]["title"]
+        with recorded_run("app", f"vn delete {name}", "delete", [], load()) as run:
+            run.report.set_stage("delete")
+            done = delete.delete_idea(run.con, name, bool(with_videos), run.report, run.run_id)
+            run.counts["posts_skipped"] = len(done["videos"])  # History says how many videos went with it
+            run.report.set_stage("done")
+    except (ValueError, VNError) as exc:  # unknown idea, or the lock is held: nothing was deleted
+        return back_to(request, err=str(exc))
+    if done is None:
+        return back_to(request, err=run_failure(run))
+    videos = len(done["videos"])
+    return back("/ideas", msg=f"Deleted “{title}”" + (f" and {videos} {'video' if videos == 1 else 'videos'}" if videos else "")
+                + f". You can undo it from History.")
+
+
 @app.get("/ideas/{name}", response_class=HTMLResponse)
 async def idea_detail(request: Request, name: str, status: str = "all", q: str = ""):
     if not name.startswith("idea-") or Path(name).name != name:
@@ -660,7 +685,7 @@ async def run_page(request: Request, run_id: int):
     batches = [dict(b) for b in con.execute("SELECT * FROM batches WHERE run_id = ? ORDER BY id", (run_id,))]
     names = {r["id"]: r["name"] for r in con.execute("SELECT id, name FROM connections")}
     stages = (["sync", "fetch", "process", "notes", "ideas", "done"] if row["kind"] == "extract" else
-              ["undo", "done"] if row["kind"] == "undo" else ["update", "done"] if row["kind"] == "update" else
+              ["undo", "done"] if row["kind"] == "undo" else ["delete", "done"] if row["kind"] == "delete" else ["update", "done"] if row["kind"] == "update" else
               ["ideas", "done"])
     preview = None
     if row["kind"] == "ideas-dry-run" and (folder := ideas.dry_run_dir(run_id)).is_dir():

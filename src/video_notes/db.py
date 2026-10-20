@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from .config import DATA, DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -116,7 +116,7 @@ SCHEMA_V4 = """
 CREATE TABLE IF NOT EXISTS batches (
     id INTEGER PRIMARY KEY,
     run_id INTEGER REFERENCES runs(id),
-    kind TEXT NOT NULL CHECK (kind IN ('notes', 'ideas', 'apply')),
+    kind TEXT NOT NULL CHECK (kind IN ('notes', 'ideas', 'apply', 'delete')),
     n INTEGER NOT NULL,
     post_ids TEXT,
     noted TEXT,
@@ -164,7 +164,7 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """Add v2 through v4 fields; back up an existing v1 database only once."""
+    """Add v2 through v5 fields; back up an existing v1 database only once."""
     version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
@@ -186,6 +186,15 @@ def migrate(con, path) -> None:
         if name not in run_cols:
             con.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
     con.executescript(SCHEMA_V4)
+    if "'delete'" not in con.execute("SELECT sql FROM sqlite_master WHERE name = 'batches'").fetchone()[0]:
+        # v5: a batch may also record a deleted idea. SQLite can't change a CHECK rule in place,
+        # so the table is rebuilt with the same rows, in one transaction, after a one-time backup.
+        backup_v4 = path.with_name(path.name + ".bak-v4")
+        if not backup_v4.exists():
+            with sqlite3.connect(backup_v4) as dst:
+                con.backup(dst)
+        con.executescript("BEGIN; ALTER TABLE batches RENAME TO batches_v4; DROP INDEX IF EXISTS batches_run;"
+                          + SCHEMA_V4 + "INSERT INTO batches SELECT * FROM batches_v4; DROP TABLE batches_v4; COMMIT;")
     # The single collection of v1 becomes the first connection, with every existing post in it.
     url = load().get("collection_url") if version < 2 else None
     if url and not con.execute("SELECT 1 FROM connections").fetchone():
@@ -217,7 +226,7 @@ def add_batch(con, run_id, kind, n, post_ids=(), noted=(), considered=(), res=No
                 (run_id, kind, n, " ".join(post_ids), " ".join(noted), " ".join(considered),
                  res.turns if res else None, res.duration_ms if res else None,
                  usage.get("tokens_in"), usage.get("tokens_out"), usage.get("cache_read"), usage.get("cache_write"),
-                 res.cost_usd if res else None, plan.get("utilization"), int(bool(res.ok if res else kind == "apply") and not error),
+                 res.cost_usd if res else None, plan.get("utilization"), int(bool(res.ok if res else kind in ("apply", "delete")) and not error),
                  str(error or (res.error if res and not res.ok else ""))[:500] or None, now()))
     con.commit()
 

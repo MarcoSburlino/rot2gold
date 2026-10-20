@@ -62,7 +62,11 @@ wait.until(lambda _: qs("#settings [role=tab]"))
 check("the gear opens the Settings card with its tabs", is_open("settings") and len(qs("#settings [role=tab]")) == 3)
 check("advanced settings and the API key start folded",
       not q("#settings input[name='notes.batch_size']").is_displayed() and not q("#settings input[name=key]").is_displayed())
+size = lambda: js("const r=document.getElementById('settings').getBoundingClientRect(); return [r.width, r.height, r.top]")
+time.sleep(0.3)  # let the 120 ms opening animation finish
+first = size()
 q("#tab-usage").click()
+check("the card keeps its size and place when the tab changes", size() == first, f"{first} → {size()}")
 check("clicking a tab shows its panel", q("#panel-usage").is_displayed() and not q("#panel-general").is_displayed())
 q("#tab-usage").send_keys(Keys.ARROW_RIGHT)
 check("arrow keys move between tabs", js("return document.activeElement.id") == "tab-about" and q("#panel-about").is_displayed())
@@ -88,6 +92,13 @@ rows[2].click()
 wait.until(lambda _: "/ideas/idea-" in d.current_url)
 check("clicking an idea opens it in the reading pane", q(".reading-title").text == title, q(".reading-title").text)
 check("its row is marked as selected", q(".idea-row[aria-current]").find_element(By.CSS_SELECTOR, ".row-title").text == title)
+
+# 8b. Delete idea asks first, lists the videos it could delete, and Cancel deletes nothing.
+q(".reading-actions [data-dialog='delete-idea']").click()
+check("'Delete idea' asks first, with the videos unticked", is_open("delete-idea") and all(
+    not box.is_selected() for box in qs("#delete-idea input[name=with_videos]")))
+q("#delete-idea [data-close].button").click()
+check("…and Cancel keeps the idea", not is_open("delete-idea") and q(".reading-title").text == title)
 
 # 9. Filters stay while browsing ideas.
 next(e for e in qs(".chip") if e.text.startswith("New")).click()

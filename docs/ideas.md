@@ -20,7 +20,7 @@ This file replaces that per-post step with one pass that looks across sources. I
 
 ## When the pass runs
 
-- **After each Extract**, once the run's notes are committed. Input: unchecked notes (`ideas_checked_at` is empty in `data/vn.sqlite`) marked done on or after `[ideas] since` (2026-10-19 by default).
+- **Inside each Extract**, right after its notes are written and committed: the same run, not a separate step. Input: unchecked notes (`ideas_checked_at` is empty in `data/vn.sqlite`) marked done on or after `[ideas] since` (2026-10-19 by default).
 - **"Rebuild ideas"**, started by hand from the app or CLI. Input: unchecked notes under selected themes in `commonplace.md`, regardless of date, in batches of 25. Marco chose Mindset and self-help, Learning and memory, and Money and business on 2026-10-19. Marking only considered notes lets a stopped rebuild resume.
 - **Dry runs** write previews to `data/ideas-dry-run/run-N/`, without marking posts or committing to the brain.
 
@@ -32,23 +32,35 @@ The app gives the agent the list of notes to consider. The agent only writes ide
 - File: `idea-<slug>.md`. The slug comes from the title: lowercase, words joined by dashes, ASCII, at most about 8 words. Names must be unique across the whole vault: check with `find ~/Projects/brain -name "idea-<slug>.md"`, and add `-2` if taken.
 - Template: `~/Projects/brain/System/templates/idea-note.md`.
 
+## Update first, create last
+
+Marco wants **a few ideas that grow** as more videos point to them, not a new idea every time he extracts (his request, 2026-10-20). So in every pass, inside every Extract:
+
+- A note that **fits an existing idea updates it**. It fits when it supports the same goal or practice, even from a different angle, with a different method to reach the same thing, or as a narrower or broader version of it. "Explain a topic out loud to find the gaps" fits "Try the Feynman technique"; another clip about writing down long-term goals fits "Write a five-year plan"; a different speaker making the same point fits.
+- If several existing ideas fit, update only the **closest** one (the same action first, then the same goal).
+- A **dropped** idea still counts: a note that fits it records its support there and never creates a near-copy.
+- **Create a new idea only when no existing idea fits**: the note points to a different action, one where doing it would not mostly mean doing an existing idea.
+- Notes in the same pass that point to the same new action become **one** new idea with several sources.
+
+The prompt lists every existing idea (file, title, description, status, sources), so each candidate is compared with all of them before anything is created.
+
 ## Steps
 
-1. **Read what exists.** List `Inbox/ideas/` and read every idea's front matter and title (the `description`, `sources` and title are enough to compare; open the full note when a candidate might match).
+1. **Read what exists.** Start from the list of existing ideas in the prompt; open an idea's full note when a candidate might fit it.
 2. **Read the notes to consider**, one at a time. For each, ask: does it contain a concrete action (see "What an idea is")? Note it as a candidate with the note as its source. Most notes have none; that is normal.
 3. **Look for support** for each candidate:
    - older video notes: `commonplace.md` (themes and tags), then `rg -il "<term>" ~/Projects/brain/Resources/commonplace/videos`;
    - the rest of the brain: `rg -il "<term>" ~/Projects/brain/Projects ~/Projects/brain/Areas ~/Projects/brain/Resources`. A project note that already does or plans something similar counts (e.g. [[hejdansk]] for spaced repetition);
    - never read `~/Private`, `~/.local/share/chat-vault`, or any path the global rules forbid.
-4. **Match before creating.** For each candidate, check every existing idea: is it the **same action**? Two ideas are the same when doing one would mostly mean doing the other ("explain a topic out loud to find the gaps" and "try the Feynman technique" are the same; "write a five-year plan" and "write about who you want to be" are not).
-   - **Same action → update** the existing idea (below). Never create a second note for it.
-   - **Related but different → create** the new idea and link the two under `## Related ideas` in both.
-5. **Decide whether to create.** Create a new idea when:
+4. **Match before creating** (see "Update first, create last"). For each candidate, find the existing idea it fits best.
+   - **Fits → update** that idea (below). Never create a second note for it.
+   - **Nothing fits → it may become a new idea** (step 5). If it is related to an existing idea without fitting it, link the two under `## Related ideas` in both.
+5. **Decide whether to create.** Only for candidates that fit no existing idea. Create a new idea when:
    - **two or more independent sources** point to it, or
    - **one source** describes a clearly actionable practice, tool, book or project idea (the kind made on the first run). It gets `support: 1` and ranks below multi-source ideas.
    - At most **5 new ideas per pass**. If there are more candidates, keep the best-supported ones, and leave the notes behind the others out of the reported `considered` list, so the next pass sees them again.
 6. **Write or update** the notes (format below).
-7. **Report** in the JSON format the prompt asks for: created files, updated files, and every post id you considered, including those that gave no idea.
+7. **Report** in the JSON format the prompt asks for: created files, updated files, every post id you considered (including those that gave no idea), and in `notes` one line per considered note saying what it led to: `<post id> → updated idea-…`, `<post id> → new idea-… (no existing idea fits: <why>)`, or `<post id> → no idea`.
 
 ## Counting sources
 
@@ -66,7 +78,8 @@ When a new note supports an idea that exists:
 - add a line under `## Why sources point here`;
 - recount `support`;
 - set `updated:` to today;
-- add a line at the top of `## Log`: `- YYYY-MM-DD — new support: [[<note>]]`.
+- add a line at the top of `## Log`: `- YYYY-MM-DD — new support: [[<note>]]`;
+- if the note adds a different way to do it, you may add one sentence about it to the paragraph under the title ("A later post suggests doing it with …").
 
 Never change the title, the slug, `created`, or `status`. Never remove a source. Never write in `## My notes`. If Marco has set `status: dropped`, still record the new support, but don't reword the idea.
 

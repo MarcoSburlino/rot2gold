@@ -1987,6 +1987,19 @@ progress::-webkit-progress-value {
   color: var(--ink);
 }
 
+/* The Settings card keeps one size whichever tab is open: only the tab's content scrolls,
+   and the tabs stay at the top. Switching tabs never makes the card jump. */
+.dialog-settings {
+  height: min(720px, calc(100dvh - 2 * var(--s-4)));
+}
+
+.dialog-settings .tabs {
+  position: sticky;
+  top: calc(-1 * var(--s-5));  /* stick at the card's edge, not below the body's padding */
+  z-index: 1;
+  background: var(--sheet);
+}
+
 .settings-form {
   display: grid;
   gap: var(--s-4);
@@ -2026,6 +2039,14 @@ progress::-webkit-progress-value {
 
 .key-actions form {
   margin: 0;
+}
+
+.delete-list {
+  gap: var(--s-1);
+  margin: var(--s-2) 0 0 var(--s-5);
+  padding-left: var(--s-4);
+  color: var(--graphite);
+  list-style: disc;
 }
 
 .settings-page {

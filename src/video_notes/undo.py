@@ -67,7 +67,15 @@ def undo_run(con, run_id: int, report) -> dict:
             reopened.append(pid)
     for pid in considered:
         con.execute("UPDATE posts SET ideas_checked_at = NULL WHERE id = ?", (pid,))
+    restored = []
     for row in rows:
+        if row["kind"] == "delete":  # videos deleted with an idea: noted again once their notes are back
+            for pid in (row["post_ids"] or "").split():
+                post = con.execute("SELECT note_path FROM posts WHERE id = ?", (pid,)).fetchone()
+                if post and post["note_path"] and brain.note_file(post["note_path"]).exists():
+                    con.execute("UPDATE posts SET status = 'done', skip_reason = NULL, updated_at = ? WHERE id = ?",
+                                (db.now(), pid))
+                    restored.append(pid)
         if row["kind"] == "apply":
             for dry_id in (row["post_ids"] or "").split():
                 folder = ideas.dry_run_dir(dry_id)
@@ -77,5 +85,6 @@ def undo_run(con, run_id: int, report) -> dict:
                     (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
     con.execute("UPDATE runs SET undone_at = ? WHERE id = ?", (db.now(), run_id))
     con.commit()
-    report(f"Undo commit {undo_sha}; {len(reopened)} posts returned to the queue; {len(considered)} ideas checks cleared")
-    return {"commit": undo_sha, "reopened": reopened, "considered": sorted(considered)}
+    report(f"Undo commit {undo_sha}; {len(reopened)} posts returned to the queue; {len(considered)} ideas checks cleared"
+           + (f"; {len(restored)} deleted videos restored" if restored else ""))
+    return {"commit": undo_sha, "reopened": reopened, "considered": sorted(considered), "restored": restored}
