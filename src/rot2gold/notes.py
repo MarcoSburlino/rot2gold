@@ -1,7 +1,7 @@
 """Note writing: one `claude -p` per batch of processed posts, then index and commit in the brain.
 
 The agent follows prompts/write-notes.md (which points to docs/note-writing.md) and marks each post
-with `vn done` or `vn skip`. The app, not the agent, runs brain-index and commits.
+with `r2g done` or `r2g skip`. The app, not the agent, runs brain-index and commits.
 """
 
 import json

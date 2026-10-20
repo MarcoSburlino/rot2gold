@@ -1,4 +1,4 @@
-"""vn sync: list each connection and add new posts.
+"""r2g sync: list each connection and add new posts.
 
 Sources per connection, in order: anonymously, with Firefox cookies (if its cookies_mode allows),
 then URLs pasted into the connection by hand. Every listed post is linked to the connection,
@@ -113,7 +113,7 @@ def connections(con, conn_ids=None) -> list:
                            list(conn_ids)).fetchall()
         missing = set(conn_ids) - {r["id"] for r in rows}
         if missing:
-            raise SystemExit(f"unknown connection id(s): {', '.join(map(str, sorted(missing)))} (see `vn conn list`)")
+            raise SystemExit(f"unknown connection id(s): {', '.join(map(str, sorted(missing)))} (see `r2g conn list`)")
         return rows
     return con.execute("SELECT * FROM connections ORDER BY id").fetchall()
 
@@ -123,7 +123,7 @@ def sync(conn_ids=None, report=echo) -> tuple[int, int]:
     con = db.connect()
     conns = connections(con, conn_ids)
     if not conns:
-        raise SystemExit("No connections yet. Add one: vn conn add <name> <collection URL>")
+        raise SystemExit("No connections yet. Add one: r2g conn add <name> <collection URL>")
     listed = new = 0
     failed = []
     for conn in conns:  # one broken connection doesn't stop the others

@@ -9,18 +9,18 @@ from pathlib import Path
 import pytest
 import httpx
 
-from video_notes import brain, config, db, downloaders, launcher, notes, settings, undo
-from video_notes.ai import claude_cli
-from video_notes.errors import BrainError, UsageLimit
-from video_notes.sources import firefox
-from video_notes.web import app as web
+from rot2gold import brain, config, db, downloaders, launcher, notes, settings, undo
+from rot2gold.ai import claude_cli
+from rot2gold.errors import BrainError, UsageLimit
+from rot2gold.sources import firefox
+from rot2gold.web import app as web
 
 
 @pytest.fixture
 def con(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(db, "LINKS", tmp_path / "no-links")
-    return db.connect(tmp_path / "vn.sqlite")
+    return db.connect(tmp_path / "r2g.sqlite")
 
 
 def test_settings_validation_and_overlay(tmp_path, monkeypatch):
@@ -78,10 +78,10 @@ def test_claude_backends_and_key_test(monkeypatch):
 
 
 def test_web_local_requests_and_settings_key(tmp_path, monkeypatch, con):
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vn.sqlite")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "r2g.sqlite")
     monkeypatch.setattr(web.ideas, "brain_dir", lambda cfg=None: tmp_path)
     monkeypatch.setattr(web.lock, "DATA", tmp_path)
-    monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "vn.lock")
+    monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "r2g.lock")
     monkeypatch.setattr(web.secrets, "get_api_key", lambda: "top-secret-value")
     monkeypatch.setattr(web.secrets, "has_api_key", lambda: True)
     monkeypatch.setattr(firefox, "profiles", lambda: [])
@@ -102,7 +102,7 @@ def test_web_local_requests_and_settings_key(tmp_path, monkeypatch, con):
 
 
 def test_v3_to_v4_idempotent(tmp_path, monkeypatch):
-    path = tmp_path / "vn.sqlite"
+    path = tmp_path / "r2g.sqlite"
     old = sqlite3.connect(path)
     old.executescript(db.SCHEMA + db.SCHEMA_V2)
     for name, decl in (("kind", "TEXT NOT NULL DEFAULT 'extract'"),
@@ -118,7 +118,7 @@ def test_v3_to_v4_idempotent(tmp_path, monkeypatch):
     assert "cost_usd" in db.columns(con, "batches")
     db.connect(path)
     assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
-    assert not (tmp_path / "vn.sqlite.bak-v1").exists()
+    assert not (tmp_path / "r2g.sqlite.bak-v1").exists()
 
 
 def git(root, *args, check=True):
@@ -217,7 +217,7 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher.shutil, "which", lambda name: None)
     desktop, icon = launcher.install(home=tmp_path)
     assert desktop.is_file() and icon.is_file() and "Terminal=false" in desktop.read_text()
-    assert str(tmp_path / ".local/bin/vn ui") in desktop.read_text()
+    assert str(tmp_path / ".local/bin/r2g ui") in desktop.read_text()
     launcher.uninstall(home=tmp_path)
     assert not desktop.exists() and not icon.exists()
 
@@ -225,7 +225,7 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
 def test_v4_batches_table_is_rebuilt_to_allow_delete(tmp_path, monkeypatch):
     """v5 rebuilds batches so a deleted idea can be recorded, keeping every existing row."""
     import sqlite3
-    path = tmp_path / "vn.sqlite"
+    path = tmp_path / "r2g.sqlite"
     monkeypatch.setattr(db, "load", lambda: {})
     db.connect(path).close()
     old = sqlite3.connect(path)
@@ -235,7 +235,7 @@ def test_v4_batches_table_is_rebuilt_to_allow_delete(tmp_path, monkeypatch):
     con = db.connect(path)
     assert [tuple(r) for r in con.execute("SELECT kind, n FROM batches")] == [("notes", 1)]
     con.execute("INSERT INTO batches (kind, n, created_at) VALUES ('delete', 1, 'y')")
-    assert (tmp_path / "vn.sqlite.bak-v4").exists()
+    assert (tmp_path / "r2g.sqlite.bak-v4").exists()
     assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
@@ -247,7 +247,7 @@ LEARNING_COLUMNS = (("posts", "learnings_checked_at"), ("runs", "learnings_creat
 
 @pytest.mark.parametrize("version", [5, 6])
 def test_v5_and_v6_to_v7_add_learnings_and_events_after_a_backup(tmp_path, monkeypatch, version):
-    path = tmp_path / "vn.sqlite"
+    path = tmp_path / "r2g.sqlite"
     monkeypatch.setattr(db, "load", lambda: {})
     con = db.connect(path)
     con.execute("INSERT INTO runs (origin, started_at) VALUES ('app', 'x')")
@@ -260,5 +260,5 @@ def test_v5_and_v6_to_v7_add_learnings_and_events_after_a_backup(tmp_path, monke
     for table, column in EVENT_COLUMNS + LEARNING_COLUMNS:
         assert column in db.columns(con, table)
     assert tuple(con.execute("SELECT learnings_created, events_created FROM runs").fetchone()) == (0, 0)
-    assert (tmp_path / f"vn.sqlite.bak-v{version}").exists()
+    assert (tmp_path / f"r2g.sqlite.bak-v{version}").exists()
     assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 7

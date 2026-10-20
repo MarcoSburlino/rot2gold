@@ -1,6 +1,6 @@
 """Progress reporting. Stages call report("message", post_id=..., level=...).
 
-`echo` only prints (plain `vn` commands). A run's Reporter also stores every line in run_events,
+`echo` only prints (plain `r2g` commands). A run's Reporter also stores every line in run_events,
 which the app streams to the browser.
 """
 

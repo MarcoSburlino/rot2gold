@@ -4,7 +4,7 @@
 
 Turn every post in Marco's TikTok collection "Material" into a note in his brain (`~/Projects/brain/Resources/commonplace/videos/`). Two halves:
 
-1. **`vn`, a local pipeline** that lists the posts, downloads media, runs OCR and speech-to-text, and stores everything in SQLite. It uses no AI reasoning: only local utility models (Tesseract, Whisper).
+1. **`r2g`, a local pipeline** that lists the posts, downloads media, runs OCR and speech-to-text, and stores everything in SQLite. It uses no AI reasoning: only local utility models (Tesseract, Whisper).
 2. **Note writing**, done by an agent following `docs/note-writing.md`: Claude Code on Marco's subscription by default, or with an API key through the app (`docs/app-spec.md`). No local LLMs.
 
 The app that drives both halves, with connections, Extract and an ideas pass, is specified in `docs/app-spec.md`.
@@ -15,37 +15,37 @@ Everything runs locally. Captions, hashtags and comments are never fetched into 
 
 | Command | What it does |
 |---|---|
-| `vn sync [--conn 1,2]` | List every connection (or those given); add new posts (id, URL, creator, upload date, type) and link them to the connection |
-| `vn fetch [N]` | Download media for up to N new posts, pausing 3–10 s between posts |
-| `vn process [N]` | OCR and transcribe up to N fetched posts; mark empty ones skipped ("no content") |
-| `vn run [N]` | sync + fetch N + process N |
-| `vn pending [N]` | Show processed posts waiting for a note (`--id`, `--json`, `--ids`) |
-| `vn done <id> <note-path>` | Mark a post as written up |
-| `vn skip <id> <reason>` | Skip a post with a reason |
-| `vn status` | Counts by status, type and skip reason; connections; the running pipeline, if any |
-| `vn extract [--conn 1,2] [--max-notes N] [--no-notes]` | The whole pipeline as one recorded run: sync, fetch, process, write notes (`app-spec.md`) |
-| `vn conn list \| add <url> \| edit <id> \| rm <id> \| links <id>` | Manage connections (collections); `links` reads hand-pasted post URLs from stdin |
-| `vn runs [N]` | Recent runs with counts and AI usage |
-| `vn ui` | Start the app at `http://127.0.0.1:8740` |
-| `vn undo <run_id> [--yes]` | Revert a finished run's brain commits and reopen its posts |
-| `vn update-downloaders` | Upgrade yt-dlp and gallery-dl in the app venv, as a recorded run |
-| `vn install-launcher` / `vn uninstall-launcher` | Add or remove the GNOME app launcher |
+| `r2g sync [--conn 1,2]` | List every connection (or those given); add new posts (id, URL, creator, upload date, type) and link them to the connection |
+| `r2g fetch [N]` | Download media for up to N new posts, pausing 3–10 s between posts |
+| `r2g process [N]` | OCR and transcribe up to N fetched posts; mark empty ones skipped ("no content") |
+| `r2g run [N]` | sync + fetch N + process N |
+| `r2g pending [N]` | Show processed posts waiting for a note (`--id`, `--json`, `--ids`) |
+| `r2g done <id> <note-path>` | Mark a post as written up |
+| `r2g skip <id> <reason>` | Skip a post with a reason |
+| `r2g status` | Counts by status, type and skip reason; connections; the running pipeline, if any |
+| `r2g extract [--conn 1,2] [--max-notes N] [--no-notes]` | The whole pipeline as one recorded run: sync, fetch, process, write notes (`app-spec.md`) |
+| `r2g conn list \| add <url> \| edit <id> \| rm <id> \| links <id>` | Manage connections (collections); `links` reads hand-pasted post URLs from stdin |
+| `r2g runs [N]` | Recent runs with counts and AI usage |
+| `r2g ui` | Start the app at `http://127.0.0.1:8740` |
+| `r2g undo <run_id> [--yes]` | Revert a finished run's brain commits and reopen its posts |
+| `r2g update-downloaders` | Upgrade yt-dlp and gallery-dl in the app venv, as a recorded run |
+| `r2g install-launcher` / `r2g uninstall-launcher` | Add or remove the GNOME app launcher |
 
-`vn` is `.venv/bin/vn`, linked as `~/.local/bin/vn`. `sync`, `fetch`, `process`, `run` and `extract` hold the lock `data/vn.lock`, so only one runs at a time.
+`r2g` is `.venv/bin/r2g`, linked as `~/.local/bin/r2g`. `sync`, `fetch`, `process`, `run` and `extract` hold the lock `data/r2g.lock`, so only one runs at a time.
 
-**`vn done` refuses a note path that doesn't exist in the brain** (the path is relative to the brain).
+**`r2g done` refuses a note path that doesn't exist in the brain** (the path is relative to the brain).
 
 ## Data
 
 `data/` is gitignored:
 
-- `data/vn.sqlite`: all state. `data/vn.sqlite.bak-v1`: the database as it was before the schema v2 migration (2026-10-19).
-- `data/vn.lock`: the pipeline lock (`lock.py`).
+- `data/r2g.sqlite`: all state. `data/r2g.sqlite.bak-v1`: the database as it was before the schema v2 migration (2026-10-19).
+- `data/r2g.lock`: the pipeline lock (`lock.py`).
 - `data/logs/`: output of runs started from the app.
 - `data/media/<post id>/`: `frame.png` (videos) or `slide-01.jpg`, … (slideshows). Kept so note writers can look at them. Videos and audio are deleted after use.
 - `data/tools/`: fallback Tesseract (see Decisions).
 
-Tables (`src/video_notes/db.py`):
+Tables (`src/rot2gold/db.py`):
 
 - `posts`: id, url, creator, upload_date, type (`video` | `slideshow`), status, skip_reason, note_path, language and language_prob (Whisper), whisper_model, transcribed, fetch_attempts, last_error, timestamps.
   - Status flows `new → fetched → processed → done`, or to `skipped` from any point.
@@ -89,7 +89,7 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
 - **Slideshows with gallery-dl.** For photo posts, yt-dlp returns only the background audio; gallery-dl returns the images at their original upload size (e.g. 643×1254). The `imagePost` URLs from TikTok's API are the same files, but they would need custom code.
 - **We decode the WAV ourselves** (`transcribe.load_wav`) instead of letting faster-whisper do it. faster-whisper 1.2.1 calls PyAV with `metadata_errors=`, which PyAV 19 removed (TypeError). Reading the 16 kHz WAV with the standard `wave` module avoids PyAV entirely.
 - **`OMP_THREAD_LIMIT=1` is set only when OCR starts.** Set at import time, it was also picked up by faster-whisper's OpenMP runtime, and transcription slowed down about 3×.
-- **Fallback Tesseract in `data/tools/`.** The system `tesseract` wasn't installed when the pipeline was built, and installing it needs sudo. `vn` uses the system `tesseract` if it's on PATH. Otherwise it uses a copy unpacked, without installing, from Fedora's own signed RPMs:
+- **Fallback Tesseract in `data/tools/`.** The system `tesseract` wasn't installed when the pipeline was built, and installing it needs sudo. `r2g` uses the system `tesseract` if it's on PATH. Otherwise it uses a copy unpacked, without installing, from Fedora's own signed RPMs:
   ```
   dnf download tesseract tesseract-langpack-ita tesseract-langpack-spa
   rpm2cpio <rpm> | cpio -idm
@@ -106,8 +106,8 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
   | large-v3-turbo | 0.21–0.48 | Accurate on speech, but fell into a ~25× repetition loop ("you're not going to be…") on a music tail; "Antropic" |
 
   medium was the most accurate and never hallucinated. At ~0.3× real time, the whole collection (~80 min of audio) transcribes in under half an hour.
-- **Type detection costs one metadata request per new post at sync time.** The alternative, detecting it at fetch time, would leave `type` empty in `vn status` until download.
-- **Pipeline and app in one project (2026-10-19).** The folder `~/Projects/video-notes` was renamed `~/Projects/video-notes-app`, which keeps the Git history and `data/`. The app is specified in `app-spec.md`. Its main decisions: connections replace the single collection URL, Extract runs every stage plus note writing and an ideas pass, and an Anthropic API key is allowed as an alternative to Marco's subscription (this project only).
+- **Type detection costs one metadata request per new post at sync time.** The alternative, detecting it at fetch time, would leave `type` empty in `r2g status` until download.
+- **Pipeline and app in one project (2026-10-19).** The folder `~/Projects/video-notes` was renamed `~/Projects/video-notes-app`, which keeps the Git history and `data/`. On 2026-10-20 Marco named the app Rot2Gold: the folder became `~/Projects/rot2gold`, the package `rot2gold`, the command `r2g` and the database `data/r2g.sqlite`. The app is specified in `app-spec.md`. Its main decisions: connections replace the single collection URL, Extract runs every stage plus note writing and an ideas pass, and an Anthropic API key is allowed as an alternative to Marco's subscription (this project only).
 - **Ideas moved out of note writing (2026-10-19).** Note writers no longer add one-source idea notes to `Inbox/`. The app runs a separate ideas pass across notes (`ideas.md`). `note-writing.md` also gained a resume rule: look for an existing note with the same `post_id` before writing.
 - **Note-writing review (5 test posts, 2026-10-15).** These rules were added to `note-writing.md`:
   - always open the video frame;
@@ -117,7 +117,7 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
 ## Results of the first full run (2026-10-14 → 2026-10-15)
 
 - **Collection:** 104 posts (83 videos, 21 slideshows) by the end of the run; it grew from 99 while the pipeline was being built.
-- **Pipeline:** every post fetched and processed in three `vn run` chunks. There were no download failures, no blocks, and no "no content" skips. One chunk was interrupted mid-fetch on purpose and resumed cleanly. Kept images take 150 MB.
+- **Pipeline:** every post fetched and processed in three `r2g run` chunks. There were no download failures, no blocks, and no "no content" skips. One chunk was interrupted mid-fetch on purpose and resumed cleanly. Kept images take 150 MB.
 - **Notes:** 101 written. 3 were skipped by the note writer as useless: a Dolomites photo slideshow, a mountaineering photo meme, and a boiling-frog clip where only "take one frog" was captured.
 - **Note writing:** 5 test notes written by the coordinator, then 10 batches of about 10, one sub-agent per batch, run sequentially. One sub-agent was cut off by an API content-filter error (most likely a false positive). A fresh sub-agent finished the batch, which led to the "finish each post before the next" rule.
 - **OCR quality:** good on slides with clean overlaid text (confidence 85–96). Poor on most video frames and on stylised quote slideshows (text over paintings or manga, decorative fonts), so note writers read those images directly. Frame OCR is best treated as a hint.

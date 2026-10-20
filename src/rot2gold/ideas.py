@@ -371,8 +371,8 @@ def calendar_file(item: dict) -> str | None:
     day = lambda value: value.replace("-", "")
     text = lambda value: re.sub(r"([,;\\])", r"\\\1", str(value)).replace("\n", " ")
     end = (date.fromisoformat(last) + timedelta(days=1)).isoformat()  # DTEND is the day after the last day
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//video-notes-app//events//EN", "BEGIN:VEVENT",
-             f"UID:{item['name']}@video-notes-app", f"DTSTAMP:{date.today().strftime('%Y%m%d')}T000000Z",
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//rot2gold//events//EN", "BEGIN:VEVENT",
+             f"UID:{item['name']}@rot2gold", f"DTSTAMP:{date.today().strftime('%Y%m%d')}T000000Z",
              f"DTSTART;VALUE=DATE:{day(item['when'])}", f"DTEND;VALUE=DATE:{day(end)}", f"SUMMARY:{text(item['title'])}"]
     if item["where"]:
         lines.append(f"LOCATION:{text(item['where'])}")

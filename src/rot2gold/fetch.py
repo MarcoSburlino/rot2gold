@@ -1,4 +1,4 @@
-"""vn fetch: download media for new posts.
+"""r2g fetch: download media for new posts.
 
 Video: download at a modest resolution, keep the frame at 0.5 s and 16 kHz mono audio, delete the video.
 Slideshow: download every image in order (no audio).

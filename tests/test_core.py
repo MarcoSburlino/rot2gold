@@ -8,10 +8,10 @@ import subprocess
 
 import pytest
 
-from video_notes import brain, connections, db, lock, sync
-from video_notes.ai import claude_cli
-from video_notes.errors import LockHeld
-from video_notes.sources import ListedPost, get
+from rot2gold import brain, connections, db, lock, sync
+from rot2gold.ai import claude_cli
+from rot2gold.errors import LockHeld
+from rot2gold.sources import ListedPost, get
 
 URL = "https://www.tiktok.com/@someone/collection/Material-7000000000000000001"
 URL2 = "https://www.tiktok.com/@someone/collection/Ideas-1111111111111111111"
@@ -21,11 +21,11 @@ URL2 = "https://www.tiktok.com/@someone/collection/Ideas-1111111111111111111"
 def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(db, "LINKS", tmp_path / "links.txt")
-    return db.connect(tmp_path / "vn.sqlite")
+    return db.connect(tmp_path / "r2g.sqlite")
 
 
 def test_migration_from_v1(tmp_path, monkeypatch):
-    path = tmp_path / "vn.sqlite"
+    path = tmp_path / "r2g.sqlite"
     old = sqlite3.connect(path)
     old.executescript(db.SCHEMA)
     for i in range(3):
@@ -45,7 +45,7 @@ def test_migration_from_v1(tmp_path, monkeypatch):
     assert con.execute("SELECT COUNT(*) FROM connection_posts").fetchone()[0] == 3
     assert {"platform", "ideas_checked_at"} <= db.columns(con, "posts")
     assert {"kind", "ideas_created", "ideas_updated"} <= db.columns(con, "runs")
-    backup = sqlite3.connect(tmp_path / "vn.sqlite.bak-v1")
+    backup = sqlite3.connect(tmp_path / "r2g.sqlite.bak-v1")
     assert backup.execute("SELECT COUNT(*) FROM posts").fetchone()[0] == 3
     assert backup.execute("PRAGMA user_version").fetchone()[0] == 0
     db.connect(path)  # a second start changes nothing
@@ -54,13 +54,13 @@ def test_migration_from_v1(tmp_path, monkeypatch):
 
 def test_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(lock, "DATA", tmp_path)
-    monkeypatch.setattr(lock, "LOCK_PATH", tmp_path / "vn.lock")
+    monkeypatch.setattr(lock, "LOCK_PATH", tmp_path / "r2g.lock")
     assert lock.holder() is None
-    with lock.PipelineLock("app", "vn extract") as held:
+    with lock.PipelineLock("app", "r2g extract") as held:
         held.update(run_id=7)
         assert lock.holder()["run_id"] == 7
         with pytest.raises(LockHeld, match="an app run"):
-            with lock.PipelineLock("terminal", "vn run"):
+            with lock.PipelineLock("terminal", "r2g run"):
                 pass
     assert lock.holder() is None
 
@@ -133,7 +133,7 @@ def test_claude_stream_parsing():
     res, lines = claude_cli.Result(), []
     events = [
         {"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "name": "Bash", "input": {"command": "vn done 1 Resources/commonplace/videos/video-a.md"}},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "r2g done 1 Resources/commonplace/videos/video-a.md"}},
             {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
             {"type": "tool_use", "name": "WebSearch", "input": {"query": "Einstein quote"}}]}},
         {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed", "unifiedWindows": {"five_hour": {"utilization": 0.4}}}},
@@ -143,7 +143,7 @@ def test_claude_stream_parsing():
     ]
     for ev in events:
         claude_cli.parse_event(ev, res, lines.append)
-    assert lines == ["vn done 1 Resources/commonplace/videos/video-a.md", "search: Einstein quote"]
+    assert lines == ["r2g done 1 Resources/commonplace/videos/video-a.md", "search: Einstein quote"]
     assert res.ok and not res.limited and res.structured == {"posts": []}
     assert res.usage["cache_read"] == 900000 and res.cost_usd == 1.5 and res.plan["unifiedWindows"]["five_hour"]["utilization"] == 0.4
 
@@ -156,12 +156,12 @@ def test_run_log_never_stops_a_run(fresh, tmp_path, monkeypatch, capsys):
     """Run 1 (2026-10-19) died: process.py reported while its own write was open, and the log write
     waited for it forever. A log line must now give up after 2 s and the run carry on."""
     import time
-    from video_notes.events import Reporter
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vn.sqlite")
+    from rot2gold.events import Reporter
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "r2g.sqlite")
     fresh.execute("INSERT INTO runs (origin, started_at) VALUES ('terminal', 'x')")
     fresh.commit()
     report = Reporter(1, quiet=True)
-    other = db.connect(tmp_path / "vn.sqlite")
+    other = db.connect(tmp_path / "r2g.sqlite")
     other.execute("BEGIN IMMEDIATE")  # another connection is mid-write
     other.execute("INSERT INTO meta VALUES ('k', 'v')")
     t0 = time.time()
@@ -174,7 +174,7 @@ def test_run_log_never_stops_a_run(fresh, tmp_path, monkeypatch, capsys):
 
 
 def test_note_rendering(tmp_path):
-    from video_notes import notefile
+    from rot2gold import notefile
     path = tmp_path / "video-x.md"
     path.write_text('---\ndescription: "A test note"\ntags:\n  - tiktok\n---\n\n# The Title\n\n'
                     '> [!note] AI-processed note.\n\n## Content\n\n<script>alert(1)</script> and [[video-y]], '

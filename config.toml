@@ -1,4 +1,4 @@
-# video-notes-app configuration. Connection URLs live in the database (vn conn list), not here.
+# Rot2Gold configuration. Connection URLs live in the database (r2g conn list), not here.
 
 [brain]
 path = "~/Projects/brain"

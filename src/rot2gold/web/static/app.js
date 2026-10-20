@@ -1,4 +1,4 @@
-// video-notes-app: small page behaviours, no framework.
+// Rot2Gold: small page behaviours, no framework.
 // Every page works without this file (plain links and forms); it adds dialogs, the phone
 // drawer, the Settings card and live run updates.
 

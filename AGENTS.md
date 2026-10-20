@@ -1,10 +1,10 @@
-# video-notes-app
+# Rot2Gold
 
-Turns the posts Marco saves on TikTok into notes in his brain (`~/Projects/brain/Resources/commonplace/`), plus ideas found across notes (`~/Projects/brain/Inbox/ideas/`). The project name may change: mention it in as few places as possible.
+Turns the posts Marco saves on TikTok into notes in his brain (`~/Projects/brain/Resources/commonplace/`), plus ideas, learnings and events found across notes (`~/Projects/brain/Inbox/ideas/`, `learnings/`, `events/`). Named Rot2Gold on 2026-10-20 (it was video-notes-app).
 
 Two parts, one repo:
 
-- **The pipeline, `vn`** (built, working): lists a collection, downloads each post, runs OCR (Tesseract) and speech-to-text (faster-whisper), and stores everything in SQLite. An agent then writes one note per post.
+- **The pipeline, `r2g`** (built, working): lists a collection, downloads each post, runs OCR (Tesseract) and speech-to-text (faster-whisper), and stores everything in SQLite. An agent then writes one note per post.
 - **The app** (Phases 1–5 built): a local web UI for Extract, browsing, Settings, usage, undo and updates (`docs/app-spec.md` → "Phases").
 
 ## Docs
@@ -18,35 +18,36 @@ Two parts, one repo:
 ## Rules
 
 - AI reasoning runs through Marco's Claude subscription (Claude Code, `claude -p`) by default. The app may also use an Anthropic API key, by Marco's choice in Settings (decided 2026-10-19; this exception is for this project only). No local LLMs; local utility models (speech-to-text, OCR) are fine.
-- The API key lives only in the GNOME keyring (`secret-tool`, `service video-notes-app`, `account anthropic`). Never in a file, `config.toml`, Git, logs or notes. Never print it.
+- The API key lives only in the GNOME keyring (`secret-tool`, `service rot2gold`, `account anthropic`). Never in a file, `config.toml`, Git, logs or notes. Never print it.
 - Never fetch or store captions, hashtags or comments.
-- Connection (collection) URLs live only in the database (`data/vn.sqlite`, `vn conn list`), never in Git.
-- One pipeline run at a time: every command that runs the pipeline takes the lock `data/vn.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
+- Connection (collection) URLs live only in the database (`data/r2g.sqlite`, `r2g conn list`), never in Git.
+- One pipeline run at a time: every command that runs the pipeline takes the lock `data/r2g.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
 - The web UI listens on `127.0.0.1:8740` only, never `0.0.0.0`.
 - UI work follows the design system in `.claude/skills/design-system/` (colours, type, spacing, components, motion). Keep templates and CSS readable: one element or rule per line.
 - Brain writes follow `~/Projects/brain/AGENTS.md`: `brain-index` and `brain-index --check` after changes; commits start `agent: ` and stage only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the brain.
 - `data/` (media, database, tools) and `.venv/` are gitignored. Secrets never go into notes or Git.
+- The repo is **public** on GitHub (`git@github.com:MarcoSburlino/rot2gold.git`, branch `main`). Before every push, check the diff for secrets and personal data (keys, tokens, cookies, Marco's TikTok handle or collection links, his email). Tests use made-up URLs. Commits use the GitHub no-reply address set in this repo's Git config.
 - App settings live in `data/settings.json`; tracked `config.toml` holds defaults only and is never written by the app.
 - Fedora: `dnf`, not `apt`.
 
 ## How to run it
 
 ```
-vn ui             # the app at http://127.0.0.1:8740 (Ctrl+C stops the server, not a running Extract)
-vn extract        # the whole pipeline for every connection, as one run; --conn 1,2  --max-notes N  --no-notes  --no-ideas
-vn ideas list     # idea notes by support, status, name and title
-vn ideas themes   # themes with total and unchecked note counts
-vn ideas pass     # new unchecked notes; --conn 1,2  --dry-run
-vn ideas rebuild  # unchecked notes under themes; --themes "Name,Other"  --limit N  --dry-run
-vn conn list      # connections; add <url> [--name N] | edit <id> | rm <id> | links <id> < urls.txt
-vn runs           # recent runs with counts and AI usage
-vn undo <run_id> [--yes]  # revert a run's brain commits and reopen its posts
-vn update-downloaders    # upgrade yt-dlp and gallery-dl in the venv
-vn install-launcher      # add the GNOME launcher; uninstall-launcher removes it
-vn run 25         # sync + fetch + process up to 25 posts, without note writing
-vn status         # counts by status and skip reason; connections; what is running
-vn pending 10     # processed posts waiting for a note
-vn done <id> <note-path>   |   vn skip <id> "<reason>"
+r2g ui             # the app at http://127.0.0.1:8740 (Ctrl+C stops the server, not a running Extract)
+r2g extract        # the whole pipeline for every connection, as one run; --conn 1,2  --max-notes N  --no-notes  --no-ideas
+r2g ideas list     # idea notes by support, status, name and title
+r2g ideas themes   # themes with total and unchecked note counts
+r2g ideas pass     # new unchecked notes; --conn 1,2  --dry-run
+r2g ideas rebuild  # unchecked notes under themes; --themes "Name,Other"  --limit N  --dry-run
+r2g conn list      # connections; add <url> [--name N] | edit <id> | rm <id> | links <id> < urls.txt
+r2g runs           # recent runs with counts and AI usage
+r2g undo <run_id> [--yes]  # revert a run's brain commits and reopen its posts
+r2g update-downloaders    # upgrade yt-dlp and gallery-dl in the venv
+r2g install-launcher      # add the GNOME launcher; uninstall-launcher removes it
+r2g run 25         # sync + fetch + process up to 25 posts, without note writing
+r2g status         # counts by status and skip reason; connections; what is running
+r2g pending 10     # processed posts waiting for a note
+r2g done <id> <note-path>   |   r2g skip <id> "<reason>"
 .venv/bin/python -m pytest -q tests   # tests (temporary folders only; never the real database or brain)
 ```
 
@@ -54,16 +55,16 @@ vn done <id> <note-path>   |   vn skip <id> "<reason>"
   ```
   uv venv --python 3.14 .venv
   uv pip install --python .venv/bin/python -e '.[dev]'
-  ln -sfn ~/Projects/video-notes-app/.venv/bin/vn ~/.local/bin/vn
+  ln -sfn ~/Projects/rot2gold/.venv/bin/r2g ~/.local/bin/r2g
   ```
   The venv records its own absolute path, so after moving or renaming this folder, delete `.venv` and run the setup again.
   Tesseract comes from `sudo dnf install tesseract tesseract-langpack-ita tesseract-langpack-spa` (fallback: `docs/spec.md`).
 - When TikTok downloads start failing: `uv pip install --python .venv/bin/python -U 'yt-dlp[default,curl-cffi]' gallery-dl`.
 - Every stage skips finished work. Stop any command and rerun it.
-- Whisper model benchmark: `.venv/bin/python scripts/whisper_bench.py <out-dir> data/media/<id>/audio.wav ...`. Run it on fetched posts before `vn process`, which deletes the audio.
+- Whisper model benchmark: `.venv/bin/python scripts/whisper_bench.py <out-dir> data/media/<id>/audio.wav ...`. Run it on fetched posts before `r2g process`, which deletes the audio.
 
 When asked to process posts, follow docs/note-writing.md.
 
 ## Brain
 
-Project note: ~/Projects/brain/Projects/video-notes-app.md. Add a log entry there at the end of a session that changed something.
+Project note: ~/Projects/brain/Projects/rot2gold.md. Add a log entry there at the end of a session that changed something.

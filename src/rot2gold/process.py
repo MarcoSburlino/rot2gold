@@ -1,4 +1,4 @@
-"""vn process: local work only (OCR and speech-to-text), no AI reasoning."""
+"""r2g process: local work only (OCR and speech-to-text), no AI reasoning."""
 
 import os
 import shutil

@@ -1,7 +1,7 @@
-"""The local web app: `vn ui` → http://127.0.0.1:8740.
+"""The local web app: `r2g ui` → http://127.0.0.1:8740.
 
 Pages are rendered on the server. A run is never executed inside this server: Extract starts
-`vn extract --origin app` as its own process, and the run page streams its run_events over
+`r2g extract --origin app` as its own process, and the run page streams its run_events over
 Server-Sent Events. So closing the tab or restarting the server doesn't stop a run.
 """
 
@@ -30,7 +30,7 @@ from ..ai import claude_cli
 from ..config import DATA, LOGS, MEDIA, ROOT, brain_dir, load, media_dir
 from ..errors import VNError
 
-APP_NAME = "video-notes-app"  # the project name may change: this is the only place the UI shows it
+APP_NAME = "Rot2Gold"  # the only place the UI shows the name
 HERE = Path(__file__).parent
 HOST = "127.0.0.1"  # loopback only: reachable from this laptop, never from the network
 
@@ -331,7 +331,7 @@ def test_key(request: Request):
 
 @app.post("/update-downloaders")
 def start_update(request: Request):
-    return spawn_run(request, [sys.executable, "-m", "video_notes.cli", "update-downloaders", "--origin", "app"], "Update")
+    return spawn_run(request, [sys.executable, "-m", "rot2gold.cli", "update-downloaders", "--origin", "app"], "Update")
 
 
 @app.get("/")
@@ -389,7 +389,7 @@ def start_extract(request: Request, conn: list[int] = Form([]), max_notes: str =
         conn = [r["id"] for r in db.connect().execute("SELECT id FROM connections ORDER BY id")]
     if not conn:
         return back_to(request, err="Add a collection first: press + next to Collections.")
-    cmd = [sys.executable, "-m", "video_notes.cli", "extract", "--origin", "app", "--conn", ",".join(map(str, conn))]
+    cmd = [sys.executable, "-m", "rot2gold.cli", "extract", "--origin", "app", "--conn", ",".join(map(str, conn))]
     if max_notes.strip().isdigit():
         cmd += ["--max-notes", max_notes.strip()]
     if not write_notes:
@@ -406,7 +406,7 @@ def spawn_run(request: Request, cmd: list[str], label: str):
     LOGS.mkdir(parents=True, exist_ok=True)
     log = LOGS / f"{label.lower()}-{datetime.now():%Y%m%d-%H%M%S}.log"
     env = dict(os.environ)
-    # The note-writing agent calls `vn`: make sure it's on PATH even if the app was started from a launcher.
+    # The note-writing agent calls `r2g`: make sure it's on PATH even if the app was started from a launcher.
     env["PATH"] = os.pathsep.join([str(ROOT / ".venv/bin"), str(Path.home() / ".local/bin"), env.get("PATH", "")])
     with open(log, "w") as out:
         # start_new_session: the run gets its own process group, so Stop can signal it and all its children.
@@ -662,7 +662,7 @@ async def event_index(request: Request, status: str = "all", q: str = ""):
 
 @app.post("/ideas/rebuild")
 def start_ideas_rebuild(request: Request, themes: list[str] = Form([]), dry_run: str = Form(""), limit: str = Form("")):
-    cmd = [sys.executable, "-m", "video_notes.cli", "ideas", "rebuild", "--origin", "app"]
+    cmd = [sys.executable, "-m", "rot2gold.cli", "ideas", "rebuild", "--origin", "app"]
     if themes:
         cmd += ["--themes", ",".join(themes)]
     if dry_run:
@@ -699,7 +699,7 @@ def apply_preview(run_id: int):
     from ..runs import recorded_run
     done = None
     try:
-        with recorded_run("app", "vn ideas apply", "ideas", [], load()) as run:
+        with recorded_run("app", "r2g ideas apply", "ideas", [], load()) as run:
             run.report.set_stage("ideas")
             done = ideas.apply_dry_run(run.con, run_id, run.report, run.run_id)
             run.counts.update(done["counts"])
@@ -720,7 +720,7 @@ def delete_item(request: Request, name: str, with_videos: str):
     done = None
     try:
         title = delete.plan(db.connect(), name)["idea"]["title"]
-        with recorded_run("app", f"vn delete {name}", "delete", [], load()) as run:
+        with recorded_run("app", f"r2g delete {name}", "delete", [], load()) as run:
             run.report.set_stage("delete")
             done = delete.delete_idea(run.con, name, bool(with_videos), run.report, run.run_id)
             run.counts["posts_skipped"] = len(done["videos"])  # History says how many videos went with it
@@ -841,7 +841,7 @@ def perform_undo(run_id: int):
     from ..runs import recorded_run
     undone = False
     try:
-        with recorded_run("app", f"vn undo {run_id}", "undo", [], load()) as run:
+        with recorded_run("app", f"r2g undo {run_id}", "undo", [], load()) as run:
             run.report.set_stage("undo")
             undo.undo_run(run.con, run_id, run.report)
             undone = True

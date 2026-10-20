@@ -9,7 +9,7 @@ import subprocess
 
 from .errors import AgentFailed
 
-ATTRS = ["service", "video-notes-app", "account", "anthropic"]
+ATTRS = ["service", "rot2gold", "account", "anthropic"]
 
 
 def _tool() -> str:
@@ -34,7 +34,7 @@ def has_api_key() -> bool:
 
 
 def set_api_key(key: str) -> None:
-    proc = subprocess.run([_tool(), "store", "--label=video-notes-app Anthropic API key", *ATTRS],
+    proc = subprocess.run([_tool(), "store", "--label=Rot2Gold Anthropic API key", *ATTRS],
                           input=key.strip(), capture_output=True, text=True)
     if proc.returncode != 0:
         raise AgentFailed("could not store the key in the keyring", proc.stderr.strip()[:200])

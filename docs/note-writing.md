@@ -1,20 +1,20 @@
 # Writing notes for processed posts
 
-Instructions for any agent (Claude Code, Codex) asked to process posts. `vn` has already downloaded each post and extracted its text (OCR) and speech (transcript). Your job is to turn each processed post into one note in Marco's brain.
+Instructions for any agent (Claude Code, Codex) asked to process posts. `r2g` has already downloaded each post and extracted its text (OCR) and speech (transcript). Your job is to turn each processed post into one note in Marco's brain.
 
 Read the brain's rules first: `~/Projects/brain/AGENTS.md`, especially "Writing notes" and "Commonplace".
 
 ## Workflow
 
-1. Get work: `vn pending 10` prints up to 10 posts waiting for a note: id, URL, creator, date, type, speech language, each image with its OCR text, confidence and path, and the transcript with timestamps. `vn pending --id <id>` shows one post; add `--json` for JSON.
+1. Get work: `r2g pending 10` prints up to 10 posts waiting for a note: id, URL, creator, date, type, speech language, each image with its OCR text, confidence and path, and the transcript with timestamps. `r2g pending --id <id>` shows one post; add `--json` for JSON.
 2. For each post:
    1. Check whether a note already exists for it (an earlier run may have been stopped mid-post): `rg -l 'post_id: "<id>"' ~/Projects/brain/Resources/commonplace/videos`. If one exists, finish or replace that file instead of creating a new name.
    2. Read the OCR text, then check it against the image. **Always open a video's frame image** (one per video, cheap): frame OCR often misses small text or reads picture texture as words (in testing it read "1300" where the frame said "ARE"). **Open a slide image when its OCR confidence is below 85, its text looks garbled, or it seems to miss text.** The image is the source; OCR is only a draft.
    3. Search the brain for related notes: `rg -il "<term>" ~/Projects/brain`. Read `Resources/commonplace/commonplace.md` for the themes and topic tags in use.
    4. Write the note (format below), with web searches for the "Checked" claims.
    5. Update the hub and quotes (see "After each note").
-   6. `vn done <id> Resources/commonplace/videos/video-<slug>.md`, or `vn skip <id> "<reason>"` if the content turns out to be useless (e.g. "music only; on-screen text is a single word"). Don't write a note for a skipped post.
-3. After the batch, in `~/Projects/brain`. Skip this step when the app runs the batch (`vn extract` or the Extract button): the app indexes and commits.
+   6. `r2g done <id> Resources/commonplace/videos/video-<slug>.md`, or `r2g skip <id> "<reason>"` if the content turns out to be useless (e.g. "music only; on-screen text is a single word"). Don't write a note for a skipped post.
+3. After the batch, in `~/Projects/brain`. Skip this step when the app runs the batch (`r2g extract` or the Extract button): the app indexes and commits.
    1. `brain-index`, then `brain-index --check` must exit 0.
    2. Commit by staging only the paths you changed, plus the regenerated indexes. Never `git add -A`; other agents may be working there:
       ```
@@ -90,11 +90,11 @@ Everything outside Content is in English.
   Skip this if nothing stands out.
 - **Ideas**: don't write idea notes or touch `Inbox/`. Ideas are found across notes by a separate pass, with its own rules in `docs/ideas.md` (until 2026-10-19 each note writer added a one-source idea to `Inbox/` here).
 - **commonplace.md**: list the post under its theme in `## Posts by theme`, as `- [[video-<slug>]] — <short description>` under a `### <Theme>` heading. Reuse an existing theme where it fits; themes are broad (e.g. "Philosophy and meaning", "Money and business", "AI and work"). Add any new topic tags to `## Topic tags in use`.
-- Run `vn done <id> Resources/commonplace/videos/video-<slug>.md`.
+- Run `r2g done <id> Resources/commonplace/videos/video-<slug>.md`.
 
 ## Working rules (learned on the first full run)
 
-- Finish each post completely before starting the next: note, quotes, hub, `vn done`. If you are interrupted, nothing is left half-registered.
+- Finish each post completely before starting the next: note, quotes, hub, `r2g done`. If you are interrupted, nothing is left half-registered.
 - Edit files in place; never make backup copies. Git tracks the brain.
 - Many posts are quote slideshows from the same few accounts. Before checking a quote, `rg` the existing notes: if it was already checked, link that note and reuse its verdict.
 - If you identify an unnamed speaker only by face or voice, say it is unconfirmed ("appears to be … [?]").

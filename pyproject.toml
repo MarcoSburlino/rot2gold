@@ -1,5 +1,5 @@
 [project]
-name = "video-notes-app"
+name = "rot2gold"
 version = "0.1.0"
 description = "Turn saved TikTok posts into notes and ideas in Marco's brain"
 requires-python = ">=3.12"
@@ -23,7 +23,7 @@ dependencies = [
 dev = ["pytest", "httpx"]
 
 [project.scripts]
-vn = "video_notes.cli:main"
+r2g = "rot2gold.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

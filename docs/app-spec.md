@@ -1,6 +1,6 @@
 # App spec
 
-The app is the local UI for the `vn` pipeline in this repo. Marco adds a connection (for now, a TikTok collection) and presses **Extract**. The app then runs every step the pipeline runs today: sync, fetch, OCR and transcription, note writing, and a pass that finds ideas, learnings and events. It also has screens for browsing posts, notes, ideas, learnings and events.
+The app is the local UI for the `r2g` pipeline in this repo. Marco adds a connection (for now, a TikTok collection) and presses **Extract**. The app then runs every step the pipeline runs today: sync, fetch, OCR and transcription, note writing, and a pass that finds ideas, learnings and events. It also has screens for browsing posts, notes, ideas, learnings and events.
 
 Other docs:
 
@@ -31,21 +31,21 @@ Not goals: hosting, accounts, sync between devices, or mobile. The brain stays l
   - Unique file names with dashes, front matter, wikilinks.
   - `brain-index` and `brain-index --check` after every change.
   - Commits start with `agent: ` and stage only the paths the run changed. Never `git add -A`, never `.obsidian/`.
-- **One run at a time.** A lock stops the app and a terminal `vn` command from running the pipeline together.
+- **One run at a time.** A lock stops the app and a terminal `r2g` command from running the pipeline together.
 
 ## Decisions
 
 ### One project
 
-The pipeline and the app live in one repo, `~/Projects/video-notes-app` (Marco, 2026-10-19).
+The pipeline and the app live in one repo, `~/Projects/rot2gold` (Marco, 2026-10-19).
 
-- Until 2026-10-19 the pipeline was its own project, `~/Projects/video-notes`. The folder was renamed, so its Git history and `data/` (database, media, Tesseract fallback) came along.
-- **One of everything:** one venv, one database, one `AGENTS.md`, one CLI (`vn`).
-- **Names kept:** the Python package stays `video_notes` and the CLI stays `vn`. The project name may still change, and these names don't need to follow it.
+- Until 2026-10-19 the pipeline was its own project, `~/Projects/video-notes`. The folder was renamed (`~/Projects/video-notes-app`, then `~/Projects/rot2gold`), so its Git history and `data/` (database, media, Tesseract fallback) came along.
+- **One of everything:** one venv, one database, one `AGENTS.md`, one CLI (`r2g`).
+- **Names:** Marco named the app **Rot2Gold** on 2026-10-20 (it was video-notes-app). The Python package is `rot2gold`, the command `r2g`, the database `data/r2g.sqlite`; the code is on GitHub at `MarcoSburlino/rot2gold` (public).
 
 ### Local web UI on 127.0.0.1:8740
 
-`vn ui` starts a small web server and opens the browser at `http://127.0.0.1:8740`.
+`r2g ui` starts a small web server and opens the browser at `http://127.0.0.1:8740`.
 
 - **Stack:**
   - FastAPI and uvicorn, with HTML rendered on the server by Jinja2.
@@ -56,7 +56,7 @@ The pipeline and the app live in one repo, `~/Projects/video-notes-app` (Marco, 
   - A desktop app (Tauri, Electron) would add Rust or Node toolchains and installers, for a single user. GTK would mean learning a UI toolkit.
 - **Why 127.0.0.1:** it's the loopback address, reachable only from this laptop. Binding to `0.0.0.0` would expose the app to anyone on the same Wi-Fi.
 - **Why 8740:** Marco's other projects use 3000, 3001, 5173, 1420/1421, 2020–2024, 3070, 5434, 8000, 8080, 8081, 8100 and 8888. 8740 is free. It's set in `config.toml` (`[app] port`) and noted in `AGENTS.md`.
-- **No systemd service.** A service would run all the time on a laptop that is often asleep. The app starts on demand instead. `vn install-launcher` adds a GNOME `.desktop` entry. `vn ui` reuses an already running copy and writes output to `data/logs/ui.log` when started without a terminal.
+- **No systemd service.** A service would run all the time on a laptop that is often asleep. The app starts on demand instead. `r2g install-launcher` adds a GNOME `.desktop` entry. `r2g ui` reuses an already running copy and writes output to `data/logs/ui.log` when started without a terminal.
 - **Local request checks.** Every request must have the configured loopback Host header; writes must also have an Origin or Referer from that same local address. This blocks DNS rebinding and cross-site form posts.
 
 ### Functions, not printed output
@@ -65,23 +65,23 @@ The stages become functions that the app imports. The other option, wrapping the
 
 - Each stage takes the ids it should work on and a `report(event)` callback, instead of printing.
 - Stages raise typed errors (`errors.py`): `Blocked`, `CookiesNeeded`, `DownloaderOutdated`, `UsageLimit` and `LockHeld`. The CLI turns them into messages and exit codes. The UI turns them into banners that say what to do next.
-- Every current `vn` command keeps working.
+- Every current `r2g` command keeps working.
 
 ### A run is its own process
 
-Extract starts `vn extract --conn <ids> --origin app` as a child process. The run writes its progress to SQLite (`run_events`), and the UI streams those rows to the browser over SSE.
+Extract starts `r2g extract --conn <ids> --origin app` as a child process. The run writes its progress to SQLite (`run_events`), and the UI streams those rows to the browser over SSE.
 
 - Closing the browser tab or restarting the server doesn't kill a run that may take an hour.
-- A run started in a terminal (`vn extract`) shows up live in the UI the same way.
+- A run started in a terminal (`r2g extract`) shows up live in the UI the same way.
 - There is one code path for both.
 
-### Lock: flock on data/vn.lock
+### Lock: flock on data/r2g.lock
 
 `flock` is a lock the Linux kernel keeps on an open file. Only one process can hold it, and the kernel releases it the moment that process exits, even after a crash or `kill -9`. So there is never a stale lock to clean up by hand.
 
 - The holder writes `{pid, run_id, origin, started}` into the file. That way the other side can say who holds it: "a terminal run (pid 1234), started 10:02, is in progress".
 - Who takes the lock:
-  - `vn sync`, `fetch`, `process`, `run` and `extract` take it.
+  - `r2g sync`, `fetch`, `process`, `run` and `extract` take it.
   - `status` and `pending` only read.
   - `done` and `skip` don't take it, because the note-writing agent calls them *during* a locked run.
 - SQLite runs in WAL mode (write-ahead log) with a busy timeout, so the UI can read while a run writes.
@@ -98,7 +98,7 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
 | Safety | `ANTHROPIC_API_KEY` is removed from the child's environment, because Claude Code prefers a key over the plan login when both exist | `--max-budget-usd` per batch |
 
 - **Why the same CLI for both:**
-  - The agent loop, the tools (file edits, web search, `vn` commands) and the prompts are identical, so a note looks the same whichever backend wrote it.
+  - The agent loop, the tools (file edits, web search, `r2g` commands) and the prompts are identical, so a note looks the same whichever backend wrote it.
   - Calling the Messages API directly would mean re-implementing the tools and web search.
   - The Agent SDK for Python runs this same CLI underneath, so the subprocess adds nothing.
   - API mode does not use `--bare`: bare mode removes WebSearch and WebFetch, which note writing needs. The key is supplied only to the child process, and a per-batch budget can cap spending.
@@ -111,7 +111,7 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
   - Working directory: this repo.
 - **Tools allowed:**
   - `Read`, `Write`, `Edit`, `Glob`, `Grep`, `WebSearch`, `WebFetch`.
-  - `Bash(vn pending *)`, `Bash(vn done *)`, `Bash(vn skip *)`, `Bash(rg *)`, `Bash(find *)`.
+  - `Bash(r2g pending *)`, `Bash(r2g done *)`, `Bash(r2g skip *)`, `Bash(rg *)`, `Bash(find *)`.
   - No general shell and no git: the app commits, the AI doesn't.
 - **What Anthropic's docs said on 2026-10-19:**
   - `claude -p` and the Agent SDK still draw from subscription limits. The planned separate credit was paused on 2026-06-15.
@@ -124,11 +124,11 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
 
 Marco's rule so far was "AI reasoning runs only through Marco's subscriptions, no API keys". **This project may also use an API key, if Marco chooses it in Settings.** The subscription stays the default.
 
-The exception is for this project only. It is recorded here, in `AGENTS.md`, in `spec.md` and in the brain's `Projects/video-notes-app.md`. Marco's global rules don't change.
+The exception is for this project only. It is recorded here, in `AGENTS.md`, in `spec.md` and in the brain's `Projects/rot2gold.md`. Marco's global rules don't change.
 
 ### API key in the GNOME keyring
 
-The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool`, attributes `service video-notes-app` and `account anthropic`). The keyring is an encrypted store that is unlocked when Marco logs in.
+The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool`, attributes `service rot2gold` and `account anthropic`). The keyring is an encrypted store that is unlocked when Marco logs in.
 
 - **Why not a `chmod 600` file in `~/.config/`:**
   - The file would still be plain text on disk, visible to backups and `rg`.
@@ -142,7 +142,7 @@ The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool
 Each batch of notes is committed on its own, and Git is the review and undo tool.
 
 - **Review:** `git show` and Obsidian.
-- **Undo:** an "Undo this run" button and `vn undo` revert a run's commits, re-open its noted posts if their note files are gone, and clear its ideas, learnings and events checks. Undo refuses staged or conflicting changes and is itself a locked, recorded run.
+- **Undo:** an "Undo this run" button and `r2g undo` revert a run's commits, re-open its noted posts if their note files are gone, and clear its ideas, learnings and events checks. Undo refuses staged or conflicting changes and is itself a locked, recorded run.
 
 A true "hold before commit" mode would need a staging copy of `commonplace.md` and `quotes.md`, which every batch also edits. It is not built: undo provides review after the fact without a second commit path.
 
@@ -152,7 +152,7 @@ The tracked `config.toml` holds project defaults only. Editable preferences are 
 
 ## Data model (schema v7)
 
-All state stays in `data/vn.sqlite`.
+All state stays in `data/r2g.sqlite`.
 
 ### New tables
 
@@ -166,9 +166,9 @@ All state stays in `data/vn.sqlite`.
 - `run_events(run_id, ts, level, stage, post_id, message)`.
 - Schema v3 adds `runs.kind` (`extract`, `ideas`, `ideas-dry-run`) and `runs.ideas_created`, `runs.ideas_updated`. Existing runs default to `extract`; v2→v3 is additive and needs no backup.
 - Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
-- Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/vn.sqlite.bak-v4`. `runs.kind` gains `delete`.
-- Schema v6 (2026-10-20) adds learnings: `posts.learnings_checked_at`, `runs.learnings_created`, `runs.learnings_updated`, and `batches.learned` (the posts a batch checked for learnings, so Undo clears just those). Additive, after a one-time backup `data/vn.sqlite.bak-v5`.
-- Schema v7 (2026-10-20) adds events the same way: `posts.events_checked_at`, `runs.events_created`, `runs.events_updated`, and `batches.events_seen`. Additive, after a one-time backup `data/vn.sqlite.bak-v6`.
+- Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/r2g.sqlite.bak-v4`. `runs.kind` gains `delete`.
+- Schema v6 (2026-10-20) adds learnings: `posts.learnings_checked_at`, `runs.learnings_created`, `runs.learnings_updated`, and `batches.learned` (the posts a batch checked for learnings, so Undo clears just those). Additive, after a one-time backup `data/r2g.sqlite.bak-v5`.
+- Schema v7 (2026-10-20) adds events the same way: `posts.events_checked_at`, `runs.events_created`, `runs.events_updated`, and `batches.events_seen`. Additive, after a one-time backup `data/r2g.sqlite.bak-v6`.
 
 ### Changes to `posts`
 
@@ -187,13 +187,13 @@ They stay `new → fetched → processed → done | skipped`, so existing rows a
 
 It runs once, on the first start of the new code:
 
-1. Copy `data/vn.sqlite` to `data/vn.sqlite.bak-v1`.
+1. Copy `data/r2g.sqlite` to `data/r2g.sqlite.bak-v1`.
 2. Add the new tables and columns.
 3. Create the connection "Material" from `config.toml`'s `collection_url`, and link all existing posts to it.
 4. Move the `meta.cookies` flag into that connection.
 5. Remove `collection_url` from `config.toml`. From then on, connection URLs live only in the (gitignored) database.
 
-`PRAGMA user_version` records the schema version. The plain `vn sync` command then syncs every connection.
+`PRAGMA user_version` records the schema version. The plain `r2g sync` command then syncs every connection.
 
 ### Deleting a connection
 
@@ -201,7 +201,7 @@ This removes the connection and its link rows. Posts, media and brain notes stay
 
 ## Sources (pluggable)
 
-`src/video_notes/sources/base.py` defines what every platform provides:
+`src/rot2gold/sources/base.py` defines what every platform provides:
 
 - `platform`, `label` (shown in the platform picker), and `validate_url(url)`.
 - `list_posts(connection) -> list[ListedPost]`, giving id, url, creator and upload date. It raises `CookiesNeeded` or `Blocked`.
@@ -272,13 +272,13 @@ Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, coll
 - ⚙ **Settings** opens a card of fixed size (only the tab's content scrolls, the tabs stay put) with tabs: General (AI backend, models, notes per run; batch sizes, plan-usage stop and API budget under Advanced; the API key folded unless the API backend is picked), Usage (plan windows), About (downloader versions and update, brain path, Firefox profiles). Settings forms return to the page you were on with the card reopened. `/settings` renders the same panel as a page without JavaScript.
 - Quit.
 
-**Ideas** (`/`, `/ideas`, `/ideas/<name>`): the home page. Status chips (only statuses that have ideas) and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. When notes under the themes haven't been checked for ideas, a banner offers "Check them": a card that runs `vn ideas rebuild` (all themes, or some under a fold) and writes straight to the brain — Undo is the safety net, so the app has no dry-run step (the CLI keeps `--dry-run`, and old previews stay reachable from their run page). Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up; status is changed in Obsidian.
+**Ideas** (`/`, `/ideas`, `/ideas/<name>`): the home page. Status chips (only statuses that have ideas) and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. When notes under the themes haven't been checked for ideas, a banner offers "Check them": a card that runs `r2g ideas rebuild` (all themes, or some under a fold) and writes straight to the brain — Undo is the safety net, so the app has no dry-run step (the CLI keeps `--dry-run`, and old previews stay reachable from their run page). Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up; status is changed in Obsidian.
 
 **Learnings** (`/learnings`, `/learnings/<name>`, added 2026-10-20): the same page as Ideas (`ideas.html`, labels from `KIND_PAGES` in `web/app.py`) for `~/Projects/brain/Inbox/learnings/`: what the videos taught, combined across the videos that say the same thing. While notes aren't checked for learnings, a banner says the next Extract checks them, 25 at a time, and offers "Check them now" (the same rebuild card). Its ⋯ menu holds "Delete learning…", which works like deleting an idea.
 
 **Events** (`/events`, `/events/<name>`, added 2026-10-20): the same page for `~/Projects/brain/Inbox/events/`: things the videos report (news, releases, history) or announce (conferences, festivals, launches). Each row shows its date and place in mono. The list is grouped **Coming up** (soonest first) until an event's last day (`until:`, else `when:`) has passed (with only a month or year, until that period begins), then **Past** (most recent first), then **No date**; the chips filter by those groups instead of by status. An upcoming event with a full date has **Add to calendar**, which downloads an `.ics` file (`/events/<name>/calendar.ics`, built by `ideas.calendar_file`). Same unchecked-notes banner and ⋯ menu as Learnings.
 
-**Deleting an idea** (2026-10-20): the ⋯ menu at the top right of the reading pane holds "Delete idea…", which opens a card. It deletes the idea file and removes `## Related ideas` links to it from other ideas. Ticking "Also delete its videos" also deletes those video notes from the brain and their lines in `commonplace.md`, except videos that support another idea or learning (listed as kept). List links to it in any idea, learning or event (`## Related ideas`, `## Learnings behind it`, `## Use it`, `## Related learnings`, `## Learnings it shows`, `## Related events`, …) are removed. Deleted videos stay in the database as `skipped` ("deleted by you with the idea …"), so Extract never writes them again; their media in `data/media/` stays. Links to them inside other video notes are left as unresolved links. It runs as a `delete` run with one brain commit, so History lists it and Undo restores the files and sets the videos back to noted (code: `src/video_notes/delete.py`, `undo.py`).
+**Deleting an idea** (2026-10-20): the ⋯ menu at the top right of the reading pane holds "Delete idea…", which opens a card. It deletes the idea file and removes `## Related ideas` links to it from other ideas. Ticking "Also delete its videos" also deletes those video notes from the brain and their lines in `commonplace.md`, except videos that support another idea or learning (listed as kept). List links to it in any idea, learning or event (`## Related ideas`, `## Learnings behind it`, `## Use it`, `## Related learnings`, `## Learnings it shows`, `## Related events`, …) are removed. Deleted videos stay in the database as `skipped` ("deleted by you with the idea …"), so Extract never writes them again; their media in `data/media/` stays. Links to them inside other video notes are left as unresolved links. It runs as a `delete` run with one brain commit, so History lists it and Undo restores the files and sets the videos back to noted (code: `src/rot2gold/delete.py`, `undo.py`).
 
 **Videos** (`/videos`): rows with a 9:16 thumbnail, title, description, creator, date and type; a status pill only when a video isn't noted. Chips only for groups that have videos (All · Waiting · Skipped), search, and a removable "In <collection>" filter when there are several collections. **Video detail** (`/videos/<id>`): header with thumbnail, title, Open in Obsidian and Open on TikTok; the note (rendered with raw HTML switched off, wikilinks to app pages or Obsidian); a rail with frames or slides, **Ideas from this video**, **Learnings from this video**, **Events in this video** (only when there are some), the text and speech read from the video, and folded details.
 
@@ -291,7 +291,7 @@ docs/app-spec.md           this file
 docs/ideas.md              rules for the ideas, learnings and events pass
 prompts/write-notes.md     prompt for one note-writing batch
 prompts/ideas.md           prompt for the ideas, learnings and events pass
-src/video_notes/
+src/rot2gold/
   db.py                    schema v7, migration, WAL                (changed)
   delete.py                delete an idea, learning or event and, optionally, its videos
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
@@ -319,7 +319,7 @@ tests/
 
 0. **Docs.** This file, `ideas.md`, the prompts, the `note-writing.md` update, merging the pipeline and the app into one project.
 1. **Core, Connections and Extract.**
-   - Schema v2 and the migration, lock, events, sources, `extract.py`, the subscription backend, batch commits, `vn extract`.
+   - Schema v2 and the migration, lock, events, sources, `extract.py`, the subscription backend, batch commits, `r2g extract`.
    - A minimal UI: the Connections screen and the run panel.
    - Done when Marco adds a connection, presses Extract, and new posts become committed notes, as in the run of 2026-10-15.
 2. **Browse.** The Videos and Video detail screens.
@@ -330,9 +330,9 @@ tests/
 ## Acceptance checks
 
 - The migration, run on a copy of the database, keeps all 104 posts (101 done, 3 skipped), every one linked to "Material".
-- With a terminal `vn extract` running, Extract in the UI reports that run. After `kill -9` of the terminal run, the lock is free at once.
+- With a terminal `r2g extract` running, Extract in the UI reports that run. After `kill -9` of the terminal run, the lock is free at once.
 - A new post in Material is the only one fetched and written up. The brain commit contains only its note, the hub, quotes and the indexes. `.obsidian/graph.json` stays unstaged.
 - A post saved in two connections is processed once and listed under both.
 - With a wrong Firefox profile or a dead URL list, the UI shows the matching message and next step.
 - Running the ideas pass twice on the same notes creates and updates nothing the second time.
-- In API mode: `secret-tool lookup service video-notes-app account anthropic` finds the key, a batch reports its cost, and a missing key gives a clear error.
+- In API mode: `secret-tool lookup service rot2gold account anthropic` finds the key, a batch reports its cost, and a missing key gives a clear error.

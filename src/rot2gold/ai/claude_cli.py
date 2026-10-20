@@ -19,7 +19,7 @@ from datetime import datetime
 from ..errors import AgentFailed, ToolMissing, UsageLimit
 
 ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch",
-                 "Bash(vn pending *)", "Bash(vn done *)", "Bash(vn skip *)", "Bash(rg *)", "Bash(find *)"]
+                 "Bash(r2g pending *)", "Bash(r2g done *)", "Bash(r2g skip *)", "Bash(rg *)", "Bash(find *)"]
 
 
 @dataclass
@@ -42,7 +42,7 @@ def describe_tool(block: dict) -> str | None:
     name, inp = block.get("name"), block.get("input") or {}
     if name == "Bash":
         cmd = inp.get("command", "")
-        return cmd if cmd.startswith(("vn done", "vn skip", "vn pending")) else None
+        return cmd if cmd.startswith(("r2g done", "r2g skip", "r2g pending")) else None
     if name in ("Write", "Edit"):
         return f"{name.lower()} {os.path.basename(inp.get('file_path', ''))}"
     if name == "WebSearch":

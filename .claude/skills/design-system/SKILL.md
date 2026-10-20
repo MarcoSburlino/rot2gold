@@ -1,13 +1,13 @@
 ---
 name: design-system
-description: Visual design system of video-notes-app (colours, type, spacing, components, motion). Read before any change to the web UI in src/video_notes/web/.
+description: Visual design system of Rot2Gold (colours, type, spacing, components, motion). Read before any change to the web UI in src/rot2gold/web/.
 ---
 
-# video-notes-app design system
+# Rot2Gold design system
 
 A personal commonplace book: fast vertical videos turned into slow, sourced notes and ideas. One reader, on a laptop, in GNOME, offline.
 
-Read the files here before touching `src/video_notes/web/`:
+Read the files here before touching `src/rot2gold/web/`:
 
 - `colors.md` — the six colours, light and dark, and where each may be used
 - `typography.md` — three installed faces and the type scale

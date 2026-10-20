@@ -44,7 +44,7 @@ This file replaces that per-post step with one pass that looks across sources. I
 
 ## When the pass runs
 
-One pass looks for all three kinds, in the same Claude call per batch. Each note has three checks in `data/vn.sqlite`: `ideas_checked_at`, `learnings_checked_at` and `events_checked_at`. The prompt tags each note with what it still needs: `[ideas, learnings and events]`, `[learnings and events]`, `[events]`, and so on.
+One pass looks for all three kinds, in the same Claude call per batch. Each note has three checks in `data/r2g.sqlite`: `ideas_checked_at`, `learnings_checked_at` and `events_checked_at`. The prompt tags each note with what it still needs: `[ideas, learnings and events]`, `[learnings and events]`, `[events]`, and so on.
 
 - **Inside each Extract**, right after its notes are written and committed: the same run, not a separate step. Input: notes not checked for ideas and marked done on or after `[ideas] since` (2026-10-19 by default), then notes of **any age** not checked for learnings or events. So the Extracts after 2026-10-20 work through the older notes for learnings and events, 25 per batch, stopping at the plan-usage limit and carrying on next time.
 - **"Rebuild ideas"**, started by hand from the app or CLI. Input: notes missing either check, under selected themes in `commonplace.md`, regardless of date, in batches of 25. Marco chose Mindset and self-help, Learning and memory, and Money and business on 2026-10-19. Marking only considered notes lets a stopped rebuild resume.

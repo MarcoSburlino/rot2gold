@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from video_notes import brain, db, ideas, notefile, settings
-from video_notes.sources import firefox
-from video_notes.web import app as web
+from rot2gold import brain, db, ideas, notefile, settings
+from rot2gold.sources import firefox
+from rot2gold.web import app as web
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def sample(tmp_path, monkeypatch):
         'sources:\n  - "[[video-one]]"\nsupport: 1\n---\n# Try this idea\nUse [[video-one]].\n')
     (vault / "Resources/commonplace/commonplace.md").write_text(
         '## Posts by theme\n### Useful\n- [[video-one]]\n')
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vn.sqlite")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "r2g.sqlite")
     monkeypatch.setattr(db, "LINKS", tmp_path / "none")
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(brain, "brain_dir", lambda cfg=None: vault)
@@ -34,7 +34,7 @@ def sample(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "DATA", tmp_path)
     monkeypatch.setattr(web, "brain_dir", lambda cfg=None: vault)
     monkeypatch.setattr(web.lock, "DATA", tmp_path)
-    monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "vn.lock")
+    monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "r2g.lock")
     monkeypatch.setattr(settings, "DATA", tmp_path)
     monkeypatch.setattr(firefox, "profiles", lambda: [])
     monkeypatch.setattr(web.secrets, "has_api_key", lambda: True)

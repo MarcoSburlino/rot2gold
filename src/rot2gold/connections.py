@@ -1,4 +1,4 @@
-"""Connections: the collections the pipeline reads. Shared by `vn conn` and the app."""
+"""Connections: the collections the pipeline reads. Shared by `r2g conn` and the app."""
 
 import sqlite3
 

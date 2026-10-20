@@ -1,4 +1,4 @@
-"""vn extract: sync, fetch, process, notes and ideas for selected connections."""
+"""r2g extract: sync, fetch, process, notes and ideas for selected connections."""
 
 from . import db, ideas, notes, secrets
 from .config import load
@@ -15,9 +15,9 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
     cfg = load()
     conns = connections(db.connect(), conn_ids)
     if not conns:
-        raise SystemExit("No connections yet. Add one: vn conn add <collection URL>")
+        raise SystemExit("No connections yet. Add one: r2g conn add <collection URL>")
     ids = [c["id"] for c in conns]
-    with recorded_run(origin, "vn extract", "extract", ids, cfg, quiet) as run:
+    with recorded_run(origin, "r2g extract", "extract", ids, cfg, quiet) as run:
         con, report, counts, run_id = run.con, run.report, run.counts, run.run_id
         report(f"run {run_id}: {', '.join(c['name'] for c in conns)}")
         report.set_stage("sync")

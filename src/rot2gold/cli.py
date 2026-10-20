@@ -1,4 +1,4 @@
-"""vn: saved posts → notes in the brain. See docs/spec.md (pipeline) and docs/app-spec.md (app)."""
+"""r2g: saved posts → notes in the brain. See docs/spec.md (pipeline) and docs/app-spec.md (app)."""
 
 import argparse
 import json
@@ -113,7 +113,7 @@ def cmd_conn(args) -> None:
         if args.action == "list":
             rows = connections.all_with_counts(con)
             if not rows:
-                print("No connections yet. Add one: vn conn add <collection URL>")
+                print("No connections yet. Add one: r2g conn add <collection URL>")
             for c in rows:
                 n = c["counts"]
                 print(f"{c['id']:>3}  {c['name']}  [{c['platform']}, cookies {c['cookies_mode']}]\n     {c['url']}\n     "
@@ -171,7 +171,7 @@ def cmd_ideas(args) -> None:
     from .runs import recorded_run
     cfg = load()
     if args.action == "apply":
-        with recorded_run("terminal", "vn ideas apply", "ideas", [], cfg) as run:
+        with recorded_run("terminal", "r2g ideas apply", "ideas", [], cfg) as run:
             run.report.set_stage("ideas")
             try:
                 done = ideas.apply_dry_run(run.con, args.run_id, run.report, run.run_id)
@@ -192,7 +192,7 @@ def cmd_ideas(args) -> None:
     if args.action == "rebuild" and args.limit is not None:
         todo = todo[:max(0, args.limit)]
     kind = "ideas-dry-run" if args.dry_run else "ideas"
-    with recorded_run(args.origin, f"vn ideas {args.action}", kind, ids, cfg) as run:
+    with recorded_run(args.origin, f"r2g ideas {args.action}", kind, ids, cfg) as run:
         run.report(f"run {run.run_id}: {len(todo)} notes to consider")
         run.report.set_stage("ideas")
         if todo:
@@ -224,7 +224,7 @@ def cmd_undo(args):
         if answer.strip().lower() != "y":
             raise SystemExit("Not undone.")
     from .runs import recorded_run
-    with recorded_run("terminal", f"vn undo {args.run_id}", "undo", [], load()) as run:
+    with recorded_run("terminal", f"r2g undo {args.run_id}", "undo", [], load()) as run:
         run.report.set_stage("undo")
         undo.undo_run(run.con, args.run_id, run.report)
         run.report.set_stage("done")
@@ -235,7 +235,7 @@ def cmd_undo(args):
 
 def cmd_update(args):
     from .runs import recorded_run
-    with recorded_run(args.origin, "vn update-downloaders", "update", [], load()) as run:
+    with recorded_run(args.origin, "r2g update-downloaders", "update", [], load()) as run:
         run.report.set_stage("update")
         downloaders.update(run.report)
         run.report.set_stage("done")
@@ -245,7 +245,7 @@ def cmd_update(args):
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="vn", description=__doc__)
+    p = argparse.ArgumentParser(prog="r2g", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("sync", help="list every connection (or those given) and add new posts")
     sp.add_argument("--conn", help="connection ids, comma-separated")
@@ -322,18 +322,18 @@ def main() -> None:
     try:
         if args.cmd == "sync":
             from .sync import sync
-            locked("vn sync", sync, conn_ids(args.conn))
+            locked("r2g sync", sync, conn_ids(args.conn))
         elif args.cmd == "fetch":
             from .fetch import fetch
-            locked("vn fetch", fetch, args.n)
+            locked("r2g fetch", fetch, args.n)
         elif args.cmd == "process":
             from .process import process
-            locked("vn process", process, args.n)
+            locked("r2g process", process, args.n)
         elif args.cmd == "run":
             from .fetch import fetch
             from .process import process
             from .sync import sync
-            with lock.PipelineLock("terminal", "vn run"):
+            with lock.PipelineLock("terminal", "r2g run"):
                 sync()
                 fetch(args.n)
                 process(args.n)
@@ -375,7 +375,7 @@ def conn_ids(text: str | None) -> list[int] | None:
     try:
         return [int(x) for x in text.split(",") if x.strip()]
     except ValueError:
-        raise SystemExit("--conn takes connection ids like 1,2 (see `vn conn list`)") from None
+        raise SystemExit("--conn takes connection ids like 1,2 (see `r2g conn list`)") from None
 
 
 if __name__ == "__main__":

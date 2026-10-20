@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from .config import DATA
 from .errors import LockHeld
 
-LOCK_PATH = DATA / "vn.lock"
+LOCK_PATH = DATA / "r2g.lock"
 
 
 def _open():
@@ -39,11 +39,11 @@ def holder() -> dict | None:
 def describe(info: dict) -> str:
     origin = {"app": "an app run", "terminal": "a terminal run"}.get(info.get("origin"), "another run")
     started = info.get("started", "")[11:16]
-    return f"{origin} (pid {info.get('pid', '?')}, started {started} UTC, `{info.get('command', 'vn')}`)"
+    return f"{origin} (pid {info.get('pid', '?')}, started {started} UTC, `{info.get('command', 'r2g')}`)"
 
 
 class PipelineLock:
-    """`with PipelineLock("terminal", "vn run"):` holds the lock for the block."""
+    """`with PipelineLock("terminal", "r2g run"):` holds the lock for the block."""
 
     def __init__(self, origin: str, command: str):
         self.info = {"pid": os.getpid(), "origin": origin, "command": command,

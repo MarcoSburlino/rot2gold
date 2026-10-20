@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from video_notes.transcribe import transcribe
+from rot2gold.transcribe import transcribe
 
 MODELS = ["small", "medium", "large-v3-turbo"]
 

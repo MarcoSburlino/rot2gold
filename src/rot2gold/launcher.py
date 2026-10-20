@@ -13,11 +13,11 @@ def install(applications: Path | None = None, icons: Path | None = None, home: P
     icons = icons or home / ".local/share/icons/hicolor/scalable/apps"
     applications.mkdir(parents=True, exist_ok=True)
     icons.mkdir(parents=True, exist_ok=True)
-    icon = icons / "video-notes-app.svg"
-    desktop = applications / "video-notes-app.desktop"
+    icon = icons / "rot2gold.svg"
+    desktop = applications / "rot2gold.desktop"
     shutil.copyfile(HERE / "static/icon.svg", icon)
     desktop.write_text(f"[Desktop Entry]\nType=Application\nName={APP_NAME}\n"
-                       f"Comment=Turn saved posts into notes and ideas\nExec={home}/.local/bin/vn ui\n"
+                       f"Comment=Turn saved posts into notes and ideas\nExec={home}/.local/bin/r2g ui\n"
                        f"Icon={icon}\nTerminal=false\nCategories=Utility;\n")
     if exe := shutil.which("update-desktop-database"):
         subprocess.run([exe, str(applications)], capture_output=True)
@@ -26,5 +26,5 @@ def install(applications: Path | None = None, icons: Path | None = None, home: P
 
 def uninstall(applications: Path | None = None, icons: Path | None = None, home: Path | None = None) -> None:
     home = home or Path.home()
-    (applications or home / ".local/share/applications").joinpath("video-notes-app.desktop").unlink(missing_ok=True)
-    (icons or home / ".local/share/icons/hicolor/scalable/apps").joinpath("video-notes-app.svg").unlink(missing_ok=True)
+    (applications or home / ".local/share/applications").joinpath("rot2gold.desktop").unlink(missing_ok=True)
+    (icons or home / ".local/share/icons/hicolor/scalable/apps").joinpath("rot2gold.svg").unlink(missing_ok=True)

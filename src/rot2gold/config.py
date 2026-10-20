@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 MEDIA = DATA / "media"
-DB_PATH = DATA / "vn.sqlite"
+DB_PATH = DATA / "r2g.sqlite"
 LINKS = DATA / "links.txt"  # v1 fallback list of post URLs; imported into the first connection
 LOGS = DATA / "logs"
 TOOLS = DATA / "tools"  # fallback tesseract unpacked from Fedora RPMs (see docs/spec.md)

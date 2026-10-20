@@ -1,7 +1,7 @@
 You are running the ideas, learnings and events pass over notes in Marco's brain (~/Projects/brain).
 
 Read these first, fully, and follow them exactly:
-1. ~/Projects/video-notes-app/docs/ideas.md — the complete rules (what an idea, a learning and an event are, matching, counting sources, note formats, tone).
+1. ~/Projects/rot2gold/docs/ideas.md — the complete rules (what an idea, a learning and an event are, matching, counting sources, note formats, tone).
 2. ~/Projects/brain/AGENTS.md — the brain's rules.
 3. ~/Projects/brain/Resources/commonplace/commonplace.md — themes and topic tags.
 4. ~/Projects/brain/System/templates/idea-note.md, learning-note.md and event-note.md — the three templates.

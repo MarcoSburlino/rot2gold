@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from video_notes import brain, db, extract, ideas, lock, notefile, undo
-from video_notes.ai import claude_cli
+from rot2gold import brain, db, extract, ideas, lock, notefile, undo
+from rot2gold.ai import claude_cli
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def vault(tmp_path, monkeypatch):
 def con(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "load", lambda: {})
     monkeypatch.setattr(db, "LINKS", tmp_path / "no-links")
-    return db.connect(tmp_path / "vn.sqlite")
+    return db.connect(tmp_path / "r2g.sqlite")
 
 
 def post(con, pid, day, theme="video-one"):
@@ -86,7 +86,7 @@ def test_list_ideas_and_tolerant_front_matter(vault):
 
 
 def test_v2_to_v3_without_backup(tmp_path, monkeypatch):
-    path = tmp_path / "vn.sqlite"
+    path = tmp_path / "r2g.sqlite"
     old = sqlite3.connect(path)
     old.executescript(db.SCHEMA + db.SCHEMA_V2)
     old.execute("PRAGMA user_version = 2")
@@ -97,7 +97,7 @@ def test_v2_to_v3_without_backup(tmp_path, monkeypatch):
     con = db.connect(path)
     assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert {"kind", "ideas_created", "ideas_updated"} <= db.columns(con, "runs")
-    assert not (tmp_path / "vn.sqlite.bak-v1").exists()
+    assert not (tmp_path / "r2g.sqlite.bak-v1").exists()
     db.connect(path)
 
 
@@ -180,9 +180,9 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
 
 
 def test_extract_records_ideas_stage(tmp_path, con, monkeypatch):
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vn.sqlite")
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "r2g.sqlite")
     monkeypatch.setattr(lock, "DATA", tmp_path)
-    monkeypatch.setattr(lock, "LOCK_PATH", tmp_path / "vn.lock")
+    monkeypatch.setattr(lock, "LOCK_PATH", tmp_path / "r2g.lock")
     monkeypatch.setattr(extract, "load", lambda: {
         "notes": {"backend": "subscription", "model": "opus", "max_per_run": 20},
         "ideas": {"model": "opus"}})
