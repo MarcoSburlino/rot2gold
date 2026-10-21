@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytesseract
 
 from . import db
-from .config import ROOT, TOOLS, load, media_dir
+from .config import DATA, TOOLS, load, media_dir
 from .errors import ToolMissing
 from .events import echo
 from .ocr import ocr_image
@@ -48,7 +48,7 @@ def run_ocr(con, post_ids: list[str], cfg: dict, report=echo) -> None:
     os.environ["OMP_THREAD_LIMIT"] = "1"
     t0 = time.time()
     with ThreadPoolExecutor(cfg["ocr"].get("workers", 8)) as pool:
-        futures = {pool.submit(ocr_image, str(ROOT / r["path"]), langs): r for r in todo}
+        futures = {pool.submit(ocr_image, str(DATA / r["path"]), langs): r for r in todo}
         for fut in as_completed(futures):
             r = futures[fut]
             text, conf = fut.result()

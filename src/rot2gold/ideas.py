@@ -2,8 +2,7 @@
 across finished notes, and commit each batch.
 
 One pass looks for all three kinds, so the same Claude call can link them to each other.
-Each kind has its own folder and file prefix: Inbox/ideas/idea-*.md, Inbox/learnings/learning-*.md
-and Inbox/events/event-*.md.
+Each kind has its own folder (set in [vault]) and file prefix: idea-*.md, learning-*.md and event-*.md.
 """
 
 import hashlib
@@ -15,7 +14,7 @@ from pathlib import Path
 
 from . import brain, db, notefile, notes
 from .ai import claude_cli
-from .config import DATA, ROOT, brain_dir, load
+from .config import DATA, ROOT, brain_dir, load, vault_rel
 from .errors import AgentFailed, UsageLimit
 
 REPORT_SCHEMA = {"type": "object", "properties": {
@@ -24,7 +23,8 @@ REPORT_SCHEMA = {"type": "object", "properties": {
     "required": ["created", "updated", "considered", "notes"]}
 
 
-KINDS = {"idea": "Inbox/ideas", "learning": "Inbox/learnings", "event": "Inbox/events"}
+# Each kind and its [vault] folder setting.
+KINDS = {"idea": "ideas", "learning": "learnings", "event": "events"}
 # Per kind: the posts column set once a note was checked for it, and the name its post ids go under
 # in a batch row and in a dry-run manifest ("considered" is the ideas check, from before the others existed).
 CHECKS = {"idea": ("ideas_checked_at", "considered"), "learning": ("learnings_checked_at", "learned"),
@@ -34,7 +34,7 @@ COUNTERS = tuple(f"{kind}s_{action}" for kind in KINDS for action in ("created",
 
 
 def kind_dir(kind: str) -> Path:
-    return brain_dir() / KINDS[kind]
+    return brain_dir() / vault_rel(KINDS[kind])
 
 
 def ideas_dir() -> Path:
@@ -49,7 +49,7 @@ def kind_of(name: str) -> str | None:
 
 def themes() -> dict[str, list[str]]:
     """Read only the theme index's Posts by theme section."""
-    path = brain_dir() / "Resources/commonplace/commonplace.md"
+    path = brain_dir() / vault_rel("hub")
     if not path.is_file():
         return {}
     found, inside, current = {}, False, None
@@ -174,7 +174,7 @@ def counts(result: dict) -> dict:
 def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> dict:
     """Copy a reviewed dry run into the brain and mark its notes checked, without calling Claude again.
 
-    An item Marco changed (or deleted) after the dry run is skipped, so his edits are never overwritten.
+    An item the user changed (or deleted) after the dry run is skipped, so their edits are never overwritten.
     """
     folder = dry_run_dir(run_id)
     manifest = read_manifest(folder)
@@ -203,7 +203,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
     needs = _checks(con, {pid for _, key in CHECKS.values() for pid in manifest.get(key, [])})
     checked = {kind: [pid for pid in manifest.get(key, []) if needs.get(pid, {}).get(kind)] for kind, (_, key) in CHECKS.items()}
     _mark(con, checked)
-    sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS, f"agent: ideas, learnings and events from dry run {run_id}")
+    sha, changed = brain.finish(before, brain.idea_paths(), f"agent: ideas, learnings and events from dry run {run_id}")
     if sha:
         report(f"brain commit {sha}: {len(changed)} files")
     notes.add_commit(con, apply_run_id, sha)
@@ -245,7 +245,7 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
         paths = {r["id"]: r["note_path"] for r in rows}
         needs = _checks(con, batch)
         mode = ("This is a dry run. Write every idea, learning and event you would create or update into "
-                f"{folder}. For updates, write a full copy under the existing file name. Change nothing in ~/Projects/brain."
+                f"{folder}. For updates, write a full copy under the existing file name. Change nothing in {brain_dir()}."
                 if dry_run else f"Write ideas into {ideas_dir()}, learnings into {kind_dir('learning')}"
                                 f" and events into {kind_dir('event')}.")
         # Re-read every batch: the previous batch may have created or updated some.
@@ -302,11 +302,11 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
                 manifest[key] += checked[kind]
             (folder / "manifest.json").write_text(json.dumps(manifest, indent=1))
             touched = brain.changed_since(before, ("",))
-            if touched:  # never committed; Marco decides what to keep
+            if touched:  # never committed; the user decides what to keep
                 report(f"brain files changed during the dry run (by the agent, or by you in Obsidian; nothing was committed): {', '.join(touched)}", level="error")
         else:
             _mark(con, checked)
-            sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS,
+            sha, changed = brain.finish(before, brain.idea_paths(),
                                                    f"agent: ideas pass {n} (run {run_id})")
             notes.add_commit(con, run_id, sha)
             if sha:

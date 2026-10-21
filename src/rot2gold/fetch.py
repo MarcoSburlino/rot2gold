@@ -8,7 +8,7 @@ import random
 import time
 
 from . import db, sources
-from .config import ROOT, load, media_dir
+from .config import DATA, load, media_dir
 from .errors import Blocked
 from .events import echo
 from .sources import Access
@@ -54,7 +54,7 @@ def fetch(limit: int | None = None, ids=None, report=echo) -> int:
             images = src.fetch(post["id"], post["url"], kind, media_dir(post["id"]), cfg, access)
             con.execute("DELETE FROM images WHERE post_id = ?", (post["id"],))
             con.executemany("INSERT INTO images (post_id, idx, kind, path) VALUES (?, ?, ?, ?)",
-                            [(post["id"], 0 if k == "frame" else n, k, str(p.relative_to(ROOT)))
+                            [(post["id"], 0 if k == "frame" else n, k, p.relative_to(DATA).as_posix())
                              for n, (k, p) in enumerate(images, start=1)])
             db.set_status(con, post["id"], "fetched", type=kind, last_error=None)
             report(f"fetched {post['id']} ({kind})", post_id=post["id"])

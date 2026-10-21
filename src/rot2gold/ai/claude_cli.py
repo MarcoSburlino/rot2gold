@@ -1,7 +1,7 @@
 """Run Claude Code non-interactively (`claude -p`) and read its event stream.
 
 Two backends, same agent loop, tools and prompts:
-- subscription: Marco's plan login. ANTHROPIC_API_KEY is removed from the child's environment,
+- subscription: the user's Claude plan login. ANTHROPIC_API_KEY is removed from the child's environment,
   because Claude Code prefers a key over the plan login when both exist.
 - api: the same tools, including web tools; the key is set only in the child's environment.
   Bare mode would remove WebSearch and WebFetch, which note writing needs.

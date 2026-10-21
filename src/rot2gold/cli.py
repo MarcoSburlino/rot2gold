@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from . import brain, connections, db, downloaders, ideas, launcher, lock, secrets, undo
-from .config import ROOT, load
+from .config import DATA, load
 from .errors import VNError
 
 
@@ -21,7 +21,7 @@ def post_record(con, row) -> dict:
     return {
         "id": row["id"], "url": row["url"], "creator": row["creator"], "posted": row["upload_date"],
         "type": row["type"], "language": row["language"], "language_prob": row["language_prob"],
-        "images": [{"kind": i["kind"], "n": i["idx"], "path": str(ROOT / i["path"]),
+        "images": [{"kind": i["kind"], "n": i["idx"], "path": str(DATA / i["path"]),
                     "ocr_conf": i["ocr_conf"], "ocr_text": i["ocr_text"]} for i in images],
         "transcript": [dict(s) for s in segs],
     }

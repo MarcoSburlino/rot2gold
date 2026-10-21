@@ -1,7 +1,7 @@
 """Note writing: one `claude -p` per batch of processed posts, then index and commit in the brain.
 
 The agent follows prompts/write-notes.md (which points to docs/note-writing.md) and marks each post
-with `r2g done` or `r2g skip`. The app, not the agent, runs brain-index and commits.
+with `r2g done` or `r2g skip`. The app, not the agent, runs the after-write commands and commits.
 """
 
 import json
@@ -121,7 +121,7 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
         done_ids = [pid for pid in batch if con.execute("SELECT status FROM posts WHERE id = ?", (pid,)).fetchone()[0] == "done"]
         db.add_batch(con, run_id, "notes", n, batch, noted=done_ids, res=res, error=limit)
         # Commit whatever the batch finished, even if it was cut short.
-        sha, paths = brain.index_and_commit(before, brain.NOTE_PATHS, f"agent: video notes batch {n} (run {run_id})")
+        sha, paths = brain.finish(before, brain.note_paths(), f"agent: video notes batch {n} (run {run_id})")
         add_commit(con, run_id, sha)
         if sha:
             report(f"brain commit {sha}: {len(paths)} files")

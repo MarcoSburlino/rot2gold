@@ -120,7 +120,7 @@ def test_brain_commits_only_what_the_batch_changed(repo):
     (repo / "Resources/commonplace/videos/video-new.md").write_text("note\n")
     (repo / "Projects/other.md").write_text("changed by someone else\n")
     (repo / "index.md").write_text("v2\n")
-    paths = brain.changed_since(before, brain.NOTE_PATHS + brain.INDEX_FILES)
+    paths = brain.changed_since(before, brain.note_paths() + brain.extra_paths())
     assert paths == ["Resources/commonplace/quotes.md", "Resources/commonplace/videos/video-new.md", "index.md"]
     sha = brain.commit(paths, "agent: test")
     assert sha

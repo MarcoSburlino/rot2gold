@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from .config import DATA, DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS images (
     post_id TEXT NOT NULL REFERENCES posts(id),
     idx INTEGER NOT NULL,          -- 0 = video frame, 1.. = slides in order
     kind TEXT NOT NULL,            -- frame | slide
-    path TEXT NOT NULL,            -- relative to the project root
+    path TEXT NOT NULL,            -- relative to the data folder ([storage] data_dir)
     ocr_text TEXT,                 -- NULL until OCR has run
     ocr_conf REAL,                 -- mean word confidence 0-100
     PRIMARY KEY (post_id, idx)
@@ -164,7 +164,7 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """Add v2 through v7 fields; back up an existing v1 database only once."""
+    """Add v2 through v8 fields; back up an existing v1 database only once."""
     version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
@@ -172,7 +172,7 @@ def migrate(con, path) -> None:
     if version < 2 and has_posts and not backup.exists():
         with sqlite3.connect(backup) as dst:
             con.backup(dst)
-    for old in (5, 6):  # a one-time copy before learnings (v6) and events (v7) change the tables
+    for old in (5, 6, 7):  # a one-time copy before learnings (v6), events (v7) and data-relative paths (v8)
         backup_old = path.with_name(path.name + f".bak-v{old}")
         if version == old and not backup_old.exists():
             with sqlite3.connect(backup_old) as dst:
@@ -210,6 +210,8 @@ def migrate(con, path) -> None:
         con.execute("ALTER TABLE batches ADD COLUMN learned TEXT")
     if "events_seen" not in batch_cols:  # v7: the posts a batch checked for events
         con.execute("ALTER TABLE batches ADD COLUMN events_seen TEXT")
+    if version < 8:  # v8: image paths were relative to the repository ("data/media/…"), now to the data folder
+        con.execute("UPDATE images SET path = substr(path, 6) WHERE path LIKE 'data/%'")
     # The single collection of v1 becomes the first connection, with every existing post in it.
     url = load().get("collection_url") if version < 2 else None
     if url and not con.execute("SELECT 1 FROM connections").fetchone():

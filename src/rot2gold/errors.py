@@ -45,7 +45,7 @@ class AgentFailed(VNError):
 
 
 class BrainError(VNError):
-    hint = "Check `git -C ~/Projects/brain status` and `brain-index --check`."
+    hint = "Check your vault: `git status` in it, and any after-write commands in your config.toml."
 
 
 class ToolMissing(VNError):

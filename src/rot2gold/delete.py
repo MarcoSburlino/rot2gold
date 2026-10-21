@@ -1,4 +1,4 @@
-"""Delete an idea, learning or event Marco no longer wants, and optionally the video notes behind it.
+"""Delete an idea, learning or event the user no longer wants, and optionally the video notes behind it.
 
 Deleting is a recorded run with its own brain commit, so History lists it and Undo brings the
 files back. A deleted video's post stays in the database as skipped, so the next Extract
@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from . import brain, db, ideas, notefile, notes
+from .config import vault_rel
 
 SKIP_REASON = "deleted by you with the {kind} “{title}”"
 
@@ -45,7 +46,7 @@ def plan(con, name: str) -> dict:
 
 
 def _drop_list_lines(path: Path, names: set[str]) -> bool:
-    """Remove list items that start with a link to one of `names` (e.g. in commonplace.md)."""
+    """Remove list items that start with a link to one of `names` (e.g. in the hub note)."""
     if not path.is_file() or not names:
         return False
     pattern = re.compile(r"^\s*- \[\[(" + "|".join(map(re.escape, names)) + r")(\|[^\]]*)?\]\]")
@@ -76,13 +77,14 @@ def delete_idea(con, name: str, with_videos: bool, report, run_id: int) -> dict:
                     (SKIP_REASON.format(kind=idea["kind"], title=idea["title"]), db.now(), video["post_id"]))
         report(f"deleted video note {video['note_path']}")
     con.commit()
-    if videos and _drop_list_lines(brain.brain_dir() / "Resources/commonplace/commonplace.md", {v["name"] for v in videos}):
-        report("removed the deleted videos from commonplace.md")
+    hub = brain.brain_dir() / vault_rel("hub")
+    if videos and _drop_list_lines(hub, {v["name"] for v in videos}):
+        report(f"removed the deleted videos from {hub.name}")
     for video in found["kept"] if with_videos else []:
         report(f"kept {video['name']}: it also supports “{video['other_idea']}”")
 
     message = f"agent: delete {name}" + (f" and {len(videos)} video notes" if videos else "")
-    sha, changed = brain.index_and_commit(before, brain.IDEA_PATHS + brain.NOTE_PATHS, message)
+    sha, changed = brain.finish(before, brain.idea_paths() + brain.note_paths(), message)
     if sha:
         report(f"brain commit {sha}: {len(changed)} files")
     notes.add_commit(con, run_id, sha)

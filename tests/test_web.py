@@ -35,7 +35,6 @@ def sample(tmp_path, monkeypatch):
     monkeypatch.setattr(web, "brain_dir", lambda cfg=None: vault)
     monkeypatch.setattr(web.lock, "DATA", tmp_path)
     monkeypatch.setattr(web.lock, "LOCK_PATH", tmp_path / "r2g.lock")
-    monkeypatch.setattr(settings, "DATA", tmp_path)
     monkeypatch.setattr(firefox, "profiles", lambda: [])
     monkeypatch.setattr(web.secrets, "has_api_key", lambda: True)
     monkeypatch.setattr(web.secrets, "get_api_key", lambda: "stored-secret-do-not-render")
@@ -170,7 +169,7 @@ def test_delete_an_idea_with_its_videos_and_undo_it(sample, monkeypatch):
     con.commit()
     for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
         subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
 
     found = web.delete.plan(con, "idea-one")
     assert [v["name"] for v in found["videos"]] == ["video-one"]  # video-two also supports idea-two: kept
@@ -218,7 +217,7 @@ def test_learnings_page_video_rail_and_delete(sample, monkeypatch):
                                                    + "\n## Learnings behind it\n\n- [[learning-one]]\n")
     for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
         subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
     con = web.db.connect()
     found = web.delete.plan(con, "idea-one")
     assert found["videos"] == [] and found["kept"][0]["other_idea"] == "Explaining shows the gaps"
@@ -260,7 +259,7 @@ def test_events_page_groups_by_date_and_offers_a_calendar_file(sample, monkeypat
         '---\ndescription: A strike\nwhen: 1983-06\nstatus: new\nsources:\n  - "[[video-one]]"\nsupport: 1\n---\n# Old strike\n')
     for args in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t"), ("add", "-A"), ("commit", "-q", "-m", "init")):
         subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
     assert [e["timing"] for e in ideas.list_events()] == ["upcoming", "past"]
 
     async def check():

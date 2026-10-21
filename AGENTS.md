@@ -18,16 +18,16 @@ Two parts, one repo:
 ## Rules
 
 - AI reasoning runs through Marco's Claude subscription (Claude Code, `claude -p`) by default. The app may also use an Anthropic API key, by Marco's choice in Settings (decided 2026-10-19; this exception is for this project only). No local LLMs; local utility models (speech-to-text, OCR) are fine.
-- The API key lives only in the GNOME keyring (`secret-tool`, `service rot2gold`, `account anthropic`). Never in a file, `config.toml`, Git, logs or notes. Never print it.
+- The API key lives only in the GNOME keyring (`secret-tool`, `service rot2gold`, `account anthropic`). Never in a file, a `config.toml`, Git, logs or notes. Never print it.
 - Never fetch or store captions, hashtags or comments.
-- Connection (collection) URLs live only in the database (`data/r2g.sqlite`, `r2g conn list`), never in Git.
-- One pipeline run at a time: every command that runs the pipeline takes the lock `data/r2g.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
+- Connection (collection) URLs live only in the database (`<data folder>/r2g.sqlite`, `r2g conn list`), never in Git.
+- One pipeline run at a time: every command that runs the pipeline takes the lock `<data folder>/r2g.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.
 - The web UI listens on `127.0.0.1:8740` only, never `0.0.0.0`.
 - UI work follows the design system in `.claude/skills/design-system/` (colours, type, spacing, components, motion): always dark, black and one gold. Fonts are bundled in `src/rot2gold/web/static/fonts/`; never load fonts or scripts from other hosts. Keep templates and CSS readable: one element or rule per line.
-- Brain writes follow `~/Projects/brain/AGENTS.md`: `brain-index` and `brain-index --check` after changes; commits start `agent: ` and stage only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the brain.
-- `data/` (media, database, tools) and `.venv/` are gitignored. Secrets never go into notes or Git.
+- Vault writes (`brain.py`): run the user's after-write commands (`[vault] after_write`; for Marco's brain, `brain-index` and `brain-index --check`), then, if the vault uses Git, commit with `agent: ` messages, staging only the paths that changed. Never `git add -A`, never `.obsidian/`, never push the vault.
+- `data/` and `.venv/` are gitignored. Secrets never go into notes or Git.
 - The repo is **public** on GitHub (`git@github.com:MarcoSburlino/rot2gold.git`, branch `main`). Before every push, check the diff for secrets and personal data (keys, tokens, cookies, Marco's TikTok handle or collection links, his email). Tests use made-up URLs. Commits use the GitHub no-reply address set in this repo's Git config.
-- App settings live in `data/settings.json`; tracked `config.toml` holds defaults only and is never written by the app.
+- Settings: bundled defaults in `src/rot2gold/resources/defaults.toml`, overlaid by the user's `config.toml` in their config folder (`paths.config_file()`; `R2G_CONFIG` overrides it). The app writes only that user file (setup and Settings). The data folder (media, database, logs, lock) is `[storage] data_dir`; Marco's is still this repo's `data/`. Tests use their own config (`tests/conftest.py`).
 - Fedora: `dnf`, not `apt`.
 
 ## How to run it

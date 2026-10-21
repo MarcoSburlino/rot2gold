@@ -118,7 +118,7 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
     post(con, "1", "2026-10-19T12:00:00", "video-one")
     con.execute("INSERT INTO runs (origin, started_at) VALUES ('terminal', 'x')")
     con.commit()
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
     folder = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/ideas"
 
     learnings = ideas.DATA / "ideas-dry-run/run-1" if dry_run else vault / "Inbox/learnings"
@@ -147,7 +147,7 @@ def test_run_pass(vault, con, monkeypatch, dry_run):
                                                                   "Inbox/events/event-proof-day.md"],
                                                       "updated": [], "considered": ["1"], "notes": ["done"]})
     monkeypatch.setattr(claude_cli, "run", fake)
-    cfg = {"brain": {"path": str(vault)}, "ideas": {"batch_size": 25, "model": "opus", "max_new_per_pass": 5},
+    cfg = {"vault": {"path": str(vault)}, "ideas": {"batch_size": 25, "model": "opus", "max_new_per_pass": 5},
            "notes": {"backend": "subscription", "stop_at_plan_usage": 0.9}}
     messages = []
     found = ideas.run_pass(con, ["1"], cfg, lambda msg, **kw: messages.append(msg), 1, dry_run)
@@ -205,7 +205,7 @@ def test_apply_dry_run_copies_new_and_never_overwrites_edits(vault, con, monkeyp
     subprocess.run(["git", "init", "-q", str(vault)], check=True)
     subprocess.run(["git", "-C", str(vault), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
                     "--allow-empty", "-m", "init"], check=True)
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
     for pid in ("1", "2"):
         post(con, pid, "2026-10-15")
     kept = vault / "Inbox/ideas/idea-kept.md"

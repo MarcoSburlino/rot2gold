@@ -148,9 +148,9 @@ A true "hold before commit" mode would need a staging copy of `commonplace.md` a
 
 ### Settings overlay
 
-The tracked `config.toml` holds project defaults only. Editable preferences are validated and saved atomically in gitignored `data/settings.json`, then merged over defaults and `config.toml`. The API key stays in the GNOME keyring.
+Defaults ship in the package (`src/rot2gold/resources/defaults.toml`). The user's own `config.toml` (in the system config folder: `~/.config/rot2gold/` on Linux) holds only what they changed; it is merged over the defaults section by section. Settings validates the editable preferences and writes them into that file atomically (`settings.py`, `config.write_user`). The API key stays in the keyring. Until 2026-10-21 the defaults were a tracked `config.toml` and preferences were in `data/settings.json`; Marco's values were moved into his `~/.config/rot2gold/config.toml` by hand.
 
-## Data model (schema v7)
+## Data model (schema v8)
 
 All state stays in `data/r2g.sqlite`.
 
@@ -168,6 +168,7 @@ All state stays in `data/r2g.sqlite`.
 - Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
 - Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/r2g.sqlite.bak-v4`. `runs.kind` gains `delete`.
 - Schema v6 (2026-10-20) adds learnings: `posts.learnings_checked_at`, `runs.learnings_created`, `runs.learnings_updated`, and `batches.learned` (the posts a batch checked for learnings, so Undo clears just those). Additive, after a one-time backup `data/r2g.sqlite.bak-v5`.
+- Schema v8 (2026-10-21) stores `images.path` relative to the data folder (`media/<id>/…`) instead of the repository (`data/media/<id>/…`), so the data folder can live anywhere. One-time backup `r2g.sqlite.bak-v7` first.
 - Schema v7 (2026-10-20) adds events the same way: `posts.events_checked_at`, `runs.events_created`, `runs.events_updated`, and `batches.events_seen`. Additive, after a one-time backup `data/r2g.sqlite.bak-v6`.
 
 ### Changes to `posts`
@@ -240,7 +241,7 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 - **Usage shown.** Tokens and the cost estimate from each result event, per batch and per run.
   - On a subscription, the dollar figure is what the run would have cost on the API, not a charge.
   - The real remaining limit is at claude.ai → Settings → Usage.
-- **Settings.** Batch size, notes per run and model are set in Settings and stored in `data/settings.json`.
+- **Settings.** Batch size, notes per run and model are set in Settings and stored in the user's `config.toml`.
 
 ### Stopping and interruptions
 
@@ -303,7 +304,8 @@ src/rot2gold/
   ideas.py                 ideas, learnings and events pass; reading their notes; event dates and .ics
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
   secrets.py               keyring access through secret-tool
-  settings.py              validated preferences in data/settings.json
+  settings.py              validated preferences, saved into the user's config.toml
+  paths.py                 where the config, data and bundled resources live (platformdirs)
   undo.py                  safe git revert and queue restoration
   downloaders.py           installed versions and venv upgrade
   launcher.py              GNOME desktop entry and icon

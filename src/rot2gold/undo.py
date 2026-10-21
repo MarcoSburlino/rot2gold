@@ -21,6 +21,8 @@ def _commits(con, run_id):
 
 
 def undo_run(con, run_id: int, report) -> dict:
+    if not brain.uses_git():
+        raise ValueError("Undo needs your vault to be a Git repository, with Git turned on for Rot2Gold.")
     commits = _commits(con, run_id)
     if brain.git("diff", "--cached", "--name-only").strip():
         raise ValueError("The brain has staged changes. Commit or unstage them before undoing this run.")
@@ -34,7 +36,7 @@ def undo_run(con, run_id: int, report) -> dict:
                     added.add(parts[1])
     dirty = set(brain.git("status", "--porcelain", "-z", "--untracked-files=all").split("\0"))
     dirty_paths = {item[3:] for item in dirty if len(item) > 3}
-    conflict = sorted((touched | set(brain.INDEX_FILES)) & dirty_paths)
+    conflict = sorted((touched | set(brain.extra_paths())) & dirty_paths)
     if conflict:
         raise ValueError("Files from this run have uncommitted changes: " + ", ".join(conflict))
     for sha in reversed(commits):
@@ -45,8 +47,8 @@ def undo_run(con, run_id: int, report) -> dict:
             raise BrainError("Later changes touched the same files, so this run can't be undone automatically: "
                              + str(exc)) from None
     before = brain.snapshot()
-    brain.brain_index()
-    indexes = brain.changed_since(before, brain.INDEX_FILES)
+    brain.run_after_write()
+    indexes = brain.changed_since(before, brain.extra_paths())
     if indexes:
         brain.git("add", "--all", "--", *indexes)
     brain.git("commit", "-m", f"agent: undo run {run_id}")

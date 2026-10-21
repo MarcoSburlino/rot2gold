@@ -1,11 +1,8 @@
-"""Validate editable preferences and save their overlay outside Git."""
+"""Validate editable preferences and save them into the user's config.toml."""
 
-import json
 import math
-import os
-import tempfile
 
-from .config import DATA
+from . import config
 
 EDITABLE = [
     dict(section="notes", key="backend", label="AI backend", help="Use your Claude subscription or an API key.", type="choice", choices=("subscription", "api")),
@@ -20,18 +17,6 @@ EDITABLE = [
     dict(section="ideas", key="max_new_learnings_per_pass", label="New learnings per pass", help="Most new learnings in each batch.", type="int", min=1, max=20),
     dict(section="ideas", key="max_new_events_per_pass", label="New events per pass", help="Most new events in each batch.", type="int", min=1, max=20),
 ]
-
-
-def path():
-    return DATA / "settings.json"
-
-
-def read() -> dict:
-    try:
-        value = json.loads(path().read_text())
-        return value if isinstance(value, dict) else {}
-    except (FileNotFoundError, ValueError, OSError):
-        return {}
 
 
 def save(values: dict) -> list[str]:
@@ -65,16 +50,12 @@ def save(values: dict) -> list[str]:
             errors.append(f"{field['label']}: {exc}")
     if errors:
         return errors
-    target = path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    name = None
-    try:
-        with tempfile.NamedTemporaryFile("w", dir=target.parent, prefix="settings-", suffix=".tmp", delete=False) as f:
-            name = f.name
-            json.dump(out, f, indent=2)
-            f.write("\n")
-        os.replace(name, target)
-    finally:
-        if name and os.path.exists(name):
-            os.unlink(name)
+    user = config.read_user()
+    for section, values in out.items():
+        for key, value in values.items():
+            if value is None:  # TOML has no "empty": leaving the key out means no cap
+                user.get(section, {}).pop(key, None)
+            else:
+                user.setdefault(section, {})[key] = value
+    config.write_user(user)
     return []

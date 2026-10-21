@@ -24,24 +24,25 @@ def con(tmp_path, monkeypatch):
 
 
 def test_settings_validation_and_overlay(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "ROOT", tmp_path)
-    monkeypatch.setattr(settings, "DATA", tmp_path / "data")
-    (tmp_path / "config.toml").write_text("[notes]\nmodel = 'sonnet'\nbatch_size = 3\n")
+    path = tmp_path / "config.toml"
+    monkeypatch.setenv("R2G_CONFIG", str(path))
+    path.write_text("[notes]\nmodel = 'sonnet'\nbatch_size = 3\n[vault]\npath = '~/v'\n")
     before = config.load()
     assert before["notes"]["model"] == "sonnet" and before["notes"]["batch_size"] == 3
+    assert before["notes"]["max_per_run"] == 20 and before["vault"]["videos"] == "Rot2Gold/Videos"  # defaults fill the rest
+    text = path.read_text()
     errors = settings.save({"notes.batch_size": "21", "ideas.model": "wrong"})
-    assert len(errors) == 2 and not settings.path().exists()
-    assert settings.save({"notes.batch_size": "7", "notes.max_budget_usd_per_batch": "",
-                          "ideas.model": "haiku"}) == []
+    assert len(errors) == 2 and path.read_text() == text
+    assert settings.save({"notes.batch_size": "7", "notes.max_budget_usd_per_batch": "2.5", "ideas.model": "haiku"}) == []
     saved = config.load()
     assert saved["notes"]["batch_size"] == 7 and saved["notes"]["model"] == "sonnet"
-    assert saved["ideas"]["model"] == "haiku" and saved["notes"]["max_budget_usd_per_batch"] is None
-    payload = json.loads(settings.path().read_text())
-    payload["brain"] = {"path": "/unsafe"}
-    payload["notes"]["unknown"] = 2
-    settings.path().write_text(json.dumps(payload))
-    assert config.load()["brain"]["path"] == "~/Projects/brain"
-    assert "unknown" not in config.load()["notes"]
+    assert saved["ideas"]["model"] == "haiku" and saved["notes"]["max_budget_usd_per_batch"] == 2.5
+    assert saved["vault"]["path"] == "~/v"  # a save keeps everything else
+    assert settings.save({"notes.max_budget_usd_per_batch": ""}) == []
+    assert "max_budget_usd_per_batch" not in config.load()["notes"]
+    path.write_text("[notes\n")
+    with pytest.raises(config.ConfigError, match="not valid TOML"):
+        config.load()
 
 
 def test_claude_backends_and_key_test(monkeypatch):
@@ -85,7 +86,6 @@ def test_web_local_requests_and_settings_key(tmp_path, monkeypatch, con):
     monkeypatch.setattr(web.secrets, "get_api_key", lambda: "top-secret-value")
     monkeypatch.setattr(web.secrets, "has_api_key", lambda: True)
     monkeypatch.setattr(firefox, "profiles", lambda: [])
-    monkeypatch.setattr(web.settings, "DATA", tmp_path / "data")
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app),
                                      base_url="http://127.0.0.1:8740") as client:
@@ -137,7 +137,7 @@ def vault(tmp_path, monkeypatch):
     git(root, "add", "--", "index.md")
     git(root, "commit", "-q", "-m", "init")
     monkeypatch.setattr(brain, "brain_dir", lambda cfg=None: root)
-    monkeypatch.setattr(brain, "brain_index", lambda: None)
+    monkeypatch.setattr(brain, "run_after_write", lambda cfg=None: None)
     return root
 
 
@@ -160,7 +160,7 @@ def test_note_batches_and_undo(vault, con, monkeypatch, limited):
         return result
     monkeypatch.setattr(claude_cli, "run", fake)
     cfg = {"notes": {"batch_size": 5, "model": "opus", "backend": "subscription"},
-           "brain": {"path": str(vault)}}
+           "vault": {"path": str(vault)}}
     if limited:
         with pytest.raises(UsageLimit):
             notes.write_notes(con, ["1"], cfg, lambda *a, **kw: None, 1)
@@ -261,4 +261,4 @@ def test_v5_and_v6_to_v7_add_learnings_and_events_after_a_backup(tmp_path, monke
         assert column in db.columns(con, table)
     assert tuple(con.execute("SELECT learnings_created, events_created FROM runs").fetchone()) == (0, 0)
     assert (tmp_path / f"r2g.sqlite.bak-v{version}").exists()
-    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 7
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 8
