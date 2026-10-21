@@ -9,6 +9,7 @@ import os
 import platform
 import shutil
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from . import ai, config, connections, db, secrets, sources, tools, vault
@@ -216,7 +217,8 @@ def save(values: dict, changes: dict, cfg: dict, report=lambda line: None) -> No
 def move_data(old: Path, new: Path) -> None:
     """Copy the database (consistently, with SQLite's backup), media and logs, check them, then delete the old ones."""
     new.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(old / "r2g.sqlite") as src, sqlite3.connect(new / "r2g.sqlite") as dst:
+    # closing(): a sqlite3 connection's own `with` only commits, and Windows can't delete a file still open.
+    with closing(sqlite3.connect(old / "r2g.sqlite")) as src, closing(sqlite3.connect(new / "r2g.sqlite")) as dst:
         src.backup(dst)
     for name in ("media", "logs", "ideas-dry-run"):
         if (old / name).is_dir():
