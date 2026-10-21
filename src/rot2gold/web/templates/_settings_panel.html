@@ -1,8 +1,7 @@
 {# Loaded into the Settings dialog (and included by settings.html when JavaScript is off). #}
-{% set choice_labels = {'subscription': 'Claude subscription', 'api': 'API key', 'opus': 'Opus', 'sonnet': 'Sonnet', 'haiku': 'Haiku'} %}
 {% set tabs = [('general', 'General'), ('usage', 'Usage'), ('about', 'About')] %}
 {# The fields most people change; the rest are under Advanced. #}
-{% set basic = ['notes.backend', 'notes.model', 'ideas.model', 'notes.max_per_run'] %}
+{% set basic = ['ai.provider', 'notes.model', 'ideas.model', 'notes.backend', 'notes.max_per_run'] %}
 
 {% macro field(f) %}
   {% set value = cfg[f.section].get(f.key) %}
@@ -12,6 +11,9 @@
       <select name="{{ f.section }}.{{ f.key }}">
         {% for choice in f.choices %}<option value="{{ choice }}" {% if value == choice %}selected{% endif %}>{{ choice_labels.get(choice, choice) }}</option>{% endfor %}
       </select>
+    {% elif f.type in ('text', 'url') %}
+      <input type="{{ 'url' if f.type == 'url' else 'text' }}" name="{{ f.section }}.{{ f.key }}" value="{{ value or '' }}"
+             spellcheck="false" autocomplete="off" {% if f.key == 'model' %}list="model-names" placeholder="Default"{% endif %}>
     {% else %}
       <input type="number" name="{{ f.section }}.{{ f.key }}" value="{{ value if value is not none else '' }}"
              min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step if f.step is defined else 1 }}" inputmode="decimal"
@@ -30,6 +32,9 @@
 <div class="settings-flash" data-settings-flash></div>
 
 <section id="panel-general" role="tabpanel" aria-labelledby="tab-general" data-panel="general">
+  <datalist id="model-names">
+    {% for m in model_names if m %}<option value="{{ m }}">{% endfor %}
+  </datalist>
   <form method="post" action="/settings" class="settings-form">
     {% for f in fields if (f.section ~ '.' ~ f.key) in basic %}{{ field(f) }}{% endfor %}
     <details class="advanced">
@@ -43,25 +48,29 @@
     </div>
   </form>
 
-  {# Open only when the key matters: the API backend is picked, or a key is stored or broken. #}
-  <details class="advanced settings-key" {% if cfg.notes.backend == 'api' or key_error %}open{% endif %}>
-    <summary>API key: {{ 'stored' if key_set else 'not stored' }} <span class="muted">(only for the API key backend)</span></summary>
+  <div class="key-actions">
+    <form method="post" action="/settings/ai/check"><button type="submit" class="button">Check {{ providers[provider] }}</button></form>
+  </div>
+
+  {# Open only when the key matters: Claude's API backend is picked, or a key is stored or broken. #}
+  <details class="advanced settings-key" {% if (provider == 'claude' and cfg.notes.backend == 'api') or key_error %}open{% endif %}>
+    <summary>{{ key_label }}: {{ 'stored' if key_set else 'not stored' }} <span class="muted">({{ key_when }})</span></summary>
     <div class="stack">
-      <p class="muted">An Anthropic API key, kept in the GNOME keyring and never shown. Your Claude subscription doesn't need one.</p>
+      <p class="muted">Kept in your system keychain and never shown.</p>
       {% if key_error %}<p class="banner banner-alert">{{ key_error }}</p>{% endif %}
       <form method="post" action="/settings/key" class="stack">
         <label class="field">
           <span>{{ 'Replace the key' if key_set else 'Store a key' }}</span>
-          <input type="password" name="key" autocomplete="off" spellcheck="false" required placeholder="sk-ant-…">
+          <input type="password" name="key" autocomplete="off" spellcheck="false" required>
         </label>
         <div class="form-foot"><button type="submit" class="button">Store key</button></div>
       </form>
       {% if key_set %}
         <div class="key-actions">
-          <form method="post" action="/settings/key/test"><button type="submit" class="button">Test the key</button></form>
+          {% if provider == 'claude' %}<form method="post" action="/settings/key/test"><button type="submit" class="button">Test the key</button></form>{% endif %}
           <form method="post" action="/settings/key/clear"><button type="submit" class="button button-danger-quiet">Remove the key</button></form>
         </div>
-        <p class="muted">The test makes one tiny call to Claude Haiku (a fraction of a cent).</p>
+        {% if provider == 'claude' %}<p class="muted">The test makes one tiny call to Claude Haiku (a fraction of a cent).</p>{% endif %}
       {% endif %}
     </div>
   </details>
@@ -78,7 +87,7 @@
     {% endfor %}
     <p class="muted">From the latest run. Your plan's limits are shared with claude.ai and Claude Code in the terminal.</p>
   {% else %}
-    <p class="muted">No run has reported plan usage yet. It appears after the first note-writing or ideas run.</p>
+    <p class="muted">No run has reported plan usage yet. Only Claude reports it, after the first note-writing or ideas run.</p>
   {% endif %}
 </section>
 

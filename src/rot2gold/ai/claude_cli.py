@@ -13,28 +13,13 @@ import shutil
 import signal
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..errors import AgentFailed, ToolMissing, UsageLimit
+from .base import Result, is_limit
 
 ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch",
                  "Bash(r2g pending *)", "Bash(r2g done *)", "Bash(r2g skip *)", "Bash(rg *)", "Bash(find *)"]
-
-
-@dataclass
-class Result:
-    ok: bool = False
-    structured: dict | None = None
-    text: str = ""
-    error: str = ""
-    turns: int = 0
-    duration_ms: int = 0
-    cost_usd: float = 0.0
-    usage: dict = field(default_factory=lambda: {"tokens_in": 0, "tokens_out": 0, "cache_read": 0, "cache_write": 0})
-    plan: dict | None = None  # latest rate_limit_info: five_hour / seven_day utilization and reset times
-    limited: bool = False
-    other_output: list = field(default_factory=list)  # non-JSON lines (stderr), kept for errors
 
 
 def describe_tool(block: dict) -> str | None:
@@ -80,19 +65,21 @@ def parse_event(ev: dict, res: Result, on_line) -> None:
                      "cache_write": u.get("cache_creation_input_tokens", 0)}
         if not res.ok:
             res.error = res.text or ev.get("subtype", "error")
-            if any(w in res.error.lower() for w in ("usage limit", "hit your limit", "rate limit", "rate_limit")):
+            if is_limit(res.error):
                 res.limited = True
 
 
-def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str,
+def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str = "",
         backend: str = "subscription", api_key: str | None = None, max_budget_usd: float | None = None,
         on_line=lambda line: None, allowed_tools: list[str] | None = None) -> Result:
     exe = shutil.which("claude")
     if not exe:
         raise ToolMissing("claude (Claude Code) not found on PATH", "Install Claude Code and log in with `claude`.")
-    cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--model", model,
+    cmd = [exe, "-p", "--output-format", "stream-json", "--verbose",
            "--json-schema", json.dumps(schema), "--permission-prompts", "none", "--permission-mode", "dontAsk",
            "--no-session-persistence", "--strict-mcp-config"]
+    if model:  # empty: Claude Code's own default
+        cmd += ["--model", model]
     tools = ALLOWED_TOOLS if allowed_tools is None else allowed_tools
     if tools:  # an empty --allowedTools would swallow the next flag
         cmd += ["--allowedTools", *tools]

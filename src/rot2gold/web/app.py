@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import brain, connections, db, delete, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
+from .. import ai, brain, connections, db, delete, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
 from ..ai import claude_cli
 from ..config import DATA, LOGS, MEDIA, ROOT, brain_dir, load, media_dir
 from ..errors import VNError
@@ -265,14 +265,34 @@ def settings_context():
     cfg = load()
     con = db.connect()
     latest = con.execute("SELECT plan_usage FROM runs WHERE plan_usage IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    name = ai.provider(cfg)
     try:
-        key_set, key_error = secrets.has_api_key(), None
+        key_set, key_error = bool(secrets.get_key(ai.KEY_ACCOUNTS[name])), None
     except VNError as exc:
         key_set, key_error = False, str(exc)
     from ..sources.firefox import profiles
-    return dict(fields=settings.EDITABLE, cfg=cfg, key_set=key_set, key_error=key_error,
+    return dict(fields=settings.EDITABLE, cfg=cfg, key_set=key_set, key_error=key_error, provider=name,
+                providers=ai.PROVIDERS, model_names=model_names(cfg), **KEY_TEXT[name],
+                choice_labels={"subscription": "Claude subscription", "api": "Anthropic API key"} | ai.PROVIDERS,
                 windows=plan_windows(latest[0] if latest else None), versions=downloaders.versions(),
                 brain_path=brain_dir(cfg), port=cfg["app"]["port"], profiles=profiles())
+
+
+# What the key section says for each provider.
+KEY_TEXT = {"claude": {"key_label": "Anthropic API key", "key_when": "only for the API key account"},
+            "codex": {"key_label": "OpenAI API key", "key_when": "only if you don't sign in with ChatGPT"},
+            "gemini": {"key_label": "Gemini API key", "key_when": "only if you don't sign in with Google"},
+            "local": {"key_label": "Server API key", "key_when": "only if your server asks for one"}}
+
+
+def model_names(cfg: dict) -> list[str]:
+    """Suggestions for the model fields: the provider's usual names, or the models on the local server."""
+    if ai.provider(cfg) == "local":
+        try:
+            return ai.local.models(cfg["ai"]["local_url"], secrets.get_key("local"))
+        except Exception:  # the server is down or unreachable: no suggestions
+            return []
+    return list(ai.MODELS[ai.provider(cfg)])
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -289,8 +309,14 @@ async def settings_panel(request: Request):
 async def save_settings(request: Request):
     form = await request.form()
     values = {f"{f['section']}.{f['key']}": form.get(f"{f['section']}.{f['key']}", "") for f in settings.EDITABLE}
-    if values["notes.backend"] == "api" and not secrets.has_api_key():
-        return settings_back(request, "general", err="Set an API key before selecting the API backend.")
+    before = load()
+    if values["ai.provider"] != ai.provider(before):  # another provider's model names don't carry over
+        for key in ("notes.model", "ideas.model"):
+            section, field = key.split(".")
+            if values[key] == (before[section].get(field) or ""):
+                values[key] = ""
+    if values["ai.provider"] == "claude" and values["notes.backend"] == "api" and not secrets.has_api_key():
+        return settings_back(request, "general", err="Store an Anthropic API key before choosing the API key account.")
     errors = settings.save(values)
     return settings_back(request, "general", err="; ".join(errors)) if errors else settings_back(request, "general", msg="Settings saved.")
 
@@ -300,16 +326,22 @@ def set_key(request: Request, key: str = Form("")):
     if not key.strip():
         return settings_back(request, "general", err="Enter an API key.")
     try:
-        secrets.set_api_key(key)
+        secrets.set_key(ai.KEY_ACCOUNTS[ai.provider(load())], key)
     except VNError:
-        return settings_back(request, "general", err="Could not store the API key in the keyring.")
+        return settings_back(request, "general", err="Could not store the API key in the keychain.")
     return settings_back(request, "general", msg="API key stored.")
+
+
+@app.post("/settings/ai/check")
+def check_ai(request: Request):
+    ok, message = ai.check(load())
+    return settings_back(request, "general", **({"msg": message} if ok else {"err": message}))
 
 
 @app.post("/settings/key/clear")
 def clear_key(request: Request):
     try:
-        secrets.delete_api_key()
+        secrets.delete_key(ai.KEY_ACCOUNTS[ai.provider(load())])
     except VNError:
         return settings_back(request, "general", err="Could not clear the API key.")
     return settings_back(request, "general", msg="API key cleared.")

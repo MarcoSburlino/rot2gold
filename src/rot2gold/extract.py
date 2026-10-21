@@ -1,6 +1,6 @@
 """r2g extract: sync, fetch, process, notes and ideas for selected connections."""
 
-from . import db, ideas, notes, secrets, vault
+from . import ai, db, ideas, notes, vault
 from .config import is_set_up, load
 from .errors import CookiesNeeded, ListingFailed
 from .fetch import fetch
@@ -46,8 +46,8 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
             limit = max_notes or int(cfg["notes"]["max_per_run"])
             todo = waiting[:limit]
             report(f"{len(waiting)} posts waiting for a note; writing {len(todo)} "
-                   f"in batches of {cfg['notes']['batch_size']} ({cfg['notes']['backend']}, {cfg['notes']['model']})")
-            api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
+                   f"in batches of {cfg['notes']['batch_size']} ({ai.PROVIDERS[ai.provider(cfg)]}, {cfg['notes']['model'] or 'default model'})")
+            api_key = ai.api_key(cfg)
             counts["posts_noted"], counts["posts_skipped"] = notes.write_notes(
                 con, todo, cfg, report, run_id, api_key=api_key)
             left = len(db.connection_post_ids(con, ids, "processed"))
@@ -61,7 +61,7 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
             if todo:
                 report.set_stage("ideas")
                 report(f"{len(todo)} notes waiting to be checked for ideas, learnings and events")
-                api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
+                api_key = ai.api_key(cfg)
                 found = ideas.run_pass(con, todo, cfg, report, run_id, api_key=api_key)
                 counts.update(ideas.counts(found))
         report.set_stage("done")

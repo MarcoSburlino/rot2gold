@@ -31,8 +31,8 @@ def test_settings_validation_and_overlay(tmp_path, monkeypatch):
     assert before["notes"]["model"] == "sonnet" and before["notes"]["batch_size"] == 3
     assert before["notes"]["max_per_run"] == 20 and before["vault"]["videos"] == "Rot2Gold/Videos"  # defaults fill the rest
     text = path.read_text()
-    errors = settings.save({"notes.batch_size": "21", "ideas.model": "wrong"})
-    assert len(errors) == 2 and path.read_text() == text
+    errors = settings.save({"notes.batch_size": "21", "ai.provider": "wrong", "ai.local_url": "localhost"})
+    assert len(errors) == 3 and path.read_text() == text
     assert settings.save({"notes.batch_size": "7", "notes.max_budget_usd_per_batch": "2.5", "ideas.model": "haiku"}) == []
     saved = config.load()
     assert saved["notes"]["batch_size"] == 7 and saved["notes"]["model"] == "sonnet"

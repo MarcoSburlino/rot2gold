@@ -16,8 +16,9 @@ Two parts, one repo:
 
 ## Rules
 
-- AI reasoning runs through Marco's Claude subscription (Claude Code, `claude -p`) by default. The app may also use an Anthropic API key, by Marco's choice in Settings (decided 2026-10-19; this exception is for this project only). No local LLMs; local utility models (speech-to-text, OCR) are fine.
-- The API key lives only in the GNOME keyring (`secret-tool`, `service rot2gold`, `account anthropic`). Never in a file, a `config.toml`, Git, logs or notes. Never print it.
+- AI providers (`[ai] provider`, decided 2026-10-21 for the open-source release): Claude Code (the default, on a subscription or an Anthropic API key), OpenAI Codex CLI and Google Gemini CLI run as agents through one interface (`src/rot2gold/ai/`); a local model (Ollama, LM Studio, llama.cpp) runs in direct mode (`direct.py`), where it answers in JSON and the app writes the files. Marco's own setup stays on his Claude subscription.
+- Agents get only the tools they need: file tools, web search and `r2g pending/done/skip` (Claude: `--allowedTools`; Codex: its workspace-write sandbox; Gemini: a policy file). Transcripts are text from strangers, so never widen this to a general shell.
+- API keys live only in the system keychain (`secrets.py`, the `keyring` library: service `rot2gold`, user `anthropic`, `openai`, `gemini` or `local`). Never in a file, a `config.toml`, Git, logs or notes. Never print them.
 - Never fetch or store captions, hashtags or comments.
 - Connection (collection) URLs live only in the database (`<data folder>/r2g.sqlite`, `r2g conn list`), never in Git.
 - One pipeline run at a time: every command that runs the pipeline takes the lock `<data folder>/r2g.lock`. Never delete the lock file by hand; the kernel releases it when its process ends.

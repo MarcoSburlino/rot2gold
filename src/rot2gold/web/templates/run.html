@@ -81,7 +81,7 @@
         <dt>Collections</dt>
         <dd>{% for i in conn_ids %}{% if names.get(i|int) %}<a href="/videos?conn={{ i }}">{{ names[i|int] }}</a>{% else %}deleted{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
       {% endif %}
-      {% if run.backend %}<dt>AI</dt><dd>{{ 'Claude subscription' if run.backend == 'subscription' else 'API key' }}, {{ run.model }}</dd>{% endif %}
+      {% if run.backend %}<dt>AI</dt><dd>{{ {'subscription': 'Claude subscription', 'api': 'Claude API key', 'codex': 'Codex', 'gemini': 'Gemini CLI', 'local': 'Local model'}.get(run.backend, run.backend) }}, {{ run.model or 'default model' }}</dd>{% endif %}
       {% if run.cost_estimate_usd %}
         <dt>AI cost</dt>
         <dd>${{ '%.2f'|format(run.cost_estimate_usd) }} <span class="muted">{{ '(what it would cost on the API; your subscription covers it)' if run.backend == 'subscription' else '(estimated)' }}</span></dd>

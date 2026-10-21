@@ -6,7 +6,7 @@ import traceback
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from . import db, ideas, lock
+from . import ai, db, ideas, lock
 from .errors import UsageLimit, VNError
 from .events import Reporter
 
@@ -36,7 +36,7 @@ def recorded_run(origin, command, kind, connection_ids, cfg, quiet=False):
         model = cfg["ideas"]["model"] if kind.startswith("ideas") else cfg["notes"]["model"]
         cur = con.execute("INSERT INTO runs (origin, kind, connection_ids, backend, model, pid, started_at)"
                           " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                          (origin, kind, ",".join(map(str, connection_ids or [])), cfg["notes"]["backend"],
+                          (origin, kind, ",".join(map(str, connection_ids or [])), ai.run_label(cfg),
                            model, os.getpid(), db.now()))
         con.commit()
         run_id = cur.lastrowid

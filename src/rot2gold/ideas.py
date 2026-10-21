@@ -12,7 +12,7 @@ import shutil
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import brain, db, notefile, notes
+from . import ai, brain, db, direct, notefile, notes
 from .ai import claude_cli
 from .config import DATA, brain_dir, load, vault_rel
 from .paths import RESOURCES
@@ -225,7 +225,7 @@ def _known(kind: str, folder: Path | None) -> list[dict]:
 
 
 def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=None) -> dict:
-    """Run one Claude call per batch and keep finished work on a usage limit."""
+    """Run one AI call per batch and keep finished work on a usage limit."""
     size = max(1, int(cfg["ideas"]["batch_size"]))
     batches = [post_ids[i:i + size] for i in range(0, len(post_ids), size)]
     result = {"created": [], "updated": [], "considered": []} | {key: [] for key in COUNTERS if not key.startswith("ideas_")}
@@ -263,11 +263,13 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
                               existing_events_count=len(known["event"]), existing_events=catalog(known["event"]))
         limit = None
         try:
-            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)),
-                                 add_dirs=[str(RESOURCES)] + ([str(folder)] if dry_run else []),
-                                 model=cfg["ideas"]["model"], backend=cfg["notes"]["backend"], api_key=api_key,
-                                 max_budget_usd=cfg["notes"].get("max_budget_usd_per_batch"),
-                                 on_line=lambda line: report(f"  {line}"))
+            if ai.is_direct(cfg):  # a local model: it answers in JSON and the app writes the items
+                res = direct.find_ideas(con, batch, needs, known, cfg, folder, api_key=api_key,
+                                        on_line=lambda line: report(f"  {line}"))
+            else:
+                res = ai.run_agent(cfg, prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)),
+                                   add_dirs=[str(RESOURCES)] + ([str(folder)] if dry_run else []),
+                                   model=cfg["ideas"]["model"], api_key=api_key, on_line=lambda line: report(f"  {line}"))
         except UsageLimit as exc:
             limit, res = exc, getattr(exc, "result", None)
         notes.add_usage(con, run_id, res)
@@ -325,7 +327,7 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
             raise AgentFailed(f"ideas pass failed in batch {n}: {res.error}")
         stop_at = float(cfg["notes"].get("stop_at_plan_usage") or 0)
         fh = notes.five_hour(res.plan if res else None)
-        if cfg["notes"]["backend"] == "subscription" and stop_at and fh is not None and fh >= stop_at and n < len(batches):
+        if notes.on_claude_plan(cfg) and stop_at and fh is not None and fh >= stop_at and n < len(batches):
             raise UsageLimit(f"Plan 5-hour window is {fh:.0%} used; stopping before the next batch"
                              f"{claude_cli.resets((res.plan or {}).get('unifiedWindows', {}).get('five_hour'))}")
     return result

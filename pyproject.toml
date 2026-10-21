@@ -19,6 +19,7 @@ dependencies = [
   "pyyaml",
   "platformdirs",
   "tomli-w",
+  "keyring",
 ]
 
 [project.optional-dependencies]

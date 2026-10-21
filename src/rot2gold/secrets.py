@@ -1,44 +1,60 @@
-"""The Anthropic API key, kept in the GNOME keyring through secret-tool.
+"""API keys for the AI providers, kept in the system keychain through the `keyring` library:
+the Secret Service (GNOME Keyring, KWallet) on Linux, Keychain on macOS, Credential Manager on Windows.
 
-The keyring is an encrypted store unlocked at login. The key is passed to secret-tool on stdin,
-never as an argument (arguments are visible to every user in `ps`), and is never printed or logged.
+Keys never go in a file, a config, Git, logs or notes, and are never printed. Each provider has its own
+entry: service "rot2gold", user "anthropic", "openai", "gemini" or "local".
 """
 
-import shutil
-import subprocess
+import keyring
+from keyring.errors import KeyringError
 
 from .errors import AgentFailed
 
-ATTRS = ["service", "rot2gold", "account", "anthropic"]
+SERVICE = "rot2gold"
 
 
-def _tool() -> str:
-    exe = shutil.which("secret-tool")
-    if not exe:
-        raise AgentFailed("keyring unavailable: secret-tool not found", "sudo dnf install libsecret")
-    return exe
-
-
-def get_api_key() -> str | None:
-    proc = subprocess.run([_tool(), "lookup", *ATTRS], capture_output=True, text=True)
-    if proc.returncode != 0 and proc.stderr.strip():
-        raise AgentFailed("keyring unavailable", "Open the app from your desktop session, where the keyring is unlocked.")
-    return proc.stdout.strip() or None
-
-
-def has_api_key() -> bool:
+def get_key(account: str) -> str | None:
     try:
-        return bool(get_api_key())
+        return keyring.get_password(SERVICE, account) or None
+    except KeyringError as exc:
+        raise AgentFailed(f"keychain unavailable: {exc}", "Open the app from your desktop session, where the keychain is unlocked.") from None
+
+
+def has_key(account: str) -> bool:
+    try:
+        return bool(get_key(account))
     except AgentFailed:
         return False
 
 
+def set_key(account: str, key: str) -> None:
+    try:
+        keyring.set_password(SERVICE, account, key.strip())
+    except KeyringError as exc:
+        raise AgentFailed("could not store the key in the keychain", str(exc)[:200]) from None
+
+
+def delete_key(account: str) -> None:
+    try:
+        keyring.delete_password(SERVICE, account)
+    except keyring.errors.PasswordDeleteError:
+        pass  # nothing stored
+    except KeyringError as exc:
+        raise AgentFailed("could not remove the key from the keychain", str(exc)[:200]) from None
+
+
+# The Anthropic key, used by Claude Code's "api" backend.
+def get_api_key() -> str | None:
+    return get_key("anthropic")
+
+
+def has_api_key() -> bool:
+    return has_key("anthropic")
+
+
 def set_api_key(key: str) -> None:
-    proc = subprocess.run([_tool(), "store", "--label=Rot2Gold Anthropic API key", *ATTRS],
-                          input=key.strip(), capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise AgentFailed("could not store the key in the keyring", proc.stderr.strip()[:200])
+    set_key("anthropic", key)
 
 
 def delete_api_key() -> None:
-    subprocess.run([_tool(), "clear", *ATTRS], capture_output=True, text=True)
+    delete_key("anthropic")

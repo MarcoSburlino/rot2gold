@@ -118,7 +118,7 @@ Note writing and the ideas pass run as `claude -p` (Claude Code, non-interactive
   - Since 2026-10-07, Max and Team plans also get monthly API credits. Pro doesn't.
   - The API key in the child environment selects API billing over the plan login.
   - Sources: support.claude.com articles 15036540 and 11145838, and code.claude.com/docs/en/headless.
-- A Codex note-writing backend is deferred: a second agent backend would double the testing for this local app.
+- Codex was deferred here on 2026-10-19; on 2026-10-21 Codex CLI, Gemini CLI and local models were added for the open-source release (see "AI providers" below).
 
 ### Principle change: API keys allowed here
 
@@ -126,15 +126,31 @@ Marco's rule so far was "AI reasoning runs only through Marco's subscriptions, n
 
 The exception is for this project only. It is recorded here, in `AGENTS.md`, in `spec.md` and in the brain's `Projects/rot2gold.md`. Marco's global rules don't change.
 
-### API key in the GNOME keyring
+### AI providers (2026-10-21)
 
-The key is stored in the GNOME keyring with `secret-tool` (`/usr/bin/secret-tool`, attributes `service rot2gold` and `account anthropic`). The keyring is an encrypted store that is unlocked when Marco logs in.
+`[ai] provider` picks who writes notes and finds ideas. The prompts and rules are the same for all agents.
+
+| Provider | How it runs | Tools | Login |
+|---|---|---|---|
+| `claude` | `claude -p` (`ai/claude_cli.py`) | `--allowedTools` list above | plan login, or Anthropic key |
+| `codex` | `codex exec --json --output-schema` (`ai/codex_cli.py`) | sandbox `workspace-write` (writes only in the vault and `--add-dir`s, no network for commands) plus its web search (`-c web_search="live"`) | `codex login`, or `CODEX_API_KEY` from the keychain |
+| `gemini` | `gemini -p --output-format stream-json` (`ai/gemini_cli.py`) | a `--policy` file allowing file tools, web search, `r2g pending/done/skip` and `rg`; anything else needs approval, which headless mode refuses | Google sign-in, or `GEMINI_API_KEY` |
+| `local` | `direct.py` with `ai/local.py` (OpenAI-compatible `/v1/chat/completions`, `response_format` JSON schema) | none: the app sends the post data and writes the note, hub and quotes itself | optional server key |
+
+- Codex gets the strict form of the report schema (`base.strict`). Gemini has no schema flag: the prompt asks for the JSON report and the app checks its keys.
+- Plan-usage stops (`stop_at_plan_usage`) apply only to Claude on a subscription, the only provider that reports it. The others stop on their own limit errors.
+- Direct-mode notes have the same format, without checked claims (no web search) or links to other notes. Small models skip posts too eagerly, so a skip counts only for a post with almost no speech or text (`direct.has_words`).
+- Tested 2026-10-21: one real note each with Codex (ChatGPT login) and with llama.cpp's `llama-server` serving Qwen2.5 1.5B; Gemini CLI only up to its auth check (no Google login on this laptop).
+
+### API keys in the system keychain
+
+Keys are stored with the `keyring` library: the Secret Service (GNOME Keyring) on Linux, Keychain on macOS, Credential Manager on Windows; service `rot2gold`, one user per provider (`anthropic`, `openai`, `gemini`, `local`). Until 2026-10-21 the Anthropic key used `secret-tool` directly; Marco had none stored, so nothing was moved.
 
 - **Why not a `chmod 600` file in `~/.config/`:**
   - The file would still be plain text on disk, visible to backups and `rg`.
   - Marco's rules already forbid agents from opening `api-key` files.
   - A keyring entry has no file to read by accident.
-- **Entering the key:** the Settings page sends it to `secret-tool` on standard input, never as a command-line argument, because arguments are visible to every user in `ps`. Afterwards the page shows only "key set" or "not set".
+- **Entering the key:** the Settings page passes it to the keychain in-process, never as a command-line argument (arguments are visible to every user in `ps`). Afterwards the page shows only "key set" or "not set".
 - **No keyring:** without one (for example over SSH, with no desktop session), API mode stops with "keyring unavailable". It never falls back to a file.
 
 ### Review and undo after commits
@@ -304,7 +320,9 @@ src/rot2gold/
   vault.py                 the app's folders, templates and starter notes in the vault; the "Where things are" block of every prompt
   ideas.py                 ideas, learnings and events pass; reading their notes; event dates and .ics
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
-  secrets.py               keyring access through secret-tool
+  secrets.py               API keys in the system keychain (keyring)
+  direct.py                direct mode for local models: JSON answers, the app writes the files
+  ai/                      the providers: claude_cli, codex_cli, gemini_cli, local; base (Result, strict schemas)
   settings.py              validated preferences, saved into the user's config.toml
   paths.py                 where the config, data and bundled resources live (platformdirs)
   undo.py                  safe git revert and queue restoration
@@ -338,4 +356,4 @@ tests/
 - A post saved in two connections is processed once and listed under both.
 - With a wrong Firefox profile or a dead URL list, the UI shows the matching message and next step.
 - Running the ideas pass twice on the same notes creates and updates nothing the second time.
-- In API mode: `secret-tool lookup service rot2gold account anthropic` finds the key, a batch reports its cost, and a missing key gives a clear error.
+- In API mode: the keychain holds the key (service `rot2gold`, user `anthropic`), a batch reports its cost, and a missing key gives a clear error.

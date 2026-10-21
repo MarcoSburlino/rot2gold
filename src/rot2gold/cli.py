@@ -5,45 +5,10 @@ import json
 import sys
 from pathlib import Path
 
-from . import brain, connections, db, downloaders, ideas, launcher, lock, secrets, undo, vault
-from .config import DATA, load
+from . import ai, brain, connections, db, downloaders, ideas, launcher, lock, undo, vault
+from .config import load
+from .postdata import post_record, post_text
 from .errors import VNError
-
-
-def fmt_time(s: float) -> str:
-    return f"{int(s // 60)}:{s % 60:04.1f}"
-
-
-def post_record(con, row) -> dict:
-    images = con.execute("SELECT idx, kind, path, ocr_text, ocr_conf FROM images WHERE post_id = ? ORDER BY idx",
-                         (row["id"],)).fetchall()
-    segs = con.execute("SELECT start, end, text FROM segments WHERE post_id = ? ORDER BY idx", (row["id"],)).fetchall()
-    return {
-        "id": row["id"], "url": row["url"], "creator": row["creator"], "posted": row["upload_date"],
-        "type": row["type"], "language": row["language"], "language_prob": row["language_prob"],
-        "images": [{"kind": i["kind"], "n": i["idx"], "path": str(DATA / i["path"]),
-                    "ocr_conf": i["ocr_conf"], "ocr_text": i["ocr_text"]} for i in images],
-        "transcript": [dict(s) for s in segs],
-    }
-
-
-def print_post(p: dict) -> None:
-    print(f"=== {p['id']} | {p['type']} | @{p['creator']} | posted {p['posted']}")
-    print(f"url: {p['url']}")
-    if p["type"] == "video":
-        print(f"speech language: {p['language'] or 'none detected'}"
-              + (f" (p={p['language_prob']})" if p["language"] else ""))
-    for img in p["images"]:
-        label = "On-screen text (0.5 s)" if img["kind"] == "frame" else f"Slide {img['n']}"
-        print(f"\n--- {label} | OCR confidence {img['ocr_conf']} | {img['path']}")
-        print(img["ocr_text"] or "(no text)")
-    if p["type"] == "video":
-        print("\n--- Transcript")
-        if not p["transcript"]:
-            print("(no speech)")
-        for s in p["transcript"]:
-            print(f"[{fmt_time(s['start'])}–{fmt_time(s['end'])}] {s['text']}")
-    print()
 
 
 def cmd_pending(args) -> None:
@@ -61,7 +26,7 @@ def cmd_pending(args) -> None:
         print("\n".join(r["id"] for r in records))
         return
     for r in records:
-        print_post(r)
+        print(post_text(r))
     total = con.execute("SELECT COUNT(*) FROM posts WHERE status = 'processed'").fetchone()[0]
     print(f"({len(records)} shown, {total} pending)")
 
@@ -198,7 +163,7 @@ def cmd_ideas(args) -> None:
             vault.prepare_and_report(cfg, run.report)
         run.report.set_stage("ideas")
         if todo:
-            api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
+            api_key = ai.api_key(cfg)
             result = ideas.run_pass(run.con, todo, cfg, run.report, run.run_id, args.dry_run, api_key)
             run.counts.update(ideas.counts(result))
         run.report.set_stage("done")

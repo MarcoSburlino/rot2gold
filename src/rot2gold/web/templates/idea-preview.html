@@ -28,7 +28,7 @@
     <p class="banner">Applied to your vault ({{ manifest.applied }}).</p>
   {% elif rows or checked %}
     <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
-      <p>Apply copies these into <code>Inbox/ideas/</code>, <code>Inbox/learnings/</code> and <code>Inbox/events/</code> and marks the notes as checked, without calling Claude again. Anything you edited since the dry run is skipped, never overwritten.</p>
+      <p>Apply copies these into your ideas, learnings and events folders and marks the notes as checked, without another AI call. Anything you edited since the dry run is skipped, never overwritten.</p>
       <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>
         Apply {{ rows|length }} {{ 'note' if rows|length == 1 else 'notes' }} to your vault
       </button>

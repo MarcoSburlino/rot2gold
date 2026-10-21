@@ -161,8 +161,8 @@
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <p>Claude reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas, learnings and events {{ 'it points' if unchecked == 1 else 'they point' }} to.
-        If your plan's limit gets close it stops, and next time it carries on where it left off.</p>
+      <p>The AI reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds the ideas, learnings and events {{ 'it points' if unchecked == 1 else 'they point' }} to.
+        If it reaches a usage limit it stops, and next time it carries on where it left off.</p>
       <details class="advanced">
         <summary>Only some themes</summary>
         <fieldset class="theme-list">

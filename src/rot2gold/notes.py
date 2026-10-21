@@ -7,7 +7,7 @@ with `r2g done` or `r2g skip`. The app, not the agent, runs the after-write comm
 import json
 from datetime import date
 
-from . import brain, db, vault
+from . import ai, brain, db, direct, vault
 from .ai import claude_cli
 from .config import DATA, brain_dir
 from .paths import RESOURCES
@@ -36,6 +36,11 @@ def render(name: str, **values) -> str:
     for k, v in (vault.prompt_values() | values).items():
         text = text.replace("{{" + k + "}}", str(v))
     return text
+
+
+def on_claude_plan(cfg: dict) -> bool:
+    """Claude on a subscription: the only setup that reports plan usage, so the only one that can stop early."""
+    return ai.provider(cfg) == "claude" and cfg["notes"]["backend"] == "subscription"
 
 
 def add_usage(con, run_id: int | None, res: claude_cli.Result) -> None:
@@ -103,13 +108,15 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
     for n, batch in enumerate(batches, start=1):
         report(f"batch {n}/{len(batches)}: {' '.join(batch)}")
         before = brain.snapshot()
-        prompt = render("write-notes.md", ids="\n".join(batch), count=len(batch), today=date.today().isoformat())
         limit = None
         try:
-            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)), add_dirs=[str(RESOURCES), str(DATA)],
-                                 model=ncfg["model"], backend=ncfg["backend"], api_key=api_key,
-                                 max_budget_usd=ncfg.get("max_budget_usd_per_batch"),
-                                 on_line=lambda line: report(f"  {line}"))
+            if ai.is_direct(cfg):  # a local model: it answers in JSON and the app writes the notes
+                res = direct.write_notes(con, batch, cfg, on_line=lambda line: report(f"  {line}"), api_key=api_key)
+            else:
+                prompt = render("write-notes.md", ids="\n".join(batch), count=len(batch), today=date.today().isoformat())
+                res = ai.run_agent(cfg, prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)),
+                                   add_dirs=[str(RESOURCES), str(DATA)], model=ncfg["model"], api_key=api_key,
+                                   on_line=lambda line: report(f"  {line}"))
         except UsageLimit as exc:
             limit, res = exc, getattr(exc, "result", None)
         add_usage(con, run_id, res)
@@ -133,7 +140,7 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
             raise AgentFailed(f"note writing failed in batch {n}: {res.error}")
         stop_at = float(ncfg.get("stop_at_plan_usage") or 0)
         fh = five_hour(res.plan if res else None)
-        if ncfg["backend"] == "subscription" and stop_at and fh is not None and fh >= stop_at and n < len(batches):
+        if on_claude_plan(cfg) and stop_at and fh is not None and fh >= stop_at and n < len(batches):
             raise UsageLimit(f"Plan 5-hour window is {fh:.0%} used; stopping before the next batch"
                              f"{claude_cli.resets((res.plan or {}).get('unifiedWindows', {}).get('five_hour'))}")
     return noted, skipped
