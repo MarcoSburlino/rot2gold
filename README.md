@@ -37,7 +37,9 @@ Everything else (Python, ffmpeg, the downloaders, the speech model) comes with t
 
 ## Install
 
-Rot2Gold installs with [uv](https://docs.astral.sh/uv/), which also brings the right Python.
+**[SETUP.md](SETUP.md) walks through the whole setup on macOS, Windows and Linux**: Obsidian, Git and uv, each AI option, Tesseract, the setup page, browser cookies for private collections, where files go, and what to do if something goes wrong. The short version:
+
+Rot2Gold installs with [uv](https://docs.astral.sh/uv/), which also brings the right Python. uv needs [Git](https://git-scm.com) to download it (`git --version` tells you if it's there).
 
 **macOS and Linux**
 
@@ -55,7 +57,7 @@ uv tool install git+https://github.com/MarcoSburlino/rot2gold
 r2g
 ```
 
-If `r2g` isn't found right after installing uv, open a new terminal first.
+If `r2g` isn't found right after installing uv, open a new terminal first (or run `uv tool update-shell`).
 
 ## First run
 
