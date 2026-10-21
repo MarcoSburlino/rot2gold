@@ -302,7 +302,7 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 
 ## Screens
 
-Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, collections in a sidebar, Settings as a card, runs linked to collections). Simplified 2026-10-20 (Marco: "the app is kind of complicated to use"): one Extract button, plain words instead of pipeline terms, technical detail folded away, no dry-run step in the app. Restyled 2026-10-20 from Marco's Claude Design project: always dark, near-black with one gold, Outfit / Instrument Sans / JetBrains Mono bundled in the app, the design's horizon app icon (`static/icon.png`, used as the browser tab icon and the GNOME launcher icon); the screens and their structure did not change. Visual rules: `.claude/skills/design-system/` — read it before any UI change.
+Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, collections in a sidebar, Settings as a card, runs linked to collections). Simplified 2026-10-20 (Marco: "the app is kind of complicated to use"): one Extract button, plain words instead of pipeline terms, technical detail folded away, no dry-run step in the app. Restyled 2026-10-20 from Marco's Claude Design project: always dark, near-black with one gold, Outfit / Instrument Sans / JetBrains Mono bundled in the app, the design's app icon (since 2026-10-21 the "R2G" icon: `static/icon.png` at 512 px for the app menu, `static/icon-32.png` for the browser tab); the screens and their structure did not change. Visual rules: `.claude/skills/design-system/` — read it before any UI change.
 
 **App shell.** A sidebar on every page (a top bar plus drawer under 768 px):
 - Ideas, Learnings, Events and Videos with counts, and History.

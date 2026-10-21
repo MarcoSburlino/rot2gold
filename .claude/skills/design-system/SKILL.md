@@ -16,7 +16,7 @@ Read the files here before touching `src/rot2gold/web/`:
 - `spacing.md`: spacing scale, radii, layout widths and breakpoints
 - `components.md`: recipes for every component, including the signature source strip
 - `animations.md`: the three things that move
-- `references/`: the brand board and the app icon. The app uses that exact icon, cut out of its cream background, as `static/icon.png` (browser tab and GNOME launcher). Never redraw it.
+- `references/`: the brand board and the app icon ("R2G": gold R and G, cream 2, on a black rounded square; changed 2026-10-21 from the earlier horizon icon). The app uses that exact icon as is: `static/icon.png` at 512 px (GNOME launcher, macOS and Windows icons) and the designer's `static/icon-32.png` for the browser tab. Never redraw it.
 
 Rules:
 - Every value in CSS comes from these tokens (custom properties in `style.css`).

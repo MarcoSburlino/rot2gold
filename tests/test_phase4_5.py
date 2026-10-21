@@ -215,7 +215,11 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     assert downloaders.update(lines.append)["gallery-dl"] == "2"
     assert calls[0][1:5] == ["pip", "install", "--python", sys.executable] and "updating" in lines
     monkeypatch.setattr(launcher.shutil, "which", lambda name: None)
+    old_icon = tmp_path / ".local/share/icons/hicolor/256x256/apps/rot2gold.png"
+    old_icon.parent.mkdir(parents=True)
+    old_icon.write_bytes(b"old")
     desktop, icon = launcher._install_linux(tmp_path)  # each system's launcher is built the same way everywhere
+    assert icon.parent.parent.name == "512x512" and not old_icon.exists()
     assert desktop.is_file() and icon.is_file() and "Terminal=false" in desktop.read_text()
     assert f'Exec="{launcher.r2g_command()}" ui' in desktop.read_text() and "\nIcon=rot2gold\n" in desktop.read_text()
     app, icns = launcher._install_mac(tmp_path)

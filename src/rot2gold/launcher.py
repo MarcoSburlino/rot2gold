@@ -40,19 +40,22 @@ def uninstall(home: Path | None = None) -> None:
 
 
 def _linux_paths(home: Path) -> list[Path]:
-    return [home / ".local/share/applications/rot2gold.desktop", home / ".local/share/icons/hicolor/256x256/apps/rot2gold.png",
-            home / ".local/share/icons/hicolor/scalable/apps/rot2gold.svg"]  # the icon was an SVG before 2026-10-21
+    icons = home / ".local/share/icons/hicolor"
+    # The icon was an SVG, then a 256 px PNG, before the 512 px R2G icon (2026-10-21); the last two are removed.
+    return [home / ".local/share/applications/rot2gold.desktop", icons / "512x512/apps/rot2gold.png",
+            icons / "256x256/apps/rot2gold.png", icons / "scalable/apps/rot2gold.svg"]
 
 
 def _install_linux(home: Path) -> tuple[Path, Path]:
-    desktop, icon, old_icon = _linux_paths(home)
+    desktop, icon, *old_icons = _linux_paths(home)
     for folder in (desktop.parent, icon.parent):
         folder.mkdir(parents=True, exist_ok=True)
     # Written next to the old file and swapped in, so the desktop never reads a half-copied icon and caches it as broken.
     partial = icon.with_suffix(".partial")
     shutil.copyfile(ICON, partial)
     os.replace(partial, icon)
-    old_icon.unlink(missing_ok=True)
+    for old in old_icons:
+        old.unlink(missing_ok=True)
     # By name, not by path: the desktop then finds it through the icon theme, which notices when it changes.
     desktop.write_text(f"[Desktop Entry]\nType=Application\nName={APP_NAME}\n"
                        f"Comment=Turn saved posts into notes and ideas\nExec=\"{r2g_command()}\" ui\n"
