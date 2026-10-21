@@ -10,11 +10,13 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
 import socket
 import urllib.request
+import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -25,9 +27,9 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ai, brain, connections, db, delete, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
+from .. import ai, brain, connections, db, delete, downloaders, firstrun, ideas, lock, notefile, secrets, settings, sources, undo
 from ..ai import claude_cli
-from ..config import DATA, LOGS, MEDIA, brain_dir, load, media_dir
+from ..config import DATA, LOGS, MEDIA, brain_dir, is_set_up, load, media_dir
 from ..errors import VNError
 
 APP_NAME = "Rot2Gold"  # the only place the UI shows the name
@@ -52,7 +54,12 @@ async def local_requests(request: Request, call_next):
         parts = urlsplit(source)
         if parts.scheme != "http" or parts.netloc.lower() not in allowed:
             return PlainTextResponse("This action must come from the app's own page.", status_code=403)
+    if not request.url.path.startswith(SETUP_OPEN) and not is_set_up():
+        return RedirectResponse("/setup", status_code=303)  # nothing works before a vault is chosen
     return await call_next(request)
+
+
+SETUP_OPEN = ("/setup", "/static/", "/healthz", "/quit")
 
 
 def local_time(iso: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
@@ -179,7 +186,7 @@ def event_date(when: str, until: str = "") -> str:
 
 def asset_version() -> str:
     """Changes whenever style.css or app.js changes, so browsers never keep a stale copy."""
-    return str(int(max((HERE / "static" / name).stat().st_mtime for name in ("style.css", "app.js"))))
+    return str(int(max((HERE / "static" / name).stat().st_mtime for name in ("style.css", "app.js", "setup.js"))))
 
 
 templates.env.filters["local_time"] = local_time
@@ -275,7 +282,7 @@ def settings_context():
                 providers=ai.PROVIDERS, model_names=model_names(cfg), **KEY_TEXT[name],
                 choice_labels={"subscription": "Claude subscription", "api": "Anthropic API key"} | ai.PROVIDERS,
                 windows=plan_windows(latest[0] if latest else None), versions=downloaders.versions(),
-                brain_path=brain_dir(cfg), port=cfg["app"]["port"], profiles=profiles())
+                where=firstrun.summary(cfg), port=cfg["app"]["port"], profiles=profiles())
 
 
 # What the key section says for each provider.
@@ -360,6 +367,94 @@ def test_key(request: Request):
         return settings_back(request, "general", err=error)
     except VNError as exc:
         return settings_back(request, "general", err=str(exc).replace(key, "[key hidden]") if 'key' in locals() and key else "Key test failed.")
+
+
+# ── First-run setup (also "Run setup again" from Settings) ──────────────────────────
+
+PROVIDER_NOTES = {"claude": "Writes the best notes, with web search. Needs a Claude subscription or an API key.",
+                  "codex": "OpenAI's agent, with web search. Needs a ChatGPT plan or an OpenAI API key.",
+                  "gemini": "Google's agent, with web search. A Google account has a free tier.",
+                  "local": "Free and private, on this computer. No web search, so notes are simpler."}
+restart_requested = False  # set by a finished setup: serve() starts the app again with the new folders
+BOOT_ID = uuid.uuid4().hex  # new at every start; a restart keeps the process id (exec), so the page compares this
+
+
+def setup_page(request: Request, values: dict, errors: list[str]) -> HTMLResponse:
+    cfg = load()
+    checks = firstrun.checks(cfg)
+    vaults = firstrun.obsidian_vaults()
+    data = Path(values.get("data_dir") or DATA).expanduser()
+    return templates.TemplateResponse(request, "setup.html", {
+        "values": values, "errors": errors, "again": is_set_up(cfg), "checks": checks, "vaults": vaults,
+        "vault_paths": [v["path"] for v in vaults], "home": str(Path.home()), "free": firstrun.free_space(str(data)),
+        "has_data": (DATA / "r2g.sqlite").exists(), "providers": ai.PROVIDERS, "provider_notes": PROVIDER_NOTES,
+        "status": {c["key"]: c for c in checks}, "models": model_names(cfg) if ai.provider(cfg) == values["provider"] else [],
+        "ocr_langs": firstrun.ocr_choices(cfg), "browsers": browser_choices(), "on_windows": os.name == "nt"})
+
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_form(request: Request):
+    return setup_page(request, firstrun.form_defaults(load()), [])
+
+
+@app.post("/setup", response_class=HTMLResponse)
+async def setup_save(request: Request):
+    global restart_requested
+    form = await request.form()
+    values = {key: form.get(key, "") for key in ("folder", "data_dir", "provider", "backend", "model", "local_url",
+                                                 "language", "collection", "browser", "key")}
+    values |= {"vault": form.get("vault_pick") or form.get("vault_other", ""), "ocr_langs": form.getlist("ocr_langs"),
+               "git": bool(form.get("git")), "launcher": bool(form.get("launcher")), "move_data": bool(form.get("move_data"))}
+    cfg = load()
+    changes, errors = firstrun.validate(values, cfg)
+    if errors:
+        values["key"] = ""  # never sent back to the page
+        return setup_page(request, values, errors)
+    if is_set_up(cfg) and active_run(db.connect()):
+        values["key"] = ""
+        return setup_page(request, values, ["A run is in progress. Wait for it to finish, then save the setup."])
+    done = []
+    try:
+        firstrun.save(values, changes, cfg, report=done.append)
+    except (OSError, VNError) as exc:
+        values["key"] = ""
+        return setup_page(request, values, [f"Setup couldn't be saved: {exc}"])
+    restarting = server is not None
+    if restarting:  # the folders are read when the app starts: start it again
+        restart_requested = True
+        threading.Timer(0.5, lambda: setattr(server, "should_exit", True)).start()
+    return templates.TemplateResponse(request, "setup-done.html", {"done": done, "again": is_set_up(cfg),
+                                                                   "restarting": restarting, "boot": BOOT_ID})
+
+
+@app.get("/setup/status")
+def setup_status():
+    """Which start of the app answers: setup-done.html waits for a new one after a restart."""
+    return {"boot": BOOT_ID, "set_up": is_set_up()}
+
+
+@app.get("/setup/dirs")
+def setup_dirs(path: str = ""):
+    """The folder browser: a folder's subfolders (names only, hidden ones left out)."""
+    folder = Path(path).expanduser() if path else Path.home()
+    if not folder.is_dir():
+        folder = Path.home()
+    try:
+        names = sorted((p.name for p in folder.iterdir() if p.is_dir() and not p.name.startswith(".")), key=str.lower)
+    except OSError:
+        names = []
+    return {"path": str(folder), "parent": str(folder.parent) if folder.parent != folder else None,
+            "dirs": [{"name": n, "path": str(folder / n)} for n in names],
+            "vault": (folder / ".obsidian").is_dir(), "free": firstrun.free_space(str(folder))}
+
+
+@app.get("/setup/models")
+def setup_models(url: str = ""):
+    """The models on a local server, for the setup page's model suggestions."""
+    try:
+        return {"models": ai.local.models(url or ai.local.DEFAULT_URL, secrets.get_key("local"))}
+    except Exception:  # not running, or not an OpenAI-compatible server
+        return {"models": []}
 
 
 @app.post("/update-downloaders")
@@ -963,10 +1058,14 @@ def serve(open_browser: bool = True) -> None:
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     if sys.stdin is None or not sys.stdin.isatty():  # started from a launcher: no terminal to print to
-        LOGS.mkdir(parents=True, exist_ok=True)
-        with open(LOGS / "ui.log", "a") as log, redirect_stdout(log), redirect_stderr(log):
+        # Before setup the data folder isn't chosen yet: log to the temp folder rather than create one.
+        logs = LOGS if is_set_up() else Path(tempfile.gettempdir())
+        logs.mkdir(parents=True, exist_ok=True)
+        with open(logs / ("ui.log" if is_set_up() else "rot2gold-ui.log"), "a") as log, redirect_stdout(log), redirect_stderr(log):
             print(f"{APP_NAME} at {url}", flush=True)
             server.run()
     else:
         print(f"{APP_NAME} at {url}  (Ctrl+C to stop the server; a running Extract keeps going)")
         server.run()
+    if restart_requested:  # setup changed the folders: start again, reading them anew
+        os.execv(sys.executable, [sys.executable, "-m", "rot2gold.cli", "ui", "--no-browser"])

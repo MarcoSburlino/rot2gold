@@ -1,0 +1,204 @@
+{% from "_macros.html" import icon, wordmark %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0C0C0D">
+  <title>Set up · {{ APP_NAME }}</title>
+  <link rel="icon" href="/static/icon.png" type="image/png">
+  <link rel="preload" href="/static/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
+  <script src="/static/setup.js?v={{ asset_version() }}" defer></script>
+</head>
+<body>
+  {% include "_icons.html" %}
+  <main id="main" class="setup">
+    <header class="setup-head">
+      {% if again %}<a class="back-link" href="/ideas">{{ icon('back') }} Back to {{ APP_NAME }}</a>{% else %}<p class="setup-brand">{{ wordmark() }}</p>{% endif %}
+      <h1>{{ 'Setup' if again else 'Set up ' ~ APP_NAME }}</h1>
+      <p class="lede">
+        {% if again %}Change where {{ APP_NAME }} writes and who writes the notes. Everything you leave as it is stays the same.
+        {% else %}{{ APP_NAME }} reads the TikTok collections you save, writes a note for each video in your Obsidian vault, and finds the ideas, learnings and events they point to. A few choices and it's ready.{% endif %}
+      </p>
+    </header>
+
+    {% if errors %}
+      <div class="banner banner-alert" role="alert">
+        <p>Some answers need a look:</p>
+        <ul class="setup-errors">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <form method="post" action="/setup" class="setup-form">
+
+      <section class="sheet setup-step" aria-labelledby="step-tools">
+        <h2 id="step-tools"><span class="step-n">1</span> What's on this computer</h2>
+        <ul class="status-list">
+          {% for c in checks %}
+            <li class="{{ 'is-ok' if c.ok else 'is-missing' }}">
+              <span class="status-mark">{% if c.ok %}{{ icon('check', 'found') }}{% else %}<span class="status-dot" role="img" aria-label="missing"></span>{% endif %}</span>
+              <span><strong>{{ c.name }}</strong> <span class="status-detail">{{ c.detail }}</span></span>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="muted">You need one of the four AI options. After installing something, <a href="/setup{{ '?again=1' if again else '' }}">check again</a>.</p>
+      </section>
+
+      <section class="sheet setup-step" aria-labelledby="step-vault">
+        <h2 id="step-vault"><span class="step-n">2</span> Your Obsidian vault</h2>
+        <fieldset class="options">
+          <legend>Where your notes live</legend>
+          {% for v in vaults %}
+            <label class="option">
+              <input type="radio" name="vault_pick" value="{{ v.path }}" {% if values.vault == v.path %}checked{% endif %}>
+              <span><strong>{{ v.name }}</strong><small>{{ v.path }}</small></span>
+            </label>
+          {% endfor %}
+          <label class="option">
+            <input type="radio" name="vault_pick" value="" data-other-vault {% if values.vault not in vault_paths %}checked{% endif %}>
+            <span><strong>{{ 'Another folder' if vaults else 'This folder' }}</strong><small>{{ 'A vault Obsidian hasn\'t opened yet, or any folder.' if vaults else 'Obsidian has no vaults on this computer yet: pick the folder you use, or create one in Obsidian first.' }}</small></span>
+          </label>
+        </fieldset>
+        <div class="field">
+          <label for="vault-other">Folder</label>
+          <div class="path-row">
+            <input id="vault-other" type="text" name="vault_other" value="{{ values.vault if values.vault not in vault_paths else '' }}"
+                   placeholder="{{ home }}/Documents/Notes" spellcheck="false" autocomplete="off">
+            <button type="button" class="button" data-browse="vault-other" hidden>Browse…</button>
+          </div>
+        </div>
+        <label class="field">
+          <span>Folder for {{ APP_NAME }} in the vault</span>
+          <input type="text" name="folder" value="{{ values.folder }}" spellcheck="false" autocomplete="off"
+                 {% if not again %}required{% endif %} placeholder="{{ 'Keep my current layout' if again else 'Rot2Gold' }}">
+          <small>{% if again and not values.folder %}Your vault uses a custom layout (see <code>[vault]</code> in config.toml); leave this empty to keep it.{% else %}Video notes, ideas, learnings and events go in subfolders here: Videos, Ideas, Learnings, Events, Templates.{% endif %}</small>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="git" value="1" {% if values.git %}checked{% endif %}>
+          <span>If the vault is a Git repository, commit each change, so any Extract can be undone.</span>
+        </label>
+      </section>
+
+      <section class="sheet setup-step" aria-labelledby="step-data">
+        <h2 id="step-data"><span class="step-n">3</span> Where to keep videos and other content</h2>
+        <div class="field">
+          <label for="data-dir">Folder</label>
+          <div class="path-row">
+            <input id="data-dir" type="text" name="data_dir" value="{{ values.data_dir }}" spellcheck="false" autocomplete="off" required>
+            <button type="button" class="button" data-browse="data-dir" hidden>Browse…</button>
+          </div>
+          <small>Frames, slide images, the app's database and logs, outside the vault. About 1 MB per video; videos themselves are deleted after reading. <span data-free>{{ free }}</span></small>
+        </div>
+        {% if again and has_data %}
+          <label class="check">
+            <input type="checkbox" name="move_data" value="1" {% if values.move_data %}checked{% endif %}>
+            <span>If you choose another folder, move what's already saved there.</span>
+          </label>
+        {% endif %}
+      </section>
+
+      <section class="sheet setup-step" aria-labelledby="step-ai">
+        <h2 id="step-ai"><span class="step-n">4</span> Who writes the notes</h2>
+        <fieldset class="options">
+          <legend>AI</legend>
+          {% for key, label in providers.items() %}
+            {% set state = status.get(key) %}
+            <label class="option">
+              <input type="radio" name="provider" value="{{ key }}" {% if values.provider == key %}checked{% endif %}>
+              <span>
+                <strong>{{ label }}</strong>
+                <small>{{ provider_notes[key] }}</small>
+                <small class="{{ 'status-ok' if state.ok else 'status-missing' }}">{{ state.detail }}</small>
+              </span>
+            </label>
+          {% endfor %}
+        </fieldset>
+        <label class="field" data-for="claude">
+          <span>Claude account</span>
+          <select name="backend">
+            <option value="subscription" {% if values.backend == 'subscription' %}selected{% endif %}>My Claude subscription (Pro or Max)</option>
+            <option value="api" {% if values.backend == 'api' %}selected{% endif %}>An Anthropic API key</option>
+          </select>
+        </label>
+        <label class="field" data-for="local">
+          <span>Local server</span>
+          <input type="url" name="local_url" value="{{ values.local_url }}" spellcheck="false" autocomplete="off">
+          <small>Ollama: http://localhost:11434/v1 · LM Studio: http://localhost:1234/v1 · llama.cpp: its llama-server address with /v1.</small>
+        </label>
+        <label class="field">
+          <span>Model <span class="muted">(optional, except for a local model)</span></span>
+          <input type="text" name="model" value="{{ values.model }}" list="setup-models" spellcheck="false" autocomplete="off" placeholder="The default">
+          <datalist id="setup-models">{% for m in models %}<option value="{{ m }}">{% endfor %}</datalist>
+          <small>Empty uses the provider's default. Claude: opus, sonnet or haiku · Gemini: pro or flash · local: a model on your server (8B or larger writes much better notes).</small>
+        </label>
+        <label class="field">
+          <span>API key <span class="muted">(optional)</span></span>
+          <input type="password" name="key" autocomplete="off" spellcheck="false">
+          <small>Only if you don't sign in to the tool itself: an Anthropic, OpenAI or Gemini key, or your local server's key. Saved in your system keychain, never in a file.</small>
+        </label>
+        <label class="field">
+          <span>Note language</span>
+          <input type="text" name="language" value="{{ values.language }}" spellcheck="false" autocomplete="off" required>
+          <small>The language your notes are written in. What creators say stays in their own language.</small>
+        </label>
+      </section>
+
+      <section class="sheet setup-step" aria-labelledby="step-langs">
+        <h2 id="step-langs"><span class="step-n">5</span> Languages on screen</h2>
+        {% if ocr_langs %}
+          <fieldset class="choice-group">
+            <legend>Read text in these languages</legend>
+            {% for l in ocr_langs %}
+              <label class="choice"><input type="checkbox" name="ocr_langs" value="{{ l.code }}" {% if l.code in values.ocr_langs %}checked{% endif %}> {{ l.name }}</label>
+            {% endfor %}
+          </fieldset>
+          <p class="muted">These are the languages Tesseract has. Speech is recognised in any language by itself.</p>
+        {% else %}
+          <p class="muted">Install Tesseract (step 1) to read text on screen. Speech is recognised in any language by itself.</p>
+        {% endif %}
+      </section>
+
+      <section class="sheet setup-step" aria-labelledby="step-collection">
+        <h2 id="step-collection"><span class="step-n">6</span> Your first collection <span class="muted">(optional)</span></h2>
+        <label class="field">
+          <span>TikTok collection link</span>
+          <input type="url" name="collection" value="{{ values.collection }}" placeholder="https://www.tiktok.com/@you/collection/Name-1234567890" autocomplete="off">
+          <small>Open the collection on TikTok and copy the address. You can add more later from the sidebar.</small>
+        </label>
+        <label class="field">
+          <span>Browser you're logged into TikTok with</span>
+          <select name="browser">
+            {% for key, label in browsers.items() %}<option value="{{ key }}" {% if values.browser == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <small>Used only if the collection is private.{% if on_windows %} On Windows, use Firefox: Chrome-based browsers lock their cookies.{% endif %}</small>
+        </label>
+      </section>
+
+      <div class="setup-foot">
+        <label class="check">
+          <input type="checkbox" name="launcher" value="1" {% if values.launcher %}checked{% endif %}>
+          <span>Add {{ APP_NAME }} to my app menu</span>
+        </label>
+        <button type="submit" class="button button-primary">{{ 'Save setup' if again else 'Finish setup' }}</button>
+      </div>
+    </form>
+  </main>
+
+  <dialog id="folder-browser" class="dialog" aria-labelledby="folder-browser-title">
+    <div class="dialog-head">
+      <h2 id="folder-browser-title">Choose a folder</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body stack">
+      <p class="folder-path"><code data-folder-path></code></p>
+      <ul class="folder-list" data-folder-list></ul>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="button" class="button button-primary" data-folder-choose>Choose this folder</button>
+    </div>
+  </dialog>
+</body>
+</html>

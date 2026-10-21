@@ -127,9 +127,9 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str 
 
 def check(api_key: str | None = None) -> tuple[bool, str]:
     if not shutil.which("gemini"):
-        return False, "Gemini CLI is not installed. Install it with `npm install -g @google/gemini-cli`, then run `gemini` once to sign in."
+        return False, "Not installed. Install it with `npm install -g @google/gemini-cli`, then run `gemini` once to sign in."
     if api_key or os.environ.get("GEMINI_API_KEY"):
         return True, "Gemini API key set."
     if (Path.home() / ".gemini/oauth_creds.json").exists():
         return True, "Signed in with Google."
-    return False, "Gemini CLI is installed but not signed in. Run `gemini` once in a terminal, or save a Gemini API key."
+    return False, "Installed, but not signed in. Run `gemini` once in a terminal, or save a Gemini API key."

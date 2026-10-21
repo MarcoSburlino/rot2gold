@@ -126,6 +126,16 @@ Marco's rule so far was "AI reasoning runs only through Marco's subscriptions, n
 
 The exception is for this project only. It is recorded here, in `AGENTS.md`, in `spec.md` and in the brain's `Projects/rot2gold.md`. Marco's global rules don't change.
 
+### First-run setup (2026-10-21)
+
+Until a vault is chosen (`config.is_set_up()`), every page redirects to `/setup` (the middleware leaves `/setup*`, `/static/`, `/healthz` and `/quit` open). `r2g` with no command opens the app, so a new user lands there.
+
+- **The page** (`setup.html`, `setup.js`, logic in `firstrun.py`): six numbered steps. (1) What's installed: each AI tool, Tesseract (with the install command for this system), ffmpeg. (2) The vault: those Obsidian lists in its own `obsidian.json` (Linux native, Flatpak and Snap, macOS, Windows) or any folder, with a folder browser (`/setup/dirs`, folder names only); the app's folder name (default `Rot2Gold`); Git commits on or off. (3) The data folder, outside the vault, with free space. (4) The AI provider, with each one's status, Claude's account, the local server and model (suggested from `/setup/models`), an optional API key (to the keychain) and the note language. (5) OCR languages from what Tesseract has. (6) An optional first collection and the browser for its cookies. Then "Add to my app menu".
+- **Saving** (`firstrun.validate`, `firstrun.save`): only the answered keys are written into the user's config.toml, so everything else stays. The vault layout is rewritten only on the first run or when a folder name is typed: an empty name keeps a custom layout like Marco's. A changed data folder can move the database (SQLite backup), media and logs, then delete the old copies. Then `vault.prepare()`, the collection, the launcher.
+- **Restart:** the folders are read at start-up (`config.DATA`, …), so after saving, the server stops and `serve()` runs itself again with `os.execv`. The page waits for a new `BOOT_ID` from `/setup/status` (the process id stays the same through exec) and then offers "Open Rot2Gold". Before setup the server logs to the temp folder, so no data folder is created before one is chosen.
+- **Terminal:** `r2g setup` asks the same questions; `r2g setup --check` prints where things are and what's installed (used by CI).
+- **Run setup again:** Settings → About lists where things are and links to `/setup`, which then starts from the current config.
+
 ### Linux, macOS and Windows (2026-10-21)
 
 - **Stop:** a run starts in its own process group (`start_new_session`; Windows: `CREATE_NEW_PROCESS_GROUP`). Stop sends SIGINT to the group; on Windows CTRL_BREAK, which `cli.main` turns into the same KeyboardInterrupt. Agents get SIGINT to end their turn; Windows can only end them (`ai.base.interrupt`).
@@ -328,6 +338,7 @@ src/rot2gold/
   extract.py               the Extract run
   runs.py                  shared lock, run row and final status
   notes.py                 note-writing batches
+  firstrun.py              first-run setup: finding vaults, checks, validating and saving the answers
   vault.py                 the app's folders, templates and starter notes in the vault; the "Where things are" block of every prompt
   ideas.py                 ideas, learnings and events pass; reading their notes; event dates and .ics
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links

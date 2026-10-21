@@ -45,4 +45,4 @@ jobs:
         shell: bash
         run: |
           r2g --help
-          r2g status
+          r2g setup --check

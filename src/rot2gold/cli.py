@@ -214,6 +214,48 @@ def cmd_update(args):
         raise SystemExit(1)
 
 
+def ask(question: str, default: str = "") -> str:
+    answer = input(f"{question}{f' [{default}]' if default else ''}: ").strip()
+    return answer or default
+
+
+def cmd_setup(args) -> None:
+    """The setup page's questions, in the terminal."""
+    from . import firstrun
+    cfg = load()
+    if args.check:
+        for label, value in firstrun.summary(cfg):
+            print(f"{label}: {value}")
+        for c in firstrun.checks(cfg):
+            print(f"[{'ok' if c['ok'] else '--'}] {c['name']}: {c['detail']}")
+        return
+    values = firstrun.form_defaults(cfg)
+    vaults = firstrun.obsidian_vaults()
+    for n, v in enumerate(vaults, start=1):
+        print(f"  {n}. {v['name']}  ({v['path']})")
+    pick = ask("Your Obsidian vault: a number above, or a folder" if vaults else "Your Obsidian vault folder", values["vault"])
+    values["vault"] = vaults[int(pick) - 1]["path"] if pick.isdigit() and 0 < int(pick) <= len(vaults) else pick
+    values["folder"] = ask("Folder for Rot2Gold in the vault" + (" (empty keeps your layout)" if not values["folder"] else ""),
+                           values["folder"])
+    values["data_dir"] = ask("Where to keep videos and other content", values["data_dir"])
+    for key, label in ai.PROVIDERS.items():
+        print(f"  {key}: {label}")
+    values["provider"] = ask("Who writes the notes", values["provider"])
+    if values["provider"] == "local":
+        values["local_url"] = ask("Local server address", values["local_url"])
+    values["model"] = ask("Model (empty: the provider's default)", values["model"])
+    values["language"] = ask("Note language", values["language"])
+    import getpass
+    values["key"] = getpass.getpass("API key, only if you don't sign in to the tool (hidden; Enter to skip): ").strip()
+    values["collection"] = ask("First TikTok collection link (optional)")
+    values["launcher"] = ask("Add Rot2Gold to your app menu? (y/n)", "y" if values["launcher"] else "n").lower().startswith("y")
+    changes, errors = firstrun.validate(values, cfg)
+    if errors:
+        raise SystemExit("\n".join(["Setup wasn't saved:", *errors]))
+    firstrun.save(values, changes, cfg, report=print)
+    print("Setup saved. Start the app with: r2g")
+
+
 def main() -> None:
     if os.name == "nt" and not sys.flags.utf8_mode:
         # Windows reads and writes text in the local code page unless Python runs in UTF-8 mode:
@@ -223,7 +265,7 @@ def main() -> None:
     if hasattr(signal, "SIGBREAK"):  # Windows: Stop sends CTRL_BREAK; treat it like Ctrl+C (KeyboardInterrupt)
         signal.signal(signal.SIGBREAK, signal.default_int_handler)
     p = argparse.ArgumentParser(prog="r2g", description=__doc__)
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")  # no command: open the app
     sp = sub.add_parser("sync", help="list every connection (or those given) and add new posts")
     sp.add_argument("--conn", help="connection ids, comma-separated")
     for name, help_ in (("fetch", "download media for up to N posts"),
@@ -273,8 +315,10 @@ def main() -> None:
     for ip in (isub.choices["pass"], isub.choices["rebuild"]):
         ip.add_argument("--dry-run", action="store_true")
         ip.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
-    sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740")
+    sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740 (the default when no command is given)")
     sp.add_argument("--no-browser", action="store_true")
+    sp = sub.add_parser("setup", help="choose the vault, folders and AI in the terminal (the app asks the same on first start)")
+    sp.add_argument("--check", action="store_true", help="only show where things are and what is installed")
     sp = sub.add_parser("undo", help="revert one finished run's vault commits and reopen its posts")
     sp.add_argument("run_id", type=int)
     sp.add_argument("--yes", action="store_true")
@@ -325,9 +369,11 @@ def main() -> None:
                   f"; ~${run['cost_estimate_usd']:.2f} API-equivalent")
             if run["status"] == "failed":
                 raise SystemExit(1)
-        elif args.cmd == "ui":
+        elif args.cmd in ("ui", None):
             from .web.app import serve
-            serve(open_browser=not args.no_browser)
+            serve(open_browser=not getattr(args, "no_browser", False))
+        elif args.cmd == "setup":
+            cmd_setup(args)
         elif args.cmd == "ideas":
             cmd_ideas(args)
         elif args.cmd == "undo":

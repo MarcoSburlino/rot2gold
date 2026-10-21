@@ -106,9 +106,11 @@
 
   <h3 class="settings-group">Where things are</h3>
   <dl class="facts">
-    <dt>Vault</dt><dd><code>{{ brain_path }}</code></dd>
+    {% for label, value in where %}<dt>{{ label }}</dt><dd><code>{{ value }}</code></dd>{% endfor %}
     <dt>App</dt><dd><code>http://127.0.0.1:{{ port }}</code></dd>
   </dl>
+  <p class="form-foot form-foot-start"><a class="button" href="/setup">Run setup again</a></p>
+  <p class="muted">Change the vault, the folders, where videos are kept, or who writes the notes.</p>
 
   <h3 class="settings-group">Firefox profiles</h3>
   {% if profiles %}

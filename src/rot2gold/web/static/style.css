@@ -2395,6 +2395,222 @@ progress::-webkit-progress-value {
 }
 
 
+/* ── First-run setup: one column of numbered steps (a real sequence) ── */
+
+.setup {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--s-7) var(--s-4);
+}
+
+.setup-head {
+  margin-bottom: var(--s-6);
+}
+
+.setup-brand {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.setup h1 {
+  margin: var(--s-4) 0 0;
+  font: 600 var(--text-xl) / 1.15 var(--font-display);
+  letter-spacing: var(--tracking-display);
+}
+
+.setup-head .lede {
+  max-width: 60ch;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.setup-errors {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-5);
+}
+
+.setup-form {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.setup-step {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.setup-step h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: 0;
+  font: 600 var(--text-md) / 1.3 var(--font-display);
+}
+
+.setup-step > p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.step-n {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  font: 500 var(--text-xs) / 1 var(--font-mono);
+}
+
+.status-list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  list-style: none;
+}
+
+.status-list li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: var(--s-3);
+}
+
+.status-mark {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  color: var(--accent);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text-3);
+  border-radius: var(--r-pill);
+}
+
+.status-detail,
+.status-missing {
+  color: var(--text-3);
+}
+
+.status-ok {
+  color: var(--accent);
+}
+
+.options {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.option input {
+  margin-top: 2px;
+}
+
+.option:hover {
+  background: var(--hover);
+}
+
+.option:has(input:checked) {
+  background: var(--selected);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: inset var(--mark) 0 0 var(--accent);
+}
+
+.option small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.option small.status-ok {
+  color: var(--accent);
+}
+
+.path-row {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.path-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.setup-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+}
+
+.setup-done h1 {
+  margin-bottom: var(--s-4);
+}
+
+.setup-done .status-list {
+  margin-bottom: var(--s-5);
+}
+
+.folder-path {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.folder-list {
+  max-height: 50vh;
+  margin: 0;
+  padding: var(--s-1) 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  list-style: none;
+}
+
+.folder-list li.muted {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--text-sm);
+}
+
+.folder-list button {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: 0;
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-list button:hover,
+.folder-list button:focus-visible {
+  background: var(--hover);
+}
+
+
 /* ── Motion (animations.md): the running dot pulses, dialogs rise, the gold button glows ── */
 
 @keyframes pulse {

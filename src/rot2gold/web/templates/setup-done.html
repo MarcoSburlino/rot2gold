@@ -1,0 +1,27 @@
+{% from "_macros.html" import icon, wordmark %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Ready · {{ APP_NAME }}</title>
+  <link rel="icon" href="/static/icon.png" type="image/png">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
+  <script src="/static/setup.js?v={{ asset_version() }}" defer></script>
+</head>
+<body>
+  {% include "_icons.html" %}
+  <main class="setup setup-done" data-restart-from="{{ boot if restarting else '' }}">
+    <p class="setup-brand">{{ wordmark() }}</p>
+    <h1>{{ 'Setup saved' if again else 'Ready' }}</h1>
+    {% if done %}
+      <ul class="status-list">
+        {% for line in done %}<li class="is-ok"><span class="status-mark">{{ icon('check') }}</span><span>{{ line }}</span></li>{% endfor %}
+      </ul>
+    {% endif %}
+    <p>{% if not again %}Press <strong>Extract new videos</strong> in the sidebar to read your collection and write the first notes.{% endif %}</p>
+    <p class="muted" data-restart-note>{% if restarting %}Restarting {{ APP_NAME }} with your choices… <noscript><a href="/ideas">Open {{ APP_NAME }}</a></noscript>{% else %}<a class="button button-primary" href="/ideas">Open {{ APP_NAME }}</a>{% endif %}</p>
+  </main>
+</body>
+</html>

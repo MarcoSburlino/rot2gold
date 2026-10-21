@@ -116,9 +116,9 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str 
 def check() -> tuple[bool, str]:
     exe = shutil.which("codex")
     if not exe:
-        return False, "Codex CLI is not installed. Install it with `npm install -g @openai/codex`, then run `codex login`."
+        return False, "Not installed. Install it with `npm install -g @openai/codex`, then run `codex login`."
     proc = subprocess.run([exe, "login", "status"], capture_output=True, text=True)
     text = (proc.stdout + proc.stderr).strip().splitlines()
     if proc.returncode == 0:
         return True, text[-1] if text else "Signed in."
-    return False, "Codex is installed but not signed in. Run `codex login` in a terminal, or save an OpenAI API key."
+    return False, "Installed, but not signed in. Run `codex login` in a terminal, or save an OpenAI API key."

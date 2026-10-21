@@ -128,3 +128,102 @@ def test_v9_keeps_firefox_and_cookies_come_from_the_chosen_browser(tmp_path):
         connections.update(con, 1, browser="netscape")
     assert Access(cookies=True, browser="firefox", profile="/p").cookie_spec() == "firefox:/p"
     assert Access(cookies=True, browser="chrome").cookie_spec() == "chrome"
+
+
+@pytest.fixture
+def fresh(tmp_path, monkeypatch):
+    """An app nobody has set up yet, with nothing read from this computer."""
+    from rot2gold import firstrun
+    from rot2gold.web import app as web
+    monkeypatch.setenv("R2G_CONFIG", str(tmp_path / "config.toml"))
+    monkeypatch.setattr(firstrun, "checks", lambda cfg: [{"key": k, "name": k, "ok": k == "claude", "detail": "x"}
+                                                         for k in ("claude", "codex", "gemini", "local", "tesseract", "ffmpeg")])
+    monkeypatch.setattr(firstrun, "obsidian_vaults", lambda: [])
+    monkeypatch.setattr(firstrun, "ocr_choices", lambda cfg: [])
+    (tmp_path / "vault/.obsidian").mkdir(parents=True)
+    return web, tmp_path
+
+
+def _client(web):
+    import httpx
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740",
+                             headers={"Origin": "http://127.0.0.1:8740"})
+
+
+FORM = {"vault_pick": "", "folder": "Rot2Gold", "provider": "claude", "backend": "subscription", "model": "",
+        "local_url": "http://localhost:11434/v1", "language": "English", "browser": "firefox", "git": "1"}
+
+
+def test_setup_first_run_redirects_saves_and_prepares_the_vault(fresh):
+    import asyncio
+    web, tmp = fresh
+
+    async def run():
+        async with _client(web) as client:
+            first = await client.get("/ideas", follow_redirects=False)
+            assert first.status_code == 303 and first.headers["location"] == "/setup"
+            assert "Set up Rot2Gold" in (await client.get("/setup")).text
+            bad = await client.post("/setup", data=FORM | {"vault_other": str(tmp / "missing"), "data_dir": str(tmp / "data"),
+                                                           "key": "sk-do-not-echo"})
+            assert "doesn&#39;t exist" in bad.text and "sk-do-not-echo" not in bad.text
+            inside = await client.post("/setup", data=FORM | {"vault_other": str(tmp / "vault"), "data_dir": str(tmp / "vault/data")})
+            assert "outside the vault" in inside.text
+            done = await client.post("/setup", data=FORM | {
+                "vault_other": str(tmp / "vault"), "data_dir": str(tmp / "data"),
+                "collection": "https://www.tiktok.com/@example/collection/Saved-7000000000000000001"})
+            assert "Ready" in done.text and "Added the collection Saved" in done.text
+    asyncio.run(run())
+    cfg = config.load()
+    assert cfg["vault"]["path"] == str(tmp / "vault") and cfg["vault"]["videos"] == "Rot2Gold/Videos"
+    assert cfg["storage"]["data_dir"] == str(tmp / "data") and cfg["vault"]["git"] == "auto"
+    assert (tmp / "vault/Rot2Gold/Templates/video-note.md").is_file()
+    con = db.connect(tmp / "data/r2g.sqlite")
+    assert con.execute("SELECT name, cookie_browser FROM connections").fetchone()[:] == ("Saved", "firefox")
+
+
+def test_setup_again_keeps_a_custom_layout(fresh):
+    import asyncio
+    web, tmp = fresh
+    custom = {"path": str(tmp / "vault"), "videos": "Resources/commonplace/videos", "hub": "Resources/commonplace/commonplace.md",
+              "ideas": "Inbox/ideas", "rules": "AGENTS.md"}
+    (tmp / "config.toml").write_text(tomli_w.dumps({"vault": custom, "notes": {"model": "opus"}}))
+
+    async def run():
+        async with _client(web) as client:
+            page = (await client.get("/setup")).text
+            assert "custom layout" in page and 'name="folder" value=""' in page
+            done = await client.post("/setup", data=FORM | {"folder": "", "vault_other": str(tmp / "vault"),
+                                                            "data_dir": str(tmp / "data"), "model": "opus"})
+            assert "Setup saved" in done.text
+    asyncio.run(run())
+    cfg = config.load()
+    assert cfg["vault"]["videos"] == "Resources/commonplace/videos" and cfg["vault"]["rules"] == "AGENTS.md"
+    assert cfg["notes"]["model"] == "opus"
+
+
+def test_folder_browser_lists_only_visible_folders(fresh):
+    import asyncio
+    web, tmp = fresh
+    (tmp / "vault/Notes").mkdir()
+    (tmp / "vault/note.md").write_text("x")
+
+    async def run():
+        async with _client(web) as client:
+            return (await client.get("/setup/dirs", params={"path": str(tmp / "vault")})).json()
+    listing = asyncio.run(run())
+    assert listing["vault"] is True and listing["dirs"] == [{"name": "Notes", "path": str(tmp / "vault/Notes")}]
+
+
+def test_moving_the_data_folder_copies_then_removes(tmp_path):
+    from rot2gold import firstrun
+    old, new = tmp_path / "old", tmp_path / "new"
+    con = db.connect(old / "r2g.sqlite")
+    con.execute("INSERT INTO posts (id, url, status, added_at, updated_at) VALUES ('1', 'u', 'done', 'x', 'x')")
+    con.commit()
+    con.close()
+    (old / "media/1").mkdir(parents=True)
+    (old / "media/1/frame.png").write_bytes(b"png")
+    firstrun.move_data(old, new)
+    assert (new / "media/1/frame.png").read_bytes() == b"png" and not (old / "media").exists()
+    assert db.connect(new / "r2g.sqlite").execute("SELECT id FROM posts").fetchone()[0] == "1"
+    assert not (old / "r2g.sqlite").exists()
