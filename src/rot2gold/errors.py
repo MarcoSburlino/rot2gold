@@ -22,18 +22,17 @@ class LockHeld(VNError):
 
 
 class CookiesNeeded(VNError):
-    hint = "Open Firefox, log into TikTok, then try again. Firefox can stay open."
+    hint = "Log into TikTok in the browser set for this collection (its ⋯ menu → Cookies), then try again."
 
 
 class ListingFailed(VNError):
-    hint = ("TikTok may have changed. Update the downloaders: "
-            "uv pip install --python .venv/bin/python -U 'yt-dlp[default,curl-cffi]' gallery-dl. "
-            "Or paste the post URLs into the connection by hand.")
+    hint = ("TikTok may have changed. Update the downloaders (Settings → About → Update downloaders, "
+            "or `r2g update-downloaders`), or paste the post URLs into the collection by hand.")
 
 
 class Blocked(VNError):
-    hint = ("TikTok may be blocking downloads. Update the downloaders: "
-            "uv pip install --python .venv/bin/python -U 'yt-dlp[default,curl-cffi]' gallery-dl")
+    hint = ("TikTok may be blocking downloads. Update the downloaders (Settings → About → Update downloaders, "
+            "or `r2g update-downloaders`), and wait a while before the next Extract.")
 
 
 class UsageLimit(VNError):

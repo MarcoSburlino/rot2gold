@@ -20,6 +20,7 @@ dependencies = [
   "platformdirs",
   "tomli-w",
   "keyring",
+  "imageio-ffmpeg",
 ]
 
 [project.optional-dependencies]

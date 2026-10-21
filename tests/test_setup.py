@@ -106,3 +106,25 @@ def test_prompts_name_only_the_users_own_paths(plain_vault, name):
     assert str(plain_vault / "Rot2Gold/Rot2Gold.md") in text and "Italian" in text
     assert str(plain_vault / "My rules.md") in text
     assert not re.search(r"Marco|~/Projects|brain-index|commonplace", text)
+
+
+def test_v9_keeps_firefox_and_cookies_come_from_the_chosen_browser(tmp_path):
+    from rot2gold import connections
+    from rot2gold.sources import Access
+    path = tmp_path / "r2g.sqlite"
+    con = db.connect(path)
+    con.execute("INSERT INTO connections (platform, name, url, cookies_mode, firefox_profile, created_at, updated_at)"
+                " VALUES ('tiktok', 'Old', 'https://www.tiktok.com/@x/collection/Old-1', 'always', '/p', 'x', 'x')")
+    con.execute("ALTER TABLE connections DROP COLUMN cookie_browser")
+    con.execute("PRAGMA user_version = 8")
+    con.commit()
+    con.close()
+    con = db.connect(path)
+    row = con.execute("SELECT cookie_browser, firefox_profile FROM connections").fetchone()
+    assert tuple(row) == ("firefox", "/p")
+    connections.update(con, 1, browser="chrome", profile="")
+    assert con.execute("SELECT cookie_browser FROM connections").fetchone()[0] == "chrome"
+    with pytest.raises(ValueError, match="browser must be one of"):
+        connections.update(con, 1, browser="netscape")
+    assert Access(cookies=True, browser="firefox", profile="/p").cookie_spec() == "firefox:/p"
+    assert Access(cookies=True, browser="chrome").cookie_spec() == "chrome"

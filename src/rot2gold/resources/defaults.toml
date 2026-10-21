@@ -28,6 +28,8 @@ max_resolution = 720             # short side of the video, in pixels
 [ocr]
 langs = "eng"                    # Tesseract languages for text on screen, e.g. "eng+ita+spa"
 workers = 4                      # parallel tesseract processes
+tesseract = ""                   # the tesseract program; empty = find it (PATH, then the usual install places)
+tessdata = ""                    # its language data folder; empty = Tesseract's own
 
 [whisper]
 model = "medium"                 # faster-whisper model; see docs/spec.md

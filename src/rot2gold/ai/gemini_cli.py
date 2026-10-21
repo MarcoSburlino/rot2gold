@@ -9,13 +9,12 @@ Login: the user's Google account (run `gemini` once), or a Gemini API key from t
 import json
 import os
 import shutil
-import signal
 import subprocess
 import tempfile
 from pathlib import Path
 
 from ..errors import ToolMissing, UsageLimit
-from .base import Result, is_limit, json_from_text, missing
+from .base import Result, interrupt, is_limit, json_from_text, missing
 
 POLICY = """\
 [[rule]]
@@ -107,7 +106,7 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str 
                     continue
                 parse_event(ev, res, on_line, answer)
                 if res.limited:
-                    proc.send_signal(signal.SIGINT)
+                    interrupt(proc)
             proc.wait()
         except KeyboardInterrupt:
             try:

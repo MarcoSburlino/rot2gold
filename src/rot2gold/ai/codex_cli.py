@@ -10,13 +10,12 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import tempfile
 import time
 
 from ..errors import ToolMissing, UsageLimit
-from .base import Result, is_limit, json_from_text, strict
+from .base import Result, interrupt, is_limit, json_from_text, strict
 
 
 def describe_item(item: dict) -> str | None:
@@ -96,7 +95,7 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str 
                     continue
                 parse_event(ev, res, on_line)
                 if res.limited:
-                    proc.send_signal(signal.SIGINT)
+                    interrupt(proc)
             proc.wait()
         except KeyboardInterrupt:
             try:

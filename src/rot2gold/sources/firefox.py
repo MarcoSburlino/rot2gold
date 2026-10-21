@@ -1,11 +1,13 @@
 """Firefox profiles, for reading cookies when a platform needs a login."""
 
 import configparser
+import os
 from pathlib import Path
 
-# Firefox 147+ follows the XDG layout; older installs and Flatpak use other folders.
+# Linux: Firefox 147+ follows the XDG layout; older installs and Flatpak use other folders. Then macOS and Windows.
 ROOTS = ["~/.config/mozilla/firefox", "~/.mozilla/firefox", "~/.var/app/org.mozilla.firefox/config/mozilla/firefox",
-         "~/.var/app/org.mozilla.firefox/.mozilla/firefox"]
+         "~/.var/app/org.mozilla.firefox/.mozilla/firefox", "~/Library/Application Support/Firefox",
+         os.path.join(os.environ.get("APPDATA", "~/AppData/Roaming"), "Mozilla", "Firefox")]
 
 
 def profiles() -> list[dict]:

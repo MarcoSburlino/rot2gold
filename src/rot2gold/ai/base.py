@@ -1,7 +1,9 @@
 """What every AI provider returns, and small helpers the providers share."""
 
 import json
+import os
 import re
+import signal
 from dataclasses import dataclass, field
 
 
@@ -25,6 +27,14 @@ LIMIT_WORDS = ("usage limit", "hit your limit", "rate limit", "rate_limit", "quo
 
 def is_limit(message: str) -> bool:
     return any(w in message.lower() for w in LIMIT_WORDS)
+
+
+def interrupt(proc) -> None:
+    """Ask an agent to stop politely (it ends its turn); Windows can only end it."""
+    if os.name == "nt":
+        proc.terminate()
+    else:
+        proc.send_signal(signal.SIGINT)
 
 
 def strict(schema: dict) -> dict:

@@ -1,5 +1,5 @@
 {% from "_macros.html" import icon %}
-{% set cookie_help = {'auto': 'Only if reading without them fails', 'always': 'Always use Firefox cookies', 'never': 'Never use cookies'} %}
+{% set cookie_help = {'auto': 'Only if reading without them fails', 'always': 'Always use browser cookies', 'never': 'Never use cookies'} %}
 
 {# ── Add a collection ─────────────────────────────────────────── #}
 <dialog id="add-collection" class="dialog" aria-labelledby="add-collection-title">
@@ -31,13 +31,22 @@
       </label>
       <details class="advanced">
         <summary>Private collection?</summary>
+        <div class="stack">
         <label class="field">
-          <span>Firefox cookies</span>
+          <span>Browser cookies</span>
           <select name="cookies_mode">
             {% for m in cookie_modes %}<option value="{{ m }}">{{ cookie_help[m] }}</option>{% endfor %}
           </select>
-          <small>The app can borrow your Firefox login to read a private collection. The default tries without it first.</small>
+          <small>The app can borrow your browser's TikTok login to read a private collection. The default tries without it first.</small>
         </label>
+        <label class="field">
+          <span>Browser</span>
+          <select name="cookie_browser">
+            {% for key, label in browsers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
+          <small>The browser where you're logged into TikTok.{% if windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
+        </label>
+        </div>
       </details>
     </div>
     <div class="dialog-foot">
@@ -77,18 +86,25 @@
         <span>Collection link</span>
         <input type="url" name="url" value="{{ c.url }}" required autocomplete="off">
       </label>
-      <details class="advanced" {% if c.cookies_mode != 'auto' or c.firefox_profile or sidebar_links[c.id] %}open{% endif %}>
+      <details class="advanced" {% if c.cookies_mode != 'auto' or c.firefox_profile or c.cookie_browser != 'firefox' or sidebar_links[c.id] %}open{% endif %}>
         <summary>Advanced: cookies and backup links</summary>
         <div class="stack">
           <label class="field">
-            <span>Firefox cookies</span>
+            <span>Browser cookies</span>
             <select name="cookies_mode">
               {% for m in cookie_modes %}<option value="{{ m }}" {% if m == c.cookies_mode %}selected{% endif %}>{{ cookie_help[m] }}</option>{% endfor %}
             </select>
             <small>Needed only for private collections.</small>
           </label>
           <label class="field">
-            <span>Firefox profile</span>
+            <span>Browser</span>
+            <select name="cookie_browser">
+              {% for key, label in browsers.items() %}<option value="{{ key }}" {% if key == c.cookie_browser %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <small>The browser where you're logged into TikTok.{% if windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
+          </label>
+          <label class="field">
+            <span>Firefox profile <span class="muted">(Firefox only)</span></span>
             <select name="firefox_profile">
               <option value="">Automatic (the profile used last)</option>
               {% for p in firefox_profiles %}

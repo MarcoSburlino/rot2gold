@@ -21,13 +21,13 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import ai, brain, connections, db, delete, downloaders, ideas, lock, notefile, secrets, settings, sources, undo
 from ..ai import claude_cli
-from ..config import DATA, LOGS, MEDIA, ROOT, brain_dir, load, media_dir
+from ..config import DATA, LOGS, MEDIA, brain_dir, load, media_dir
 from ..errors import VNError
 
 APP_NAME = "Rot2Gold"  # the only place the UI shows the name
@@ -220,7 +220,7 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
         item["waiting"] = sum(item["counts"][s] for s in ("new", "fetched", "processed"))
     from ..sources.firefox import profiles
     ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
-            "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES,
+            "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES, "browsers": browser_choices(), "windows": os.name == "nt",
             "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
             "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()),
             "event_count": len(ideas.list_events()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
@@ -374,20 +374,27 @@ async def home(request: Request):
 
 @app.post("/connections")
 def add_connection(request: Request, platform: str = Form(...), url: str = Form(...), name: str = Form(""),
-                   cookies_mode: str = Form("auto")):
+                   cookies_mode: str = Form("auto"), cookie_browser: str = Form("firefox")):
     try:
-        connections.add(db.connect(), platform, url, name, cookies_mode)
+        connections.add(db.connect(), platform, url, name, cookies_mode, cookie_browser)
     except ValueError as exc:
         return back_to(request, err=str(exc))
     return back_to(request, msg="Collection added. Press Extract new videos to read it.")
 
 
+def browser_choices() -> dict:
+    """The browsers offered for cookies; Safari only on macOS."""
+    return {k: v for k, v in connections.BROWSERS.items() if k != "safari" or sys.platform == "darwin"}
+
+
 @app.post("/connections/{cid}")
 def edit_connection(request: Request, cid: int, name: str = Form(""), url: str = Form(""),
-                    cookies_mode: str = Form("auto"), firefox_profile: str = Form(""), links: str = Form("")):
+                    cookies_mode: str = Form("auto"), cookie_browser: str = Form("firefox"), firefox_profile: str = Form(""),
+                    links: str = Form("")):
     con = db.connect()
     try:
-        connections.update(con, cid, name=name, url=url, cookies_mode=cookies_mode, firefox_profile=firefox_profile)
+        connections.update(con, cid, name=name, url=url, cookies_mode=cookies_mode, browser=cookie_browser,
+                           profile=firefox_profile if cookie_browser == "firefox" else "")
         kept = connections.set_links(con, cid, links)
     except ValueError as exc:
         return back_to(request, err=str(exc))
@@ -440,11 +447,12 @@ def spawn_run(request: Request, cmd: list[str], label: str):
     log = LOGS / f"{label.lower()}-{datetime.now():%Y%m%d-%H%M%S}.log"
     env = dict(os.environ)
     # The note-writing agent calls `r2g`: make sure it's on PATH even if the app was started from a launcher.
-    env["PATH"] = os.pathsep.join([str(ROOT / ".venv/bin"), str(Path.home() / ".local/bin"), env.get("PATH", "")])
+    env["PATH"] = os.pathsep.join([str(Path(sys.executable).parent), str(Path.home() / ".local/bin"), env.get("PATH", "")])
+    # The run gets its own process group, so Stop can signal it and all its children.
+    group = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True})
     with open(log, "w") as out:
-        # start_new_session: the run gets its own process group, so Stop can signal it and all its children.
-        proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                start_new_session=True)
+        proc = subprocess.Popen(cmd, cwd=DATA, env=env, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                **group)
     children.append(proc)
     for _ in range(50):  # wait up to 5 s for the run to take the lock and create its runs row
         info = lock.holder()
@@ -466,10 +474,14 @@ def stop_run(request: Request):
     if not info:
         return back_to(request, msg="Nothing is running.")
     try:
-        # SIGINT is the polite "please stop" (like Ctrl+C): downloads stop after the current post,
-        # claude ends its turn, and the run records what it finished.
-        os.killpg(os.getpgid(info["pid"]), signal.SIGINT)
-    except ProcessLookupError:
+        # The polite "please stop" (like Ctrl+C): downloads stop after the current post, the AI ends its turn,
+        # and the run records what it finished. Windows has no SIGINT for other processes: CTRL_BREAK, which
+        # the run turns into the same stop (cli.main).
+        if os.name == "nt":
+            os.kill(info["pid"], signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(info["pid"]), signal.SIGINT)
+    except (ProcessLookupError, OSError):
         return back_to(request, msg="The run had already ended.")
     return back(f"/runs/{info['run_id']}" if info.get("run_id") else "/", msg="Stopping… the current step finishes first.")
 
@@ -950,7 +962,7 @@ def serve(open_browser: bool = True) -> None:
     server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=port, log_level="warning"))
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    if not sys.stdin.isatty():
+    if sys.stdin is None or not sys.stdin.isatty():  # started from a launcher: no terminal to print to
         LOGS.mkdir(parents=True, exist_ok=True)
         with open(LOGS / "ui.log", "a") as log, redirect_stdout(log), redirect_stderr(log):
             print(f"{APP_NAME} at {url}", flush=True)

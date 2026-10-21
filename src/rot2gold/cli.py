@@ -2,6 +2,9 @@
 
 import argparse
 import json
+import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -81,14 +84,14 @@ def cmd_conn(args) -> None:
                 print("No connections yet. Add one: r2g conn add <collection URL>")
             for c in rows:
                 n = c["counts"]
-                print(f"{c['id']:>3}  {c['name']}  [{c['platform']}, cookies {c['cookies_mode']}]\n     {c['url']}\n     "
+                print(f"{c['id']:>3}  {c['name']}  [{c['platform']}, cookies {c['cookies_mode']} from {c['cookie_browser']}]\n     {c['url']}\n     "
                       + ", ".join(f"{connections.LABELS[s]} {n[s]}" for s in connections.STATUSES))
         elif args.action == "add":
-            cid = connections.add(con, args.platform, args.url, args.name or "", args.cookies)
+            cid = connections.add(con, args.platform, args.url, args.name or "", args.cookies, args.browser)
             print(f"added connection {cid}: {connections.get(con, cid)['name']}")
         elif args.action == "edit":
             connections.update(con, args.id, name=args.name, url=args.url, cookies_mode=args.cookies,
-                               firefox_profile=args.profile)
+                               browser=args.browser, profile=args.profile)
             print(f"updated connection {args.id}")
         elif args.action == "rm":
             c = connections.get(con, args.id)
@@ -212,6 +215,13 @@ def cmd_update(args):
 
 
 def main() -> None:
+    if os.name == "nt" and not sys.flags.utf8_mode:
+        # Windows reads and writes text in the local code page unless Python runs in UTF-8 mode:
+        # run again in it, so notes keep their accents and emoji.
+        os.environ["PYTHONUTF8"] = "1"
+        raise SystemExit(subprocess.call([sys.executable, "-m", "rot2gold.cli", *sys.argv[1:]]))
+    if hasattr(signal, "SIGBREAK"):  # Windows: Stop sends CTRL_BREAK; treat it like Ctrl+C (KeyboardInterrupt)
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
     p = argparse.ArgumentParser(prog="r2g", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("sync", help="list every connection (or those given) and add new posts")
@@ -236,12 +246,14 @@ def main() -> None:
     cp.add_argument("--name")
     cp.add_argument("--platform", default="tiktok")
     cp.add_argument("--cookies", default="auto", choices=connections.COOKIE_MODES)
+    cp.add_argument("--browser", default="firefox", choices=connections.BROWSERS, help="browser to read login cookies from")
     cp = csub.add_parser("edit", help="change a connection")
     cp.add_argument("id", type=int)
     cp.add_argument("--name")
     cp.add_argument("--url")
     cp.add_argument("--cookies", choices=connections.COOKIE_MODES)
-    cp.add_argument("--profile", help="Firefox profile folder for cookies ('' = automatic)")
+    cp.add_argument("--browser", choices=connections.BROWSERS, help="browser to read login cookies from")
+    cp.add_argument("--profile", help="browser profile for cookies ('' = the browser's default)")
     cp = csub.add_parser("rm", help="delete a connection (posts and notes stay)")
     cp.add_argument("id", type=int)
     cp.add_argument("--yes", action="store_true")
@@ -268,7 +280,7 @@ def main() -> None:
     sp.add_argument("--yes", action="store_true")
     sp = sub.add_parser("update-downloaders", help="upgrade yt-dlp and gallery-dl")
     sp.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
-    sub.add_parser("install-launcher", help="add the app to GNOME's launcher")
+    sub.add_parser("install-launcher", help="add the app to your app menu (Linux, macOS, Windows)")
     sub.add_parser("uninstall-launcher", help="remove the app launcher")
     sp = sub.add_parser("runs", help="recent runs")
     sp.add_argument("n", nargs="?", type=int, default=10)

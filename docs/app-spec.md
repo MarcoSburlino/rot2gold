@@ -75,9 +75,9 @@ Extract starts `r2g extract --conn <ids> --origin app` as a child process. The r
 - A run started in a terminal (`r2g extract`) shows up live in the UI the same way.
 - There is one code path for both.
 
-### Lock: flock on data/r2g.lock
+### Lock: r2g.lock in the data folder
 
-`flock` is a lock the Linux kernel keeps on an open file. Only one process can hold it, and the kernel releases it the moment that process exits, even after a crash or `kill -9`. So there is never a stale lock to clean up by hand.
+`flock` is a lock the kernel keeps on an open file (Linux and macOS; Windows: `msvcrt.locking` on one byte far past the text, because Windows also blocks reading a locked range). Only one process can hold it, and it is released the moment that process exits, even after a crash or `kill -9`. So there is never a stale lock to clean up by hand.
 
 - The holder writes `{pid, run_id, origin, started}` into the file. That way the other side can say who holds it: "a terminal run (pid 1234), started 10:02, is in progress".
 - Who takes the lock:
@@ -126,6 +126,16 @@ Marco's rule so far was "AI reasoning runs only through Marco's subscriptions, n
 
 The exception is for this project only. It is recorded here, in `AGENTS.md`, in `spec.md` and in the brain's `Projects/rot2gold.md`. Marco's global rules don't change.
 
+### Linux, macOS and Windows (2026-10-21)
+
+- **Stop:** a run starts in its own process group (`start_new_session`; Windows: `CREATE_NEW_PROCESS_GROUP`). Stop sends SIGINT to the group; on Windows CTRL_BREAK, which `cli.main` turns into the same KeyboardInterrupt. Agents get SIGINT to end their turn; Windows can only end them (`ai.base.interrupt`).
+- **Text encoding:** on Windows `cli.main` re-runs itself with `PYTHONUTF8=1`, so every file is read and written as UTF-8.
+- **ffmpeg** from PATH or the copy bundled with `imageio-ffmpeg` (`tools.ffmpeg`), also passed to yt-dlp; the audio check uses PyAV instead of ffprobe. **Tesseract** from `[ocr] tesseract`, PATH or the usual install places (`tools.tesseract`).
+- **Launcher** (`launcher.py`): a `.desktop` entry on Linux, `~/Applications/Rot2Gold.app` on macOS (a shell script, `Info.plist`, an `.icns` made with Pillow), a Start menu shortcut on Windows (PowerShell, `.ico` made with Pillow).
+- **Cookies from any browser** yt-dlp supports: `connections.cookie_browser` (schema v9; existing rows keep `firefox`) with the optional profile in `firefox_profile`. On Windows, Chrome-based browsers lock their cookies, so the dialog suggests Firefox.
+- **Firefox profiles** are found in the Linux, Flatpak, macOS and Windows folders.
+- Paths go through `pathlib`; vault paths in the database and prompts use `/` on every system.
+
 ### AI providers (2026-10-21)
 
 `[ai] provider` picks who writes notes and finds ideas. The prompts and rules are the same for all agents.
@@ -166,7 +176,7 @@ A true "hold before commit" mode would need a staging copy of `commonplace.md` a
 
 Defaults ship in the package (`src/rot2gold/resources/defaults.toml`). The user's own `config.toml` (in the system config folder: `~/.config/rot2gold/` on Linux) holds only what they changed; it is merged over the defaults section by section. Settings validates the editable preferences and writes them into that file atomically (`settings.py`, `config.write_user`). The API key stays in the keyring. Until 2026-10-21 the defaults were a tracked `config.toml` and preferences were in `data/settings.json`; Marco's values were moved into his `~/.config/rot2gold/config.toml` by hand.
 
-## Data model (schema v8)
+## Data model (schema v9)
 
 All state stays in `data/r2g.sqlite`.
 
@@ -184,6 +194,7 @@ All state stays in `data/r2g.sqlite`.
 - Schema v4 adds `runs.undone_at` and `batches` (run, kind, ids, turns, duration, tokens, cost, five-hour usage, result). v3→v4 is additive and idempotent.
 - Schema v5 lets `batches.kind` be `delete` (a deleted idea). SQLite can't change a CHECK rule, so v4→v5 rebuilds `batches` with the same rows in one transaction, after a one-time backup `data/r2g.sqlite.bak-v4`. `runs.kind` gains `delete`.
 - Schema v6 (2026-10-20) adds learnings: `posts.learnings_checked_at`, `runs.learnings_created`, `runs.learnings_updated`, and `batches.learned` (the posts a batch checked for learnings, so Undo clears just those). Additive, after a one-time backup `data/r2g.sqlite.bak-v5`.
+- Schema v9 (2026-10-21) adds `connections.cookie_browser` (default `firefox`): cookies can come from any browser yt-dlp supports.
 - Schema v8 (2026-10-21) stores `images.path` relative to the data folder (`media/<id>/…`) instead of the repository (`data/media/<id>/…`), so the data folder can live anywhere. One-time backup `r2g.sqlite.bak-v7` first.
 - Schema v7 (2026-10-20) adds events the same way: `posts.events_checked_at`, `runs.events_created`, `runs.events_updated`, and `batches.events_seen`. Additive, after a one-time backup `data/r2g.sqlite.bak-v6`.
 

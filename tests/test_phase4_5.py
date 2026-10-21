@@ -1,5 +1,6 @@
 """Phase 4 and 5 checks use temporary state, fake tools and a temporary Git vault."""
 
+import sys
 import json
 import asyncio
 import sqlite3
@@ -201,7 +202,6 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(downloaders.shutil, "which", lambda name: "/fake/uv" if name == "uv" else None)
     monkeypatch.setattr(downloaders.Path, "is_file", lambda self: True if str(self) == "/fake/uv" else Path.exists(self))
-    monkeypatch.setattr(downloaders, "ROOT", tmp_path)
     monkeypatch.setattr(downloaders, "versions", lambda: {"yt-dlp": "2026.01.01", "gallery-dl": "1"})
     class Proc:
         stdout = ["updating\n"]
@@ -213,13 +213,16 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
                             stdout='{"yt-dlp": "2026.10.19", "gallery-dl": "2"}'))
     lines = []
     assert downloaders.update(lines.append)["gallery-dl"] == "2"
-    assert calls[0][1:4] == ["pip", "install", "--python"] and "updating" in lines
+    assert calls[0][1:5] == ["pip", "install", "--python", sys.executable] and "updating" in lines
     monkeypatch.setattr(launcher.shutil, "which", lambda name: None)
     desktop, icon = launcher.install(home=tmp_path)
     assert desktop.is_file() and icon.is_file() and "Terminal=false" in desktop.read_text()
-    assert str(tmp_path / ".local/bin/r2g ui") in desktop.read_text()
+    assert f'Exec="{Path(sys.executable).parent / "r2g"}" ui' in desktop.read_text()
+    app, icns = launcher._install_mac(tmp_path)
+    assert icns.stat().st_size > 1000 and (app / "Contents/MacOS/Rot2Gold").read_text().endswith('" ui\n')
+    assert "<key>CFBundleExecutable</key><string>Rot2Gold</string>" in (app / "Contents/Info.plist").read_text()
     launcher.uninstall(home=tmp_path)
-    assert not desktop.exists() and not icon.exists()
+    assert not desktop.exists() and not icon.exists() and not app.exists()
 
 
 def test_v4_batches_table_is_rebuilt_to_allow_delete(tmp_path, monkeypatch):
@@ -261,4 +264,4 @@ def test_v5_and_v6_to_v7_add_learnings_and_events_after_a_backup(tmp_path, monke
         assert column in db.columns(con, table)
     assert tuple(con.execute("SELECT learnings_created, events_created FROM runs").fetchone()) == (0, 0)
     assert (tmp_path / f"r2g.sqlite.bak-v{version}").exists()
-    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 8
+    assert con.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION == 9

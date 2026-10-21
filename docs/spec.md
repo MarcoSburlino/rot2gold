@@ -95,6 +95,7 @@ The flat listing doesn't say whether a post is a slideshow (every URL is `/video
   rpm2cpio <rpm> | cpio -idm
   ```
   The binary goes in `data/tools/root/usr/bin/`, and the eng/ita/spa models in `data/tools/tessdata/`. It links against the system's `libtesseract` and `leptonica`, which were already installed. Once `sudo dnf install tesseract tesseract-langpack-ita tesseract-langpack-spa` has run, `data/tools/` can be deleted.
+  Since 2026-10-21 the app no longer looks there by itself: Marco's `config.toml` points `[ocr] tesseract` and `tessdata` at this copy. For everyone else `tools.tesseract()` finds Tesseract on PATH or in the usual install places, and without it the process stage skips OCR with a warning and the install command for the system (`tools.install_hint`).
 - **OCR line filter, not word filter.** Keeping every word with confidence ≥ 40 filled the output with "words" read from photo texture (dozens of 1–3 letter fragments per frame). Overlaid captions come out as long, confident lines, so filtering whole lines removed almost all noise and kept the captions in testing.
 - **The video frame at 0.5 s is often a poor sample**: karaoke-style captions show a single word at that moment, and picture details get misread. That's why note writers always open the frame image (see `note-writing.md`).
 - **Whisper model: `medium`** (2026-10-15). Tested on 3 real videos (82 s Italian, 40 s and 87 s English); numbers in `docs/whisper-bench.json`, produced by `scripts/whisper_bench.py`.

@@ -1,6 +1,6 @@
 """r2g sync: list each connection and add new posts.
 
-Sources per connection, in order: anonymously, with Firefox cookies (if its cookies_mode allows),
+Sources per connection, in order: anonymously, with browser cookies (if its cookies_mode allows),
 then URLs pasted into the connection by hand. Every listed post is linked to the connection,
 so a post saved in two collections is stored once and linked twice.
 """
@@ -13,7 +13,7 @@ from .errors import CookiesNeeded, ListingFailed
 from .events import echo
 from .sources import Access
 
-COOKIE_WORDS = ("cookie", "login", "log in", "private", "firefox")
+COOKIE_WORDS = ("cookie", "login", "log in", "private", "browser")
 
 
 def short(exc: Exception) -> str:
@@ -21,7 +21,7 @@ def short(exc: Exception) -> str:
 
 
 def access_for(conn, cookies: bool) -> Access:
-    return Access(cookies=cookies, firefox_profile=conn["firefox_profile"])
+    return Access(cookies=cookies, browser=conn["cookie_browser"], profile=conn["firefox_profile"])
 
 
 def list_connection(con, conn, src, report=echo) -> tuple[list[sources.ListedPost], str]:
@@ -34,7 +34,7 @@ def list_connection(con, conn, src, report=echo) -> tuple[list[sources.ListedPos
             return src.list_posts(conn["url"], access_for(conn, cookies)), label
         except Exception as exc:
             errors.append(short(exc))
-            report(f"{conn['name']}: listing {'with Firefox cookies' if cookies else 'anonymously'} failed: {short(exc)}",
+            report(f"{conn['name']}: listing {'with ' + conn['cookie_browser'].title() + ' cookies' if cookies else 'anonymously'} failed: {short(exc)}",
                    level="warn")
     links = [r[0] for r in con.execute("SELECT url FROM connection_links WHERE connection_id = ?", (conn["id"],))]
     posts = [p for p in map(src.parse_post_url, links) if p]

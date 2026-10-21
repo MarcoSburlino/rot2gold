@@ -1,7 +1,6 @@
 """The AI providers: shared helpers, Codex and Gemini event parsing, and direct mode for local models."""
 
 import json
-import subprocess
 
 import pytest
 import tomli_w

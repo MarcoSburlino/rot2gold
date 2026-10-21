@@ -5,19 +5,24 @@ import sqlite3
 from . import db, sources
 
 COOKIE_MODES = ("auto", "always", "never")
+# Browsers yt-dlp can read cookies from. Safari exists only on macOS.
+BROWSERS = {"firefox": "Firefox", "chrome": "Chrome", "chromium": "Chromium", "edge": "Edge", "brave": "Brave",
+            "opera": "Opera", "vivaldi": "Vivaldi", "safari": "Safari"}
 STATUSES = ("new", "fetched", "processed", "done", "skipped")
 LABELS = {"new": "listed", "fetched": "fetched", "processed": "processed", "done": "noted", "skipped": "skipped"}
 
 
-def add(con, platform: str, url: str, name: str = "", cookies_mode: str = "auto") -> int:
+def add(con, platform: str, url: str, name: str = "", cookies_mode: str = "auto", browser: str = "firefox") -> int:
     src = sources.get(platform)
     url = src.validate_url(url)
     name = (name or src.default_name(url) or "Collection").strip()
     if cookies_mode not in COOKIE_MODES:
         raise ValueError(f"cookies must be one of {', '.join(COOKIE_MODES)}")
+    if browser not in BROWSERS:
+        raise ValueError(f"browser must be one of {', '.join(BROWSERS)}")
     try:
-        cur = con.execute("INSERT INTO connections (platform, name, url, cookies_mode, created_at, updated_at)"
-                          " VALUES (?, ?, ?, ?, ?, ?)", (platform, name, url, cookies_mode, db.now(), db.now()))
+        cur = con.execute("INSERT INTO connections (platform, name, url, cookies_mode, cookie_browser, created_at, updated_at)"
+                          " VALUES (?, ?, ?, ?, ?, ?, ?)", (platform, name, url, cookies_mode, browser, db.now(), db.now()))
     except sqlite3.IntegrityError:
         raise ValueError(f"a connection named {name!r} already exists") from None
     con.commit()
@@ -31,7 +36,7 @@ def get(con, conn_id: int):
     return row
 
 
-def update(con, conn_id: int, *, name=None, url=None, cookies_mode=None, firefox_profile=None) -> None:
+def update(con, conn_id: int, *, name=None, url=None, cookies_mode=None, browser=None, profile=None) -> None:
     row = get(con, conn_id)
     fields = {}
     if name is not None and name.strip():
@@ -42,8 +47,12 @@ def update(con, conn_id: int, *, name=None, url=None, cookies_mode=None, firefox
         if cookies_mode not in COOKIE_MODES:
             raise ValueError(f"cookies must be one of {', '.join(COOKIE_MODES)}")
         fields["cookies_mode"] = cookies_mode
-    if firefox_profile is not None:
-        fields["firefox_profile"] = firefox_profile.strip() or None
+    if browser is not None:
+        if browser not in BROWSERS:
+            raise ValueError(f"browser must be one of {', '.join(BROWSERS)}")
+        fields["cookie_browser"] = browser
+    if profile is not None:
+        fields["firefox_profile"] = profile.strip() or None
     if not fields:
         return
     fields["updated_at"] = db.now()

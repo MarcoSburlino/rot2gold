@@ -16,7 +16,12 @@ class ListedPost:
 class Access:
     """How to reach the platform for one connection."""
     cookies: bool = False
-    firefox_profile: str | None = None  # None = let the downloader pick
+    browser: str = "firefox"   # where to read the login cookies from (any browser yt-dlp supports)
+    profile: str | None = None  # None = the browser's default profile
+
+    def cookie_spec(self) -> str:
+        """'firefox' or 'firefox:<profile>', as yt-dlp's and gallery-dl's --cookies-from-browser take it."""
+        return self.browser + (f":{self.profile}" if self.profile else "")
 
 
 class Source:

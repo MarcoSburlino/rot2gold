@@ -6,9 +6,9 @@ Schema v4 adds per-batch usage and run undo state; v6 adds learnings, v7 events.
 import sqlite3
 from datetime import datetime, timezone
 
-from .config import DATA, DB_PATH, LINKS, load
+from .config import DB_PATH, LINKS, load
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS connections (
     name TEXT NOT NULL UNIQUE,
     url TEXT NOT NULL,
     cookies_mode TEXT NOT NULL DEFAULT 'auto',  -- auto | always | never
-    firefox_profile TEXT,          -- NULL = let yt-dlp pick the profile
+    firefox_profile TEXT,          -- the browser profile to read cookies from (any browser); NULL = its default
+    cookie_browser TEXT NOT NULL DEFAULT 'firefox',  -- v9: firefox | chrome | chromium | edge | brave | opera | vivaldi | safari
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_synced_at TEXT,
@@ -164,7 +165,7 @@ def columns(con, table: str) -> set[str]:
 
 
 def migrate(con, path) -> None:
-    """Add v2 through v8 fields; back up an existing v1 database only once."""
+    """Add v2 through v9 fields; back up an existing v1 database only once."""
     version = con.execute("PRAGMA user_version").fetchone()[0]
     con.executescript(SCHEMA)
     has_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0] > 0
@@ -210,6 +211,8 @@ def migrate(con, path) -> None:
         con.execute("ALTER TABLE batches ADD COLUMN learned TEXT")
     if "events_seen" not in batch_cols:  # v7: the posts a batch checked for events
         con.execute("ALTER TABLE batches ADD COLUMN events_seen TEXT")
+    if "cookie_browser" not in columns(con, "connections"):  # v9: cookies from any browser, not only Firefox
+        con.execute("ALTER TABLE connections ADD COLUMN cookie_browser TEXT NOT NULL DEFAULT 'firefox'")
     if version < 8:  # v8: image paths were relative to the repository ("data/media/…"), now to the data folder
         con.execute("UPDATE images SET path = substr(path, 6) WHERE path LIKE 'data/%'")
     # The single collection of v1 becomes the first connection, with every existing post in it.

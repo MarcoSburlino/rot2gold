@@ -10,13 +10,12 @@ Two backends, same agent loop, tools and prompts:
 import json
 import os
 import shutil
-import signal
 import subprocess
 import tempfile
 from datetime import datetime
 
 from ..errors import AgentFailed, ToolMissing, UsageLimit
-from .base import Result, is_limit
+from .base import Result, interrupt, is_limit
 
 ALLOWED_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch",
                  "Bash(r2g pending *)", "Bash(r2g done *)", "Bash(r2g skip *)", "Bash(rg *)", "Bash(find *)"]
@@ -111,7 +110,7 @@ def run(prompt: str, *, schema: dict, cwd: str, add_dirs: list[str], model: str 
                 continue
             parse_event(ev, res, on_line)
             if res.limited and ev.get("type") != "result":
-                proc.send_signal(signal.SIGINT)  # stop politely; the turn ends and a result follows
+                interrupt(proc)  # stop politely; the turn ends and a result follows
         proc.wait()
     except KeyboardInterrupt:
         # Stop pressed (SIGINT reaches the whole process group): let claude end its turn, then give up.

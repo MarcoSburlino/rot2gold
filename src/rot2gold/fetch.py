@@ -21,12 +21,12 @@ MAX_CONSECUTIVE_FAILS = 5  # this many in a row looks like a block: stop the run
 def access_for_post(con, post_id: str) -> Access:
     """Use cookies for a post if any connection it belongs to needed them to list."""
     rows = con.execute(
-        "SELECT c.cookies_mode, c.last_sync_source, c.firefox_profile FROM connections c"
+        "SELECT c.cookies_mode, c.last_sync_source, c.cookie_browser, c.firefox_profile FROM connections c"
         " JOIN connection_posts cp ON cp.connection_id = c.id WHERE cp.post_id = ?", (post_id,)
     ).fetchall()
     for r in rows:
         if r["cookies_mode"] == "always" or r["last_sync_source"] == "cookies":
-            return Access(cookies=True, firefox_profile=r["firefox_profile"])
+            return Access(cookies=True, browser=r["cookie_browser"], profile=r["firefox_profile"])
     return Access()
 
 

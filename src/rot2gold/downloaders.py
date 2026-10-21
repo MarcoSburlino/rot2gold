@@ -1,4 +1,4 @@
-"""Show downloader freshness and upgrade both tools in the app's venv."""
+"""Show downloader freshness and upgrade both tools in the environment the app runs in."""
 
 import json
 import shutil
@@ -8,7 +8,6 @@ from datetime import date
 from importlib import metadata
 from pathlib import Path
 
-from .config import ROOT
 from .errors import ToolMissing, VNError
 
 
@@ -28,10 +27,10 @@ def versions() -> dict:
 
 def update(report) -> dict:
     uv = shutil.which("uv") or str(Path.home() / ".local/bin/uv")
-    if not Path(uv).is_file() and not shutil.which(uv):
-        raise ToolMissing("uv not found", "Install uv before updating downloaders.")
+    if not Path(uv).is_file():
+        raise ToolMissing("uv not found", "Install uv (docs.astral.sh/uv) before updating downloaders.")
     report(f"Before: {versions()}")
-    cmd = [uv, "pip", "install", "--python", str(ROOT / ".venv/bin/python"), "-U",
+    cmd = [uv, "pip", "install", "--python", sys.executable, "-U",
            "yt-dlp[default,curl-cffi]", "gallery-dl"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     for line in proc.stdout:
@@ -40,7 +39,7 @@ def update(report) -> dict:
         raise VNError(f"Downloader update failed (exit {proc.returncode}).")
     code = ("import json; from importlib.metadata import version, PackageNotFoundError; "
             "print(json.dumps({n: version(n) for n in ('yt-dlp', 'gallery-dl')}))")
-    after = json.loads(subprocess.run([str(ROOT / ".venv/bin/python"), "-c", code],
+    after = json.loads(subprocess.run([sys.executable, "-c", code],
                                       capture_output=True, text=True, check=True).stdout)
     report(f"After: {after}")
     return after

@@ -9,8 +9,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import av
 import yt_dlp
 
+from .. import tools
 from .base import Access, ListedPost, Source
 
 URL_RE = re.compile(r"tiktok\.com/@([^/?#]+)/(?:video|photo)/(\d+)")
@@ -18,9 +20,9 @@ COLLECTION_RE = re.compile(r"^https?://(?:www\.)?tiktok\.com/@[^/?#]+/collection
 
 
 def ydl_opts(access: Access, **extra) -> dict:
-    opts = {"quiet": True, "no_warnings": True, "noprogress": True}
+    opts = {"quiet": True, "no_warnings": True, "noprogress": True, "ffmpeg_location": tools.ffmpeg()}
     if access.cookies:
-        opts["cookiesfrombrowser"] = ("firefox", access.firefox_profile) if access.firefox_profile else ("firefox",)
+        opts["cookiesfrombrowser"] = (access.browser, access.profile) if access.profile else (access.browser,)
     opts.update(extra)
     return opts
 
@@ -100,13 +102,12 @@ class TikTokSource(Source):
             info = ydl.extract_info(url, download=True)
             video = ydl.prepare_filename(info)
         frame, audio = out / "frame.png", out / "audio.wav"
-        run(["ffmpeg", "-y", "-v", "error", "-ss", "0.5", "-i", video, "-frames:v", "1", str(frame)])
-        has_audio = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", video],
-            capture_output=True, text=True,
-        ).stdout.strip()
+        ffmpeg = tools.ffmpeg()
+        run([ffmpeg, "-y", "-v", "error", "-ss", "0.5", "-i", video, "-frames:v", "1", str(frame)])
+        with av.open(video) as container:
+            has_audio = bool(container.streams.audio)
         if has_audio:
-            run(["ffmpeg", "-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", str(audio)])
+            run([ffmpeg, "-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", str(audio)])
         Path(video).unlink(missing_ok=True)
         return [("frame", frame)]
 
@@ -119,7 +120,7 @@ class TikTokSource(Source):
         cmd = [sys.executable, "-m", "gallery_dl", "-q", "-D", str(out), "-f", "slide-{num:>02}.{extension}",
                "--filter", "extension not in ('mp3', 'm4a', 'mp4')", "--no-mtime"]
         if access.cookies:
-            cmd += ["--cookies-from-browser", "firefox" + (f":{access.firefox_profile}" if access.firefox_profile else "")]
+            cmd += ["--cookies-from-browser", access.cookie_spec()]
         run(cmd + [url])
         slides = sorted(p for p in out.iterdir() if p.name.startswith("slide-"))
         if not slides:
