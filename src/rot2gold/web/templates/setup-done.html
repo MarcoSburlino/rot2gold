@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Ready · {{ APP_NAME }}</title>
-  <link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
-  <link rel="icon" href="/static/icon.png" sizes="512x512" type="image/png">
+  <link rel="icon" href="/static/icon-32.png?v={{ asset_version() }}" sizes="32x32" type="image/png">
+  <link rel="icon" href="/static/icon.png?v={{ asset_version() }}" sizes="512x512" type="image/png">
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
   <script src="/static/setup.js?v={{ asset_version() }}" defer></script>
 </head>

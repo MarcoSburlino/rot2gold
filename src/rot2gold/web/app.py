@@ -185,8 +185,9 @@ def event_date(when: str, until: str = "") -> str:
 
 
 def asset_version() -> str:
-    """Changes whenever style.css or app.js changes, so browsers never keep a stale copy."""
-    return str(int(max((HERE / "static" / name).stat().st_mtime for name in ("style.css", "app.js", "setup.js"))))
+    """Changes whenever the styles, scripts or icons change, so browsers never keep a stale copy."""
+    names = ("style.css", "app.js", "setup.js", "icon.png", "icon-32.png")
+    return str(int(max((HERE / "static" / name).stat().st_mtime for name in names)))
 
 
 templates.env.filters["local_time"] = local_time
