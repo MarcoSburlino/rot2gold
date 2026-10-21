@@ -1,5 +1,7 @@
 # Pipeline spec and decisions
 
+> **About this document:** a design log, written while Rot2Gold was built for its author's own vault, so it mentions his setup (his brain at `~/Projects/brain`, its folders, Fedora, his collection). Since 2026-10-21 those are settings anyone can choose (`src/rot2gold/resources/defaults.toml`, the first-run setup). The [README](../README.md) describes the app for everyone.
+
 ## Purpose
 
 Turn every post in Marco's TikTok collection "Material" into a note in his brain (`~/Projects/brain/Resources/commonplace/videos/`). Two halves:

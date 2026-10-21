@@ -1,7 +1,20 @@
 [project]
 name = "rot2gold"
 version = "0.1.0"
-description = "Turn saved TikTok posts into notes and ideas in Marco's brain"
+description = "Turn the TikTok videos you save into notes, ideas, learnings and events in your Obsidian vault"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+keywords = ["obsidian", "tiktok", "notes", "ai", "claude", "ollama"]
+classifiers = [
+  "Environment :: Web Environment",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Text Processing :: Markup :: Markdown",
+]
 requires-python = ">=3.12,<3.15"  # faster-whisper needs ctranslate2, which has no wheels for newer Pythons yet
 dependencies = [
   "yt-dlp[default,curl-cffi]",
@@ -27,11 +40,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
 
+[project.urls]
+Homepage = "https://github.com/MarcoSburlino/rot2gold"
+Issues = "https://github.com/MarcoSburlino/rot2gold/issues"
+
 [project.scripts]
 r2g = "rot2gold.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # SPDX license expressions
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

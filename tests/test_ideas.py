@@ -200,7 +200,7 @@ def test_extract_records_ideas_stage(tmp_path, con, monkeypatch):
 
 
 def test_apply_dry_run_copies_new_and_never_overwrites_edits(vault, con, monkeypatch):
-    """Applying a reviewed dry run costs no Claude call and must not clobber ideas Marco edited since."""
+    """Applying a reviewed dry run costs no Claude call and must not clobber ideas the user edited since."""
     import json
     subprocess.run(["git", "init", "-q", str(vault)], check=True)
     subprocess.run(["git", "-C", str(vault), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
@@ -218,13 +218,13 @@ def test_apply_dry_run_copies_new_and_never_overwrites_edits(vault, con, monkeyp
         "idea-kept.md": ideas._sha(kept), "idea-edited.md": ideas._sha(edited)}}))
     for name in ("idea-kept.md", "idea-edited.md", "idea-new.md"):
         (folder / name).write_text("from the dry run\n")
-    edited.write_text("Marco changed status: trying\n")  # after the dry run
+    edited.write_text("The user changed status: trying\n")  # after the dry run
 
     done = ideas.apply_dry_run(con, 5, lambda *a, **k: None)
     assert sorted(done["copied"]) == ["idea-kept.md", "idea-new.md"] and done["skipped"] == ["idea-edited.md"]
     assert done["counts"] == {"ideas_created": 1, "ideas_updated": 1, "learnings_created": 0, "learnings_updated": 0,
                               "events_created": 0, "events_updated": 0}
-    assert edited.read_text() == "Marco changed status: trying\n"
+    assert edited.read_text() == "The user changed status: trying\n"
     assert (vault / "Inbox/ideas/idea-new.md").read_text() == "from the dry run\n"
     assert con.execute("SELECT COUNT(*) FROM posts WHERE ideas_checked_at IS NOT NULL").fetchone()[0] == 2
     assert done["commit"]

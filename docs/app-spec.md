@@ -1,5 +1,7 @@
 # App spec
 
+> **About this document:** a design log, written while Rot2Gold was built for its author's own vault, so it mentions his setup (his brain at `~/Projects/brain`, its folders, Fedora, his collection). Since 2026-10-21 those are settings anyone can choose (`src/rot2gold/resources/defaults.toml`, the first-run setup). The [README](../README.md) describes the app for everyone.
+
 The app is the local UI for the `r2g` pipeline in this repo. Marco adds a connection (for now, a TikTok collection) and presses **Extract**. The app then runs every step the pipeline runs today: sync, fetch, OCR and transcription, note writing, and a pass that finds ideas, learnings and events. It also has screens for browsing posts, notes, ideas, learnings and events.
 
 Other docs:

@@ -113,7 +113,7 @@ def repo(tmp_path, monkeypatch):
 
 
 def test_brain_commits_only_what_the_batch_changed(repo):
-    (repo / "Projects/dirty.md").write_text("Marco's unsaved edit\n")  # dirty before the batch
+    (repo / "Projects/dirty.md").write_text("The user's unsaved edit\n")  # dirty before the batch
     before = brain.snapshot()
     (repo / "Resources/commonplace/quotes.md").write_text("v2\n")
     (repo / "Resources/commonplace/videos").mkdir()
