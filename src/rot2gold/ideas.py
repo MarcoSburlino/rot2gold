@@ -14,7 +14,8 @@ from pathlib import Path
 
 from . import brain, db, notefile, notes
 from .ai import claude_cli
-from .config import DATA, ROOT, brain_dir, load, vault_rel
+from .config import DATA, brain_dir, load, vault_rel
+from .paths import RESOURCES
 from .errors import AgentFailed, UsageLimit
 
 REPORT_SCHEMA = {"type": "object", "properties": {
@@ -111,9 +112,9 @@ def _source_names(value) -> list[str]:
 
 def _file_path(item: str, folder: Path) -> Path | None:
     """A reported file as an existing path inside `folder`, whether Claude gave it absolute,
-    relative to the brain, relative to the repo, or as a bare file name."""
+    relative to the vault, or as a bare file name."""
     path = Path(item).expanduser()
-    tries = [path] if path.is_absolute() else [brain_dir() / path, ROOT / path, folder / path.name]
+    tries = [path] if path.is_absolute() else [brain_dir() / path, folder / path.name]
     for p in (t.resolve() for t in tries):
         if p.is_relative_to(folder.resolve()) and p.is_file():
             return p
@@ -193,7 +194,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
         current = _sha(dst) if dst.is_file() else None
         if current != base.get(src.name):
             skipped.append(src.name)
-            report(f"skipped {src.name}: changed in the brain after the dry run", level="warn")
+            report(f"skipped {src.name}: changed in the vault after the dry run", level="warn")
             continue
         shutil.copyfile(src, dst)
         copied.append(src.name)
@@ -205,7 +206,7 @@ def apply_dry_run(con, run_id: int, report, apply_run_id: int | None = None) -> 
     _mark(con, checked)
     sha, changed = brain.finish(before, brain.idea_paths(), f"agent: ideas, learnings and events from dry run {run_id}")
     if sha:
-        report(f"brain commit {sha}: {len(changed)} files")
+        report(f"vault commit {sha}: {len(changed)} files")
     notes.add_commit(con, apply_run_id, sha)
     db.add_batch(con, apply_run_id, "apply", 1, post_ids=[str(run_id)], considered=checked["idea"],
                  learned=checked["learning"], events_seen=checked["event"])
@@ -262,8 +263,8 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
                               existing_events_count=len(known["event"]), existing_events=catalog(known["event"]))
         limit = None
         try:
-            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(ROOT),
-                                 add_dirs=[str(brain_dir(cfg))] + ([str(folder)] if dry_run else []),
+            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)),
+                                 add_dirs=[str(RESOURCES)] + ([str(folder)] if dry_run else []),
                                  model=cfg["ideas"]["model"], backend=cfg["notes"]["backend"], api_key=api_key,
                                  max_budget_usd=cfg["notes"].get("max_budget_usd_per_batch"),
                                  on_line=lambda line: report(f"  {line}"))
@@ -310,7 +311,7 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
                                                    f"agent: ideas pass {n} (run {run_id})")
             notes.add_commit(con, run_id, sha)
             if sha:
-                report(f"brain commit {sha}: {len(changed)} files")
+                report(f"vault commit {sha}: {len(changed)} files")
         saved = {} if dry_run else checked
         db.add_batch(con, run_id, "ideas", n, batch, considered=saved.get("idea", ()), learned=saved.get("learning", ()),
                      events_seen=saved.get("event", ()), res=res, error=limit)

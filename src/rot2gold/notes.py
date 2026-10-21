@@ -1,15 +1,16 @@
 """Note writing: one `claude -p` per batch of processed posts, then index and commit in the brain.
 
-The agent follows prompts/write-notes.md (which points to docs/note-writing.md) and marks each post
+The agent follows resources/prompts/write-notes.md (which points to resources/rules/note-writing.md) and marks each post
 with `r2g done` or `r2g skip`. The app, not the agent, runs the after-write commands and commits.
 """
 
 import json
 from datetime import date
 
-from . import brain, db
+from . import brain, db, vault
 from .ai import claude_cli
-from .config import PROMPTS, ROOT, brain_dir
+from .config import DATA, brain_dir
+from .paths import RESOURCES
 from .errors import AgentFailed, UsageLimit
 from .events import echo
 
@@ -30,8 +31,9 @@ REPORT_SCHEMA = {
 
 
 def render(name: str, **values) -> str:
-    text = (PROMPTS / name).read_text()
-    for k, v in values.items():
+    """A bundled prompt with its {{placeholders}} filled: the vault's paths and settings, then `values`."""
+    text = (RESOURCES / "prompts" / name).read_text()
+    for k, v in (vault.prompt_values() | values).items():
         text = text.replace("{{" + k + "}}", str(v))
     return text
 
@@ -104,7 +106,7 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
         prompt = render("write-notes.md", ids="\n".join(batch), count=len(batch), today=date.today().isoformat())
         limit = None
         try:
-            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(ROOT), add_dirs=[str(brain_dir(cfg))],
+            res = claude_cli.run(prompt, schema=REPORT_SCHEMA, cwd=str(brain_dir(cfg)), add_dirs=[str(RESOURCES), str(DATA)],
                                  model=ncfg["model"], backend=ncfg["backend"], api_key=api_key,
                                  max_budget_usd=ncfg.get("max_budget_usd_per_batch"),
                                  on_line=lambda line: report(f"  {line}"))
@@ -124,7 +126,7 @@ def write_notes(con, ids: list[str], cfg: dict, report=echo, run_id: int | None 
         sha, paths = brain.finish(before, brain.note_paths(), f"agent: video notes batch {n} (run {run_id})")
         add_commit(con, run_id, sha)
         if sha:
-            report(f"brain commit {sha}: {len(paths)} files")
+            report(f"vault commit {sha}: {len(paths)} files")
         if limit:
             raise limit
         if res and not res.ok:

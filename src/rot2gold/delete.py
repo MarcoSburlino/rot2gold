@@ -86,7 +86,7 @@ def delete_idea(con, name: str, with_videos: bool, report, run_id: int) -> dict:
     message = f"agent: delete {name}" + (f" and {len(videos)} video notes" if videos else "")
     sha, changed = brain.finish(before, brain.idea_paths() + brain.note_paths(), message)
     if sha:
-        report(f"brain commit {sha}: {len(changed)} files")
+        report(f"vault commit {sha}: {len(changed)} files")
     notes.add_commit(con, run_id, sha)
     # Undo reads this batch to put the videos back to "noted" once their notes are restored.
     db.add_batch(con, run_id, "delete", 1, post_ids=[v["post_id"] for v in videos])

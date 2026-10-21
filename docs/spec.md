@@ -5,7 +5,7 @@
 Turn every post in Marco's TikTok collection "Material" into a note in his brain (`~/Projects/brain/Resources/commonplace/videos/`). Two halves:
 
 1. **`r2g`, a local pipeline** that lists the posts, downloads media, runs OCR and speech-to-text, and stores everything in SQLite. It uses no AI reasoning: only local utility models (Tesseract, Whisper).
-2. **Note writing**, done by an agent following `docs/note-writing.md`: Claude Code on Marco's subscription by default, or with an API key through the app (`docs/app-spec.md`). No local LLMs.
+2. **Note writing**, done by an agent following `src/rot2gold/resources/rules/note-writing.md`: Claude Code on Marco's subscription by default, or with an API key through the app (`docs/app-spec.md`). No local LLMs.
 
 The app that drives both halves, with connections, Extract and an ideas pass, is specified in `docs/app-spec.md`.
 

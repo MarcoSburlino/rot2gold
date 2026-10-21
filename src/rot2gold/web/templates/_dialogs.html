@@ -109,7 +109,7 @@
       <summary>Remove this collection</summary>
       <form method="post" action="/connections/{{ c.id }}/delete" class="stack">
         <p>
-          The app stops reading this collection. <strong>Its notes, ideas and media stay in your brain.</strong>
+          The app stops reading this collection. <strong>Its notes, ideas and media are kept.</strong>
           {% if c.only_here %}{{ c.only_here }} of its {{ c.counts.total }} videos are in no other collection.{% endif %}
         </p>
         <button type="submit" class="button button-danger">Remove {{ c.name }}</button>

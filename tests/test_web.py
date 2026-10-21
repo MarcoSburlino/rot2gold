@@ -7,6 +7,7 @@ import pytest
 
 from rot2gold import brain, db, ideas, notefile, settings
 from rot2gold.sources import firefox
+from rot2gold.paths import RESOURCES
 from rot2gold.web import app as web
 
 
@@ -202,7 +203,7 @@ def test_ideas_prompt_lists_every_existing_idea(sample):
     """The ideas pass compares each new video with all existing ideas before creating one."""
     text = ideas.catalog(ideas.list_ideas())
     assert "idea-one.md · Try this idea · A useful idea · new · video-one" in text
-    assert "{{existing}}" in web.ROOT.joinpath("prompts/ideas.md").read_text()
+    assert "{{existing}}" in (RESOURCES / "prompts/ideas.md").read_text()
 
 
 def test_learnings_page_video_rail_and_delete(sample, monkeypatch):

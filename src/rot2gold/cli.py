@@ -1,11 +1,11 @@
-"""r2g: saved posts → notes in the brain. See docs/spec.md (pipeline) and docs/app-spec.md (app)."""
+"""r2g: saved posts → notes in an Obsidian vault. See docs/spec.md (pipeline) and docs/app-spec.md (app)."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from . import brain, connections, db, downloaders, ideas, launcher, lock, secrets, undo
+from . import brain, connections, db, downloaders, ideas, launcher, lock, secrets, undo, vault
 from .config import DATA, load
 from .errors import VNError
 
@@ -72,7 +72,7 @@ def cmd_done(args) -> None:
     if not row:
         raise SystemExit(f"unknown post {args.id}")
     if not brain.note_file(args.note_path).is_file():
-        raise SystemExit(f"note not found: {brain.note_file(args.note_path)} (write the note first; the path is relative to the brain)")
+        raise SystemExit(f"note not found: {brain.note_file(args.note_path)} (write the note first; the path is relative to the vault)")
     db.set_status(con, args.id, "done", note_path=args.note_path, skip_reason=None)
     print(f"done {args.id} → {args.note_path}")
 
@@ -194,6 +194,8 @@ def cmd_ideas(args) -> None:
     kind = "ideas-dry-run" if args.dry_run else "ideas"
     with recorded_run(args.origin, f"r2g ideas {args.action}", kind, ids, cfg) as run:
         run.report(f"run {run.run_id}: {len(todo)} notes to consider")
+        if not args.dry_run:
+            vault.prepare_and_report(cfg, run.report)
         run.report.set_stage("ideas")
         if todo:
             api_key = secrets.get_api_key() if cfg["notes"]["backend"] == "api" else None
@@ -220,7 +222,7 @@ def cmd_undo(args):
     if not row:
         raise SystemExit(f"No run {args.run_id}.")
     if not args.yes:
-        answer = input(f"Undo run {args.run_id} and its brain commits {row['brain_commits'] or '(none)'}? [y/N] ")
+        answer = input(f"Undo run {args.run_id} and its vault commits {row['brain_commits'] or '(none)'}? [y/N] ")
         if answer.strip().lower() != "y":
             raise SystemExit("Not undone.")
     from .runs import recorded_run
@@ -284,7 +286,7 @@ def main() -> None:
     isub = sp.add_subparsers(dest="action", required=True)
     isub.add_parser("list")
     isub.add_parser("themes")
-    ip = isub.add_parser("apply", help="copy a reviewed dry run into the brain (no new Claude call)")
+    ip = isub.add_parser("apply", help="copy a reviewed dry run into the vault (no new AI call)")
     ip.add_argument("run_id", type=int)
     ip = isub.add_parser("pass")
     ip.add_argument("--conn", help="connection ids, comma-separated")
@@ -296,7 +298,7 @@ def main() -> None:
         ip.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
     sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740")
     sp.add_argument("--no-browser", action="store_true")
-    sp = sub.add_parser("undo", help="revert one finished run's brain commits and reopen its posts")
+    sp = sub.add_parser("undo", help="revert one finished run's vault commits and reopen its posts")
     sp.add_argument("run_id", type=int)
     sp.add_argument("--yes", action="store_true")
     sp = sub.add_parser("update-downloaders", help="upgrade yt-dlp and gallery-dl")

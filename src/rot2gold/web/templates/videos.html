@@ -44,7 +44,7 @@
               {% if r.status == 'skipped' %}
                 <span class="row-desc">Skipped: {{ r.skip_reason }}</span>
               {% elif r.missing %}
-                <span class="row-desc row-alert">The note file is missing from your brain.</span>
+                <span class="row-desc row-alert">The note file is missing from your vault.</span>
               {% elif r.description %}
                 <span class="row-desc">{{ r.description }}</span>
               {% endif %}

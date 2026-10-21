@@ -221,7 +221,7 @@ For the selected connections, `extract.py`:
 4. **Process.** Runs OCR and transcription on their `fetched` posts.
 5. **Write notes** for their `processed` posts, in batches (below). For each batch:
    1. Snapshot `git status --porcelain` in the brain.
-   2. Run one `claude -p` with `prompts/write-notes.md` and the batch's ids.
+   2. Run one `claude -p` with `resources/prompts/write-notes.md` and the batch's ids, inside the vault.
    3. Check every post of the batch in the database: either `done` with a `note_path` that exists, or `skipped`.
    4. Run `brain-index`, then `brain-index --check`.
    5. Stage only the paths that changed since the snapshot *and* are under `Resources/commonplace/` or are generated indexes. Commit as `agent: video notes batch (run N)`. Anything else that changed (Obsidian, another agent) stays unstaged.
@@ -289,9 +289,9 @@ Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, coll
 
 ```
 docs/app-spec.md           this file
-docs/ideas.md              rules for the ideas, learnings and events pass
-prompts/write-notes.md     prompt for one note-writing batch
-prompts/ideas.md           prompt for the ideas, learnings and events pass
+src/rot2gold/resources/    rules, prompts, templates, starter notes, an example note, defaults.toml
+docs/ideas.md              history of the ideas, learnings and events pass
+docs/note-writing.md       history of the note-writing rules
 src/rot2gold/
   db.py                    schema v7, migration, WAL                (changed)
   delete.py                delete an idea, learning or event and, optionally, its videos
@@ -301,6 +301,7 @@ src/rot2gold/
   extract.py               the Extract run
   runs.py                  shared lock, run row and final status
   notes.py                 note-writing batches
+  vault.py                 the app's folders, templates and starter notes in the vault; the "Where things are" block of every prompt
   ideas.py                 ideas, learnings and events pass; reading their notes; event dates and .ics
   brain.py                 git snapshot, staged commit, brain-index, front matter, Obsidian links
   secrets.py               keyring access through secret-tool

@@ -185,7 +185,8 @@ def test_extract_records_ideas_stage(tmp_path, con, monkeypatch):
     monkeypatch.setattr(lock, "LOCK_PATH", tmp_path / "r2g.lock")
     monkeypatch.setattr(extract, "load", lambda: {
         "notes": {"backend": "subscription", "model": "opus", "max_per_run": 20},
-        "ideas": {"model": "opus"}})
+        "ideas": {"model": "opus"}, "vault": {"path": str(tmp_path)}})
+    monkeypatch.setattr(extract.vault, "prepare", lambda cfg: ["Rot2Gold/Videos/"])
     monkeypatch.setattr(extract, "connections", lambda con, ids: [{"id": 1, "name": "Test"}])
     monkeypatch.setattr(extract, "sync_connection", lambda con, conn, report: (0, None))
     monkeypatch.setattr(extract, "fetch", lambda *a, **kw: 0)

@@ -16,7 +16,7 @@
         {{ new_ideas }} new {{ 'idea' if new_ideas == 1 else 'ideas' }}, {{ new_learnings }} new {{ 'learning' if new_learnings == 1 else 'learnings' }},
         {{ new_events }} new {{ 'event' if new_events == 1 else 'events' }} and {{ update_count }} {{ 'update' if update_count == 1 else 'updates' }}
         from {{ checked }} notes.
-        {% if not manifest.applied %}Nothing is in your brain yet.{% endif %}
+        {% if not manifest.applied %}Nothing is in your vault yet.{% endif %}
       </p>
     </div>
     <div class="page-actions">
@@ -25,12 +25,12 @@
   </header>
 
   {% if manifest.applied %}
-    <p class="banner">Applied to your brain ({{ manifest.applied }}).</p>
+    <p class="banner">Applied to your vault ({{ manifest.applied }}).</p>
   {% elif rows or checked %}
     <form method="post" action="/ideas/preview/{{ run_id }}/apply" class="apply-bar">
       <p>Apply copies these into <code>Inbox/ideas/</code>, <code>Inbox/learnings/</code> and <code>Inbox/events/</code> and marks the notes as checked, without calling Claude again. Anything you edited since the dry run is skipped, never overwritten.</p>
       <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>
-        Apply {{ rows|length }} {{ 'note' if rows|length == 1 else 'notes' }} to the brain
+        Apply {{ rows|length }} {{ 'note' if rows|length == 1 else 'notes' }} to your vault
       </button>
     </form>
   {% endif %}

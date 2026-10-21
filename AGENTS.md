@@ -11,9 +11,8 @@ Two parts, one repo:
 
 - `docs/spec.md`: the pipeline, its data and every decision, with test results.
 - `docs/app-spec.md`: the app: goals, decisions and why, data model, Extract steps, screens, phases.
-- `docs/note-writing.md`: how to write a note for a processed post. Follow it when asked to process posts.
-- `docs/ideas.md`: rules for the ideas pass. Every agent and backend follows it.
-- `prompts/`: the prompts the app gives `claude -p` (one note-writing batch, one ideas pass).
+- `src/rot2gold/resources/`: what ships with the app for the AI and the vault: `rules/` (note-writing, ideas pass, vault rules), `prompts/` (one note-writing batch, one ideas pass), `templates/` and `starter/` (copied into the user's vault by `vault.prepare()`, never over existing files), `examples/`, and `defaults.toml`. Rules and prompts never name Marco's paths: they say "the videos folder", "the hub note", …, and each prompt lists the real paths (`vault.where()`).
+- `docs/note-writing.md`, `docs/ideas.md`: the history of those rules.
 
 ## Rules
 
@@ -63,7 +62,7 @@ r2g done <id> <note-path>   |   r2g skip <id> "<reason>"
 - Every stage skips finished work. Stop any command and rerun it.
 - Whisper model benchmark: `.venv/bin/python scripts/whisper_bench.py <out-dir> data/media/<id>/audio.wav ...`. Run it on fetched posts before `r2g process`, which deletes the audio.
 
-When asked to process posts, follow docs/note-writing.md.
+When asked to process posts, follow `src/rot2gold/resources/rules/note-writing.md`.
 
 ## Brain
 

@@ -126,7 +126,7 @@ def run_summary(run: dict) -> str:
         parts = [(f"{run.get('deleted_kind') or 'idea'} deleted" + (f" with {plural(gone, 'video')}" if gone else ""))
                  if status == "ok" else "nothing was deleted"]
     elif kind == "undo":
-        parts = ["brain changes reverted" if status == "ok" else "nothing was reverted"]
+        parts = ["vault changes reverted" if status == "ok" else "nothing was reverted"]
     else:
         parts = []
     text = ", ".join(p for p in parts if p)
@@ -186,7 +186,8 @@ templates.env.filters["local_time"] = local_time
 templates.env.filters["relative_time"] = relative_time
 templates.env.filters["event_date"] = event_date
 templates.env.globals.update(APP_NAME=APP_NAME, LABELS=connections.LABELS, STATUSES=connections.STATUSES,
-                             plan_windows=plan_windows, asset_version=asset_version, run_summary=run_summary)
+                             plan_windows=plan_windows, asset_version=asset_version, run_summary=run_summary,
+                             vault_git=brain.uses_git)
 
 
 def active_run(con) -> dict | None:
@@ -378,8 +379,8 @@ def delete_connection(request: Request, cid: int):
     except ValueError as exc:
         return back_to(request, err=str(exc))
     if request.headers.get("referer", "").split("?")[0].endswith("/runs"):
-        return back("/ideas", msg="Collection removed. Its notes, ideas and media are still in your brain.")
-    return back_to(request, drop=("conn",), msg="Collection removed. Its notes, ideas and media are still in your brain.")
+        return back("/ideas", msg="Collection removed. Its notes, ideas and media are kept.")
+    return back_to(request, drop=("conn",), msg="Collection removed. Its notes, ideas and media are kept.")
 
 
 @app.post("/extract")
@@ -709,7 +710,7 @@ def apply_preview(run_id: int):
     # recorded_run stores a failure in the run's history instead of raising it: check how it ended.
     if done is None:
         return back(f"/ideas/preview/{run_id}", err=run_failure(run))
-    return back("/ideas", msg=f"Applied dry run {run_id}: {plural(len(done['copied']), 'note')} written to the brain"
+    return back("/ideas", msg=f"Applied dry run {run_id}: {plural(len(done['copied']), 'note')} written to your vault"
                 + (f", {len(done['skipped'])} skipped because you changed them since" if done["skipped"] else "")
                 + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
 
@@ -732,7 +733,7 @@ def delete_item(request: Request, name: str, with_videos: str):
     videos = len(done["videos"])
     return back(KIND_PAGES[ideas.kind_of(name)]["base"],
                 msg=f"Deleted “{title}”" + (f" and {videos} {'video' if videos == 1 else 'videos'}" if videos else "")
-                + f". You can undo it from History.")
+                + (". You can undo it from History." if brain.uses_git() else "."))
 
 
 @app.post("/ideas/{name}/delete")

@@ -16,7 +16,7 @@ def _commits(con, run_id):
         raise ValueError("This run was already undone.")
     commits = (row["brain_commits"] or "").split()
     if not commits:
-        raise ValueError("This run has no brain commits to undo.")
+        raise ValueError("This run has no vault commits to undo.")
     return commits
 
 
@@ -25,7 +25,7 @@ def undo_run(con, run_id: int, report) -> dict:
         raise ValueError("Undo needs your vault to be a Git repository, with Git turned on for Rot2Gold.")
     commits = _commits(con, run_id)
     if brain.git("diff", "--cached", "--name-only").strip():
-        raise ValueError("The brain has staged changes. Commit or unstage them before undoing this run.")
+        raise ValueError("The vault has staged changes. Commit or unstage them before undoing this run.")
     touched, added = set(), set()
     for sha in commits:
         for line in brain.git("show", "--format=", "--name-status", sha).splitlines():

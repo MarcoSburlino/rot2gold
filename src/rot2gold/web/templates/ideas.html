@@ -124,13 +124,13 @@
       <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <div class="dialog-body stack">
-      <p>“{{ selected.title }}” is deleted from your brain.</p>
+      <p>“{{ selected.title }}” is deleted from your vault.</p>
       {% if videos %}
         <fieldset class="delete-videos">
           <legend class="visually-hidden">Its videos</legend>
           <label class="check">
             <input type="checkbox" name="with_videos" value="1">
-            <span>Also delete {{ 'its video' if videos|length == 1 else 'its ' ~ videos|length ~ ' videos' }}: their notes are removed from your brain</span>
+            <span>Also delete {{ 'its video' if videos|length == 1 else 'its ' ~ videos|length ~ ' videos' }}: their notes are removed from your vault</span>
           </label>
           <ul class="plain-list delete-list">
             {% for v in videos %}<li>{{ v.title }}</li>{% endfor %}
@@ -144,7 +144,7 @@
           {% for v in removal.kept %}{{ v.title }} (“{{ v.other_idea }}”){% if not loop.last %}; {% endif %}{% endfor %}.
         </p>
       {% endif %}
-      <p class="muted">Deleted videos stay listed in the app as skipped, so Extract won't bring them back. You can undo this from History.</p>
+      <p class="muted">Deleted videos stay listed in the app as skipped, so Extract won't bring them back.{% if vault_git() %} You can undo this from History.{% endif %}</p>
     </div>
     <div class="dialog-foot">
       <button type="button" class="button" data-close>Cancel</button>

@@ -1,7 +1,7 @@
 """r2g extract: sync, fetch, process, notes and ideas for selected connections."""
 
-from . import db, ideas, notes, secrets
-from .config import load
+from . import db, ideas, notes, secrets, vault
+from .config import is_set_up, load
 from .errors import CookiesNeeded, ListingFailed
 from .fetch import fetch
 from .process import process
@@ -13,6 +13,8 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
             quiet: bool = False, find_ideas: bool = True) -> dict:
     """Run the pipeline. Returns the finished `runs` row as a dict."""
     cfg = load()
+    if not is_set_up(cfg):
+        raise SystemExit("Rot2Gold isn't set up yet: run `r2g` (or `r2g setup`) first.")
     conns = connections(db.connect(), conn_ids)
     if not conns:
         raise SystemExit("No connections yet. Add one: r2g conn add <collection URL>")
@@ -20,6 +22,7 @@ def extract(conn_ids=None, origin: str = "terminal", max_notes: int | None = Non
     with recorded_run(origin, "r2g extract", "extract", ids, cfg, quiet) as run:
         con, report, counts, run_id = run.con, run.report, run.counts, run.run_id
         report(f"run {run_id}: {', '.join(c['name'] for c in conns)}")
+        vault.prepare_and_report(cfg, report)
         report.set_stage("sync")
         failed = []
         for conn in conns:

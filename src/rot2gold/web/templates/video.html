@@ -36,7 +36,7 @@
       {% elif post.status == 'skipped' %}
         <p class="banner">Skipped: {{ post.skip_reason }}</p>
       {% elif post.status == 'done' %}
-        <p class="banner banner-alert">The note <code>{{ post.note_path }}</code> is missing from your brain. It may have been moved or renamed in Obsidian.</p>
+        <p class="banner banner-alert">The note <code>{{ post.note_path }}</code> is missing from your vault. It may have been moved or renamed in Obsidian.</p>
       {% else %}
         <p class="empty-note">No note yet. Press <strong>Extract new videos</strong> in the sidebar to write it.</p>
       {% endif %}

@@ -35,12 +35,12 @@
     </p>
   {% endif %}
 
-  {% if run.undone_at %}<p class="banner">Undone {{ run.undone_at|relative_time }}: its changes to your brain were reverted.</p>{% endif %}
+  {% if run.undone_at %}<p class="banner">Undone {{ run.undone_at|relative_time }}: its changes to your vault were reverted.</p>{% endif %}
   {% if run.error %}<div class="banner {{ 'banner-alert' if run.status == 'failed' else '' }}" role="status"><pre>{{ run.error }}</pre></div>{% endif %}
 
   {% if preview and preview.count and not preview.applied %}
     <div class="banner banner-action">
-      <p>This run only proposed ideas, learnings and events; they aren't in your brain.</p>
+      <p>This run only proposed ideas, learnings and events; they aren't in your vault.</p>
       <a class="button button-small" href="/ideas/preview/{{ run.id }}">See the {{ preview.count }} proposals</a>
     </div>
   {% endif %}
@@ -87,7 +87,7 @@
         <dd>${{ '%.2f'|format(run.cost_estimate_usd) }} <span class="muted">{{ '(what it would cost on the API; your subscription covers it)' if run.backend == 'subscription' else '(estimated)' }}</span></dd>
       {% endif %}
       {% if run.brain_commits %}
-        <dt>Brain commits</dt>
+        <dt>Vault commits</dt>
         <dd>{% for c in run.brain_commits.split() %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
       {% endif %}
       <dt>Run number</dt><dd>{{ run.id }}</dd>
@@ -137,7 +137,7 @@
           <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
         </div>
         <div class="dialog-body stack">
-          {% if run.kind != 'delete' %}<p>The notes and ideas this run wrote are taken back out of your brain. Git keeps a record, so nothing is lost for good.</p>{% endif %}
+          {% if run.kind != 'delete' %}<p>The notes and ideas this run wrote are taken back out of your vault. Git keeps a record, so nothing is lost for good.</p>{% endif %}
           {% if run.kind == 'delete' %}<p>The deleted {{ run.deleted_kind or 'idea' }}, and any videos deleted with it, come back.</p>
           {% elif run.kind == 'extract' %}<p>Its videos go back in the queue for the next Extract.</p>
           {% elif run.kind.startswith('ideas') %}<p>The notes it read will be checked for ideas, learnings and events again next time.</p>{% endif %}

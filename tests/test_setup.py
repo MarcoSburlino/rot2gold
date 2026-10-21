@@ -68,3 +68,41 @@ def test_v8_makes_image_paths_relative_to_the_data_folder(tmp_path):
     assert (tmp_path / "r2g.sqlite.bak-v7").exists()
     assert sqlite3.connect(tmp_path / "r2g.sqlite.bak-v7").execute("SELECT path FROM images").fetchone()[0] \
         == "data/media/1/frame.png"
+
+
+def test_prepare_creates_folders_templates_and_starters_but_never_overwrites(plain_vault):
+    from rot2gold import vault
+    made = vault.prepare()
+    assert "Rot2Gold/Videos/" in made and "Rot2Gold/Templates/video-note.md" in made
+    assert "## Posts by theme" in (plain_vault / "Rot2Gold/Rot2Gold.md").read_text()
+    (plain_vault / "Rot2Gold/Quotes.md").write_text("mine\n")
+    (plain_vault / "Rot2Gold/Templates/idea-note.md").write_text("my template\n")
+    assert vault.prepare() == []
+    assert (plain_vault / "Rot2Gold/Quotes.md").read_text() == "mine\n"
+    assert (plain_vault / "Rot2Gold/Templates/idea-note.md").read_text() == "my template\n"
+
+
+def test_prepare_refuses_a_missing_vault(tmp_path, monkeypatch):
+    from rot2gold import vault
+    path = tmp_path / "config.toml"
+    path.write_text(tomli_w.dumps({"vault": {"path": str(tmp_path / "gone")}}))
+    monkeypatch.setenv("R2G_CONFIG", str(path))
+    with pytest.raises(config.ConfigError, match="does not exist"):
+        vault.prepare()
+
+
+@pytest.mark.parametrize("name", ["write-notes.md", "ideas.md"])
+def test_prompts_name_only_the_users_own_paths(plain_vault, name):
+    import re
+    from rot2gold import notes
+    cfg = config.load()
+    cfg["vault"]["rules"] = "My rules.md"
+    config.write_user({"vault": cfg["vault"], "notes": {"language": "Italian"}})
+    text = notes.render(name, ids="1", count=1, today="2026-10-21", notes="", mode="", existing="", existing_count=0,
+                        existing_learnings="", existing_learnings_count=0, existing_events="", existing_events_count=0,
+                        ideas_dir="x", learnings_dir="x", events_dir="x", max_new=5, max_new_learnings=8, max_new_events=8)
+    left = set(re.findall(r"{{\w+}}", text))
+    assert not left, left
+    assert str(plain_vault / "Rot2Gold/Rot2Gold.md") in text and "Italian" in text
+    assert str(plain_vault / "My rules.md") in text
+    assert not re.search(r"Marco|~/Projects|brain-index|commonplace", text)
