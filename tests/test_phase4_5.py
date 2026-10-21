@@ -217,7 +217,7 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher.shutil, "which", lambda name: None)
     desktop, icon = launcher._install_linux(tmp_path)  # each system's launcher is built the same way everywhere
     assert desktop.is_file() and icon.is_file() and "Terminal=false" in desktop.read_text()
-    assert f'Exec="{launcher.r2g_command()}" ui' in desktop.read_text()
+    assert f'Exec="{launcher.r2g_command()}" ui' in desktop.read_text() and "\nIcon=rot2gold\n" in desktop.read_text()
     app, icns = launcher._install_mac(tmp_path)
     assert icns.stat().st_size > 1000 and (app / "Contents/MacOS/Rot2Gold").read_text().endswith('" ui\n')
     assert "<key>CFBundleExecutable</key><string>Rot2Gold</string>" in (app / "Contents/Info.plist").read_text()

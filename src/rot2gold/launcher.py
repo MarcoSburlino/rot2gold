@@ -48,11 +48,15 @@ def _install_linux(home: Path) -> tuple[Path, Path]:
     desktop, icon, old_icon = _linux_paths(home)
     for folder in (desktop.parent, icon.parent):
         folder.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ICON, icon)
+    # Written next to the old file and swapped in, so the desktop never reads a half-copied icon and caches it as broken.
+    partial = icon.with_suffix(".partial")
+    shutil.copyfile(ICON, partial)
+    os.replace(partial, icon)
     old_icon.unlink(missing_ok=True)
+    # By name, not by path: the desktop then finds it through the icon theme, which notices when it changes.
     desktop.write_text(f"[Desktop Entry]\nType=Application\nName={APP_NAME}\n"
                        f"Comment=Turn saved posts into notes and ideas\nExec=\"{r2g_command()}\" ui\n"
-                       f"Icon={icon}\nTerminal=false\nCategories=Utility;\n")
+                       f"Icon={icon.stem}\nTerminal=false\nCategories=Utility;\n")
     if exe := shutil.which("update-desktop-database"):
         subprocess.run([exe, str(desktop.parent)], capture_output=True)
     return desktop, icon
