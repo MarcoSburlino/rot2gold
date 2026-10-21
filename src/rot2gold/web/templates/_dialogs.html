@@ -44,7 +44,7 @@
           <select name="cookie_browser">
             {% for key, label in browsers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
           </select>
-          <small>The browser where you're logged into TikTok.{% if windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
+          <small>The browser where you're logged into TikTok.{% if on_windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
         </label>
         </div>
       </details>
@@ -101,7 +101,7 @@
             <select name="cookie_browser">
               {% for key, label in browsers.items() %}<option value="{{ key }}" {% if key == c.cookie_browser %}selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
-            <small>The browser where you're logged into TikTok.{% if windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
+            <small>The browser where you're logged into TikTok.{% if on_windows %} On Windows, use Firefox: Chrome, Edge and other Chrome-based browsers lock their cookies.{% endif %}</small>
           </label>
           <label class="field">
             <span>Firefox profile <span class="muted">(Firefox only)</span></span>

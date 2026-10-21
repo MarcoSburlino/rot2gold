@@ -220,7 +220,7 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
         item["waiting"] = sum(item["counts"][s] for s in ("new", "fetched", "processed"))
     from ..sources.firefox import profiles
     ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
-            "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES, "browsers": browser_choices(), "windows": os.name == "nt",
+            "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES, "browsers": browser_choices(), "on_windows": os.name == "nt",
             "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
             "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()),
             "event_count": len(ideas.list_events()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}

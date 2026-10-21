@@ -201,7 +201,7 @@ def test_undo_refuses_later_and_dirty_edits(vault, con):
 def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(downloaders.shutil, "which", lambda name: "/fake/uv" if name == "uv" else None)
-    monkeypatch.setattr(downloaders.Path, "is_file", lambda self: True if str(self) == "/fake/uv" else Path.exists(self))
+    monkeypatch.setattr(downloaders.Path, "is_file", lambda self: True if self == Path("/fake/uv") else Path.exists(self))
     monkeypatch.setattr(downloaders, "versions", lambda: {"yt-dlp": "2026.01.01", "gallery-dl": "1"})
     class Proc:
         stdout = ["updating\n"]
@@ -215,9 +215,9 @@ def test_downloader_update_and_launcher(tmp_path, monkeypatch):
     assert downloaders.update(lines.append)["gallery-dl"] == "2"
     assert calls[0][1:5] == ["pip", "install", "--python", sys.executable] and "updating" in lines
     monkeypatch.setattr(launcher.shutil, "which", lambda name: None)
-    desktop, icon = launcher.install(home=tmp_path)
+    desktop, icon = launcher._install_linux(tmp_path)  # each system's launcher is built the same way everywhere
     assert desktop.is_file() and icon.is_file() and "Terminal=false" in desktop.read_text()
-    assert f'Exec="{Path(sys.executable).parent / "r2g"}" ui' in desktop.read_text()
+    assert f'Exec="{launcher.r2g_command()}" ui' in desktop.read_text()
     app, icns = launcher._install_mac(tmp_path)
     assert icns.stat().st_size > 1000 and (app / "Contents/MacOS/Rot2Gold").read_text().endswith('" ui\n')
     assert "<key>CFBundleExecutable</key><string>Rot2Gold</string>" in (app / "Contents/Info.plist").read_text()
