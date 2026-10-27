@@ -17,7 +17,7 @@
   {% include "_icons.html" %}
   <main id="main" class="setup">
     <header class="setup-head">
-      {% if again %}<a class="back-link" href="/ideas">{{ icon('back') }} Back to {{ APP_NAME }}</a>{% else %}<p class="setup-brand">{{ wordmark() }}</p>{% endif %}
+      {% if again %}<a class="back-link" href="/gold">{{ icon('back') }} Back to {{ APP_NAME }}</a>{% else %}<p class="setup-brand">{{ wordmark() }}</p>{% endif %}
       <h1>{{ 'Setup' if again else 'Set up ' ~ APP_NAME }}</h1>
       <p class="lede">
         {% if again %}Change where {{ APP_NAME }} writes and who writes the notes. Everything you leave as it is stays the same.

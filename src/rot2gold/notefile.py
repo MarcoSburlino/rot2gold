@@ -4,6 +4,7 @@ Notes are markdown with YAML front matter. They are rendered with raw HTML switc
 text from posts and the web, and a stray <script> must show as text, never run.
 """
 
+import functools
 import html
 import os
 import re
@@ -12,12 +13,13 @@ from pathlib import Path
 
 import yaml
 from markdown_it import MarkdownIt
+from mdit_py_plugins.footnote import footnote_plugin
 
 from .brain import obsidian_uri
 from .config import brain_dir
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]")
-md = MarkdownIt("commonmark", {"html": False, "breaks": False}).enable(["table", "strikethrough"])
+md = MarkdownIt("commonmark", {"html": False, "breaks": False}).enable(["table", "strikethrough"]).use(footnote_plugin)
 
 
 @dataclass
@@ -76,6 +78,24 @@ def brain_names() -> dict[str, Path]:
             if f.endswith(".md"):
                 names.setdefault(f[:-3], Path(dirpath) / f)
     return names
+
+
+@functools.lru_cache(maxsize=8192)
+def _creator(path: Path, mtime_ns: int) -> str:
+    """A note's creator, read once per version of the file (the pages count support on every load)."""
+    return str(read(path, head_only=True).meta.get("creator") or "")
+
+
+def support(sources: list[str], names: dict[str, Path]) -> int:
+    """Independent sources: notes by the same creator count once; a note without a creator counts on its own."""
+    creators = set()
+    for name in sources:
+        try:
+            creator = _creator(names[name], names[name].stat().st_mtime_ns) if name in names else ""
+        except FileNotFoundError:
+            creator = ""
+        creators.add(("creator", creator) if creator else ("note", name))
+    return len(creators)
 
 
 def render(body: str, link_for) -> str:

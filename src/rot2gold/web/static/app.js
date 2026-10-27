@@ -187,15 +187,74 @@
   }
 
 
+  /* ── Forms ──────────────────────────────────────────────────────────── */
+  // A POST form sends once: a second press while the first is on its way is ignored, and the
+  // button can say what is happening (data-busy-label), e.g. "Deleting…".
+
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    if (event.defaultPrevented || form.method !== 'post') return;
+    if ('busy' in form.dataset) {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.busy = '';
+    const button = event.submitter;
+    // After this tick, so the pressed button's name and value are still sent.
+    setTimeout(() => {
+      $$('[type="submit"]', form).forEach(item => { item.disabled = true; });
+      if (button?.dataset.busyLabel) button.textContent = button.dataset.busyLabel;
+    });
+  });
+
+  // Back from the next page, the browser may show this page as it was left: make its forms usable again.
+  addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    $$('form[data-busy]').forEach(form => {
+      delete form.dataset.busy;
+      $$('[type="submit"]', form).forEach(item => { item.disabled = false; });
+    });
+  });
+
+
   /* ── Ideas list ─────────────────────────────────────────────────────── */
-  // The list scrolls on its own beside the reading pane: show the selected row in it.
+  // The list scrolls on its own beside the reading pane. Moving between items (or deleting one)
+  // loads a new page, so keep the list where it was, and still show the selected row.
+  // Saved per tab; without storage the list just starts at the top.
 
   const listPane = $('.list-pane');
   const selectedRow = listPane && $('[aria-current]', listPane);
+  const listKey = 'r2g-list';
+  const remember = (key, value) => {
+    try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* storage off */ }
+  };
+  const recall = key => {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(key));
+      sessionStorage.removeItem(key);
+      return value;
+    } catch {
+      return null;
+    }
+  };
+
+  if (listPane) {
+    const saved = recall(listKey);
+    if (saved && saved.list === listPane.dataset.list) {
+      listPane.scrollTop = saved.top;
+      if (saved.focus && selectedRow) selectedRow.focus({ preventScroll: true });
+    }
+    // After a delete, the next page focuses the row it opens (the one above the deleted item).
+    let focusNext = false;
+    $$('form[data-focus-selected]').forEach(form => form.addEventListener('submit', () => { focusNext = true; }));
+    addEventListener('pagehide', () => remember(listKey, { list: listPane.dataset.list, top: listPane.scrollTop, focus: focusNext }));
+  }
+
   if (selectedRow && listPane.scrollHeight > listPane.clientHeight) {
-    const top = selectedRow.offsetTop - listPane.offsetTop;
-    if (top + selectedRow.offsetHeight > listPane.clientHeight) {
-      listPane.scrollTop = top - listPane.clientHeight / 3;
+    const pane = listPane.getBoundingClientRect();
+    const row = selectedRow.getBoundingClientRect();
+    if (row.top < pane.top || row.bottom > pane.bottom) {
+      listPane.scrollTop += row.top - pane.top - listPane.clientHeight / 3;
     }
   }
 

@@ -191,3 +191,7 @@ def test_note_rendering(tmp_path):
     assert 'class="callout callout-note"' in out
     assert 'target="_blank" rel="noreferrer" href="https://example.com"' in out
     assert notefile.read(path, head_only=True).title == "The Title"
+    # A learning's fact-check footnote: a marker in the text, the note at the end, wikilinks still linked.
+    out = notefile.render("Wind makes trees stronger.[^1]\n\n[^1]: The figure in [[video-y]] is disputed.\n", links.get)
+    assert 'class="footnote-ref"' in out and "[^1]" not in out
+    assert 'class="footnote-item"' in out and '<a href="/videos/1">video-y</a> is disputed' in out

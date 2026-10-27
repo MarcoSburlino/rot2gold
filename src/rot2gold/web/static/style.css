@@ -1116,6 +1116,170 @@ a.last-run-alert:hover {
   margin-top: var(--s-3);
 }
 
+/* Gold: the kinds as tabs on a hairline (like the Settings tabs), sorting and search on the same line. */
+.gold-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-5);
+  margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.gold-tabs {
+  display: flex;
+  gap: var(--s-1);
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.gold-tab {
+  padding: var(--s-3) var(--s-2);
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font: 500 var(--text-sm) / 1.2 var(--font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.gold-tab:hover {
+  color: var(--text-1);
+}
+
+.gold-tab .num {
+  margin-left: var(--s-1);
+  font-size: var(--text-2xs);
+}
+
+/* The open kind: a gold underline and its count in gold. */
+.gold-tab[aria-current] {
+  border-bottom-color: var(--accent);
+  color: var(--text-1);
+}
+
+.gold-tab[aria-current] .num {
+  color: var(--accent);
+}
+
+/* One line, never wrapped inside (Firefox would size a wrapping row by its widest item): the search shrinks. */
+.gold-tools {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  margin-left: auto;
+  padding-bottom: var(--s-2);
+}
+
+.gold-tools .segmented {
+  flex: none;
+}
+
+.gold-tools .search {
+  flex: 1 1 280px;
+  min-width: 140px;
+  max-width: 320px;
+  margin-left: 0;
+}
+
+/* Phones: the tabs keep the hairline; sorting and search go on the line below, full width. */
+@media (max-width: 767px) {
+  .gold-bar {
+    border-bottom: 0;
+  }
+
+  .gold-tabs {
+    flex-basis: 100%;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .gold-tools {
+    flex-basis: 100%;
+    padding-bottom: 0;
+  }
+
+  .gold-tools .search {
+    max-width: none;
+  }
+}
+
+/* Two or three options side by side, one picked: a quiet pill with the pick raised. */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--control-small) - 6px);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  color: var(--text-3);
+  font: 500 var(--text-sm) / 1 var(--font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.segment:hover {
+  color: var(--text-1);
+}
+
+.segment[aria-current] {
+  background: var(--surface-raised);
+  color: var(--text-1);
+}
+
+/* What a Gold item is: Learning (bulb), To try (target, in gold: it asks for action), Event (calendar). */
+.kind-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+}
+
+.kind-tags:empty {
+  display: none;
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--text-2);
+  font: 500 var(--text-xs) / 1.2 var(--font-ui);
+  white-space: nowrap;
+}
+
+.kind .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.kind-try {
+  color: var(--accent);
+}
+
+/* The video page's "Gold from this video": badges on their own line above each title. */
+.gold-mini {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+
+.gold-mini .kind-tags {
+  flex-basis: 100%;
+}
+
+.gold-mini + .gold-mini {
+  margin-top: var(--s-3);
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -1276,6 +1440,11 @@ a.last-run-alert:hover {
 .row[aria-current] {
   --ring: var(--selected);
   background: var(--selected);
+}
+
+/* Inside the scrolling list, an outer ring would be cut off: draw it inside the row. */
+.list-pane .row:focus-visible {
+  outline-offset: -2px;
 }
 
 .row[aria-current]::before {
@@ -1489,6 +1658,23 @@ a.last-run-alert:hover {
   text-decoration: underline 2px var(--accent);
   text-decoration-skip-ink: none;
   text-underline-offset: 5px;
+  white-space: nowrap;
+}
+
+/* "27 videos from 18 creators": the second part only when some creators made more than one.
+   On a narrow row it moves under the first. */
+.support-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.3em;
+  row-gap: var(--s-1);
+  min-width: 0;
+}
+
+.support-from {
+  color: var(--text-2);
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -1732,6 +1918,28 @@ a.last-run-alert:hover {
   margin: var(--s-5) 0;
   border: 0;
   border-top: 1px solid var(--border);
+}
+
+/* Footnotes ([^1]): a small marker in the text, the notes small and quiet at the end. */
+.prose .footnote-ref {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.prose .footnote-ref a,
+.prose .footnote-backref {
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.prose .footnote-ref a:hover,
+.prose .footnote-backref:hover {
+  color: var(--accent);
+}
+
+.prose .footnotes {
+  color: var(--text-3);
+  font-size: var(--text-sm);
 }
 
 .prose table {

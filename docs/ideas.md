@@ -6,6 +6,7 @@ This page keeps the project's history of the pass.
 
 - 2026-10-19: the per-post idea step was replaced by one pass across notes (below).
 - 2026-10-20: learnings and events were added (Marco's requests), and "update first, create last" so ideas grow instead of multiplying.
+- 2026-10-27: learnings are about the subject a video teaches, never about how videos argue (Marco: "people citing statistics that are not proven" and "associating an idea to authority" kept coming back as learnings, gathered from the notes' **Checked** sections). A fact-check that disputes part of a learning now goes in a footnote (`[^1]`), and the title never carries the verdict. The app shows footnotes too (`mdit-py-plugins`).
 - 2026-10-21: the rules were made generic for the open-source release. Marco's brain keeps its layout through his `config.toml` (`Inbox/ideas`, `Inbox/learnings`, `Inbox/events`, templates in `System/templates`, his `AGENTS.md` as extra rules); the dates and choices that were his (Rebuild themes: Mindset and self-help, Learning and memory, Money and business; `[ideas] since = 2026-10-19`) are recorded here and in the brain note.
 
 ## History

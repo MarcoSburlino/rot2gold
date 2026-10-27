@@ -188,6 +188,17 @@ A true "hold before commit" mode would need a staging copy of `commonplace.md` a
 
 Defaults ship in the package (`src/rot2gold/resources/defaults.toml`). The user's own `config.toml` (in the system config folder: `~/.config/rot2gold/` on Linux) holds only what they changed; it is merged over the defaults section by section. Settings validates the editable preferences and writes them into that file atomically (`settings.py`, `config.write_user`). The API key stays in the keyring. Until 2026-10-21 the defaults were a tracked `config.toml` and preferences were in `data/settings.json`; Marco's values were moved into his `~/.config/rot2gold/config.toml` by hand.
 
+### Gold: one tab for ideas, learnings and events (2026-10-27)
+
+Marco found the three tabs redundant: 15 of his 17 ideas were linked to a learning that said the same thing as a lesson ("Build confidence from a stack of proof" ↔ "Confidence grows from your own successes"). So:
+
+- **One tab, "Gold"** (`/gold`, `/gold/<name>`), named by Marco: everything the videos gave, in one list. Filters: kind (All · Learnings · To try · Events), status (or, for events, Coming up · Past · No date), search. Sorting: most sources (the default) or newest (last updated). The old `/ideas`, `/learnings`, `/events` pages redirect there.
+- **Ideas fold into learnings.** A learning states what the videos teach and may end with a **Try it** section: the actions its sources suggest. A separate idea is only made for a pure action with no lesson behind it (a book, a tool, a project). "To try" lists both.
+- **Events stay their own kind**: they need dates, the Coming up / Past grouping and the calendar file.
+- **One status scale**: new, trying, kept, dropped, and going for events.
+- **The vault layout stays**: the `idea-`, `learning-` and `event-` files and folders keep their names, so links, checks, Delete and Undo work as before.
+- **The existing pairs are merged once** (`r2g gold merge`, with `--dry-run` first): the idea's action goes under its learning's Try it, its sources and the user's notes come along, links to it point to the learning, and the idea file is removed. It is a recorded run with one vault commit, so Undo reverts it.
+
 ## Data model (schema v9)
 
 All state stays in `data/r2g.sqlite`.
@@ -305,14 +316,16 @@ On 2026-10-15, each batch of 10 posts used 4–12 million cache-read tokens (abo
 Redesigned 2026-10-19 (Marco's request: Ideas and Videos as the main pages, collections in a sidebar, Settings as a card, runs linked to collections). Simplified 2026-10-20 (Marco: "the app is kind of complicated to use"): one Extract button, plain words instead of pipeline terms, technical detail folded away, no dry-run step in the app. Restyled 2026-10-20 from Marco's Claude Design project: always dark, near-black with one gold, Outfit / Instrument Sans / JetBrains Mono bundled in the app, the design's app icon (since 2026-10-21 the "R2G" icon: `static/icon.png` at 512 px for the app menu, `static/icon-32.png` for the browser tab); the screens and their structure did not change. Visual rules: `.claude/skills/design-system/` — read it before any UI change.
 
 **App shell.** A sidebar on every page (a top bar plus drawer under 768 px):
-- Ideas, Learnings, Events and Videos with counts, and History.
+- Gold and Videos with counts, and History (Ideas, Learnings and Events were three rows until 2026-10-27).
 - **Collections**: one row per connection: its name (→ its videos), "N videos" (plus "M waiting for a note" when some are), and its last extract in words ("Last extract yesterday: 7 notes, 0 ideas", → the run). The ⋯ button opens a card with links (its videos, its history, TikTok), Name and Link, an "Advanced" fold (Firefox cookies and profile, backup video links), "Extract only this one" when there are several collections, and Remove. + adds one: link and optional name; cookies under "Private collection?". The platform choice appears only once a second platform exists.
 - **Extract new videos**: one button that reads every collection, with a sentence saying what it does. Hidden while a run holds the lock.
 - A live run widget while a run holds the lock (from the app or a terminal): what it's doing, the last log line, See progress and Stop.
 - ⚙ **Settings** opens a card of fixed size (only the tab's content scrolls, the tabs stay put) with tabs: General (AI backend, models, notes per run; batch sizes, plan-usage stop and API budget under Advanced; the API key folded unless the API backend is picked), Usage (plan windows), About (downloader versions and update, brain path, Firefox profiles). Settings forms return to the page you were on with the card reopened. `/settings` renders the same panel as a page without JavaScript.
 - Quit.
 
-**Ideas** (`/`, `/ideas`, `/ideas/<name>`): the home page. Status chips (only statuses that have ideas) and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. When notes under the themes haven't been checked for ideas, a banner offers "Check them": a card that runs `r2g ideas rebuild` (all themes, or some under a fold) and writes straight to the brain — Undo is the safety net, so the app has no dry-run step (the CLI keeps `--dry-run`, and old previews stay reachable from their run page). Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up; status is changed in Obsidian.
+**Gold** (`/`, `/gold`, `/gold/<name>`, since 2026-10-27): the home page, one list of every idea, learning and event (see the decision above). Under the title: kind chips (All · Learnings · To try · Events), search, then status chips (for Events: Coming up · Past · No date) and sort chips (Most sources · Newest; not for Events, which keep their date order). Chips appear only for groups that have items, and every link keeps the other filters. In the mixed list each row says what it is ("Learning · to try", "To try", "Event"). The reading pane, Delete card, Add to calendar (`/gold/<name>/calendar.ics`) and the unchecked-notes banner ("N notes haven't been checked for gold yet", the rebuild card) work for every kind. Links between items open them in Gold. `/ideas`, `/learnings`, `/events` and `/<kind>s/<name>` redirect. Template `gold.html`, code `gold_view` in `web/app.py`. The three paragraphs below describe the pages before the merge; their behaviour lives on in Gold.
+
+**Ideas** (before 2026-10-27: `/ideas`, `/ideas/<name>`): the home page. Status chips (only statuses that have ideas) and search; from 1100 px the list sits beside a reading pane with the selected idea. Each idea shows its **source strip**: the supporting videos as tiny 9:16 frames (the signature element), linked to their videos in the reading pane. When notes under the themes haven't been checked for ideas, a banner offers "Check them": a card that runs `r2g ideas rebuild` (all themes, or some under a fold) and writes straight to the brain — Undo is the safety net, so the app has no dry-run step (the CLI keeps `--dry-run`, and old previews stay reachable from their run page). Idea files are read from `~/Projects/brain/Inbox/ideas/`, so Marco's edits show up; status is changed in Obsidian.
 
 **Learnings** (`/learnings`, `/learnings/<name>`, added 2026-10-20): the same page as Ideas (`ideas.html`, labels from `KIND_PAGES` in `web/app.py`) for `~/Projects/brain/Inbox/learnings/`: what the videos taught, combined across the videos that say the same thing. While notes aren't checked for learnings, a banner says the next Extract checks them, 25 at a time, and offers "Check them now" (the same rebuild card). Its ⋯ menu holds "Delete learning…", which works like deleting an idea.
 
@@ -334,6 +347,7 @@ docs/note-writing.md       history of the note-writing rules
 src/rot2gold/
   db.py                    schema v7, migration, WAL                (changed)
   delete.py                delete an idea, learning or event and, optionally, its videos
+  gold.py                  fold ideas into the learnings they put into practice (r2g gold merge)
   sync.py fetch.py process.py  ids, callbacks, typed errors        (changed)
   cli.py                   extract, ui, conn add|list|rm, lock      (changed)
   lock.py events.py errors.py

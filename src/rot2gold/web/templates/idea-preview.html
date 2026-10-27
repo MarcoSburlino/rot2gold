@@ -7,7 +7,7 @@
   {% set new_learnings = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'learning')|list|length %}
   {% set new_events = rows|rejectattr('is_update')|selectattr('kind', 'equalto', 'event')|list|length %}
   {% set update_count = rows|selectattr('is_update')|list|length %}
-  <a class="back-link back-link-page" href="/ideas">{{ icon('back') }} Ideas</a>
+  <a class="back-link back-link-page" href="/gold">{{ icon('back') }} Gold</a>
 
   <header class="page-head">
     <div>

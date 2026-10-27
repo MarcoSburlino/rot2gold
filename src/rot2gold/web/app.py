@@ -97,8 +97,8 @@ def plan_windows(plan_json: str | None) -> list[dict]:
     return out
 
 
-RUN_TITLES = {"extract": "Extract", "ideas": "Ideas, learnings and events from older notes",
-              "ideas-dry-run": "Ideas, learnings and events preview",
+RUN_TITLES = {"extract": "Extract", "ideas": "Gold from older notes", "ideas-dry-run": "Gold preview",
+              "gold-merge": "Ideas merged into learnings",
               "update": "Downloader update", "undo": "Undo", "delete": "Deleted an idea"}
 
 
@@ -134,6 +134,9 @@ def run_summary(run: dict) -> str:
                  if status == "ok" else "nothing was deleted"]
     elif kind == "undo":
         parts = ["vault changes reverted" if status == "ok" else "nothing was reverted"]
+    elif kind == "gold-merge":
+        merged = run.get("learnings_updated") or 0
+        parts = [f"ideas folded into {plural(merged, 'learning')}" if status == "ok" and merged else "nothing was merged"]
     else:
         parts = []
     text = ", ".join(p for p in parts if p)
@@ -230,8 +233,8 @@ def page(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx |= {"sidebar_conns": conns, "sidebar_links": {c["id"]: "\n".join(connections.links(con, c["id"])) for c in conns},
             "source_types": sources.SOURCES, "cookie_modes": connections.COOKIE_MODES, "browsers": browser_choices(), "on_windows": os.name == "nt",
             "firefox_profiles": profiles(), "notes_cfg": load()["notes"],
-            "idea_count": len(ideas.list_ideas()), "learning_count": len(ideas.list_learnings()),
-            "event_count": len(ideas.list_events()), "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
+            "gold_count": sum(len(list(ideas.kind_dir(kind).glob(f"{kind}-*.md"))) for kind in ideas.KINDS),
+            "post_count": con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]}
     ctx |= {"msg": request.query_params.get("msg"), "err": request.query_params.get("err")}
     return templates.TemplateResponse(request, name, ctx)
 
@@ -241,7 +244,7 @@ def back(path: str = "/", **params) -> RedirectResponse:
     return RedirectResponse(path + ("?" + urlencode(params) if params else ""), status_code=303)
 
 
-def back_to(request: Request, fallback: str = "/ideas", drop: tuple = (), **params) -> RedirectResponse:
+def back_to(request: Request, fallback: str = "/gold", drop: tuple = (), **params) -> RedirectResponse:
     """Redirect to the page the request came from (same origin only), with new msg/err params.
 
     `drop` removes query params that no longer make sense, e.g. the filter of a deleted collection.
@@ -465,7 +468,7 @@ def start_update(request: Request):
 
 @app.get("/")
 async def home(request: Request):
-    return back("/ideas")
+    return back("/gold")
 
 
 @app.post("/connections")
@@ -504,7 +507,7 @@ async def confirm_delete(request: Request, cid: int):
         conn = dict(connections.get(con, cid))
     except ValueError as exc:
         return back(err=str(exc))
-    return back("/ideas", err=f"Open the {conn['name']} collection menu to delete it.")
+    return back("/gold", err=f"Open the {conn['name']} collection menu to delete it.")
 
 
 @app.post("/connections/{cid}/delete")
@@ -514,8 +517,8 @@ def delete_connection(request: Request, cid: int):
     except ValueError as exc:
         return back_to(request, err=str(exc))
     if request.headers.get("referer", "").split("?")[0].endswith("/runs"):
-        return back("/ideas", msg="Collection removed. Its notes, ideas and media are kept.")
-    return back_to(request, drop=("conn",), msg="Collection removed. Its notes, ideas and media are kept.")
+        return back("/gold", msg="Collection removed. Its notes, gold and media are kept.")
+    return back_to(request, drop=("conn",), msg="Collection removed. Its notes, gold and media are kept.")
 
 
 @app.post("/extract")
@@ -604,6 +607,8 @@ def note_links(con):
             return None
         if name in videos_by_note:
             return f"/videos/{videos_by_note[name]}"
+        if ideas.kind_of(name):
+            return f"/gold/{name}"
         return notefile.obsidian_link(names[name])
 
     return link_for
@@ -703,10 +708,9 @@ async def video(request: Request, post_id: str):
         note_html = notefile.render(note.body, note_links(con))
         obsidian = notefile.obsidian_link(path)
     stem = Path(post["note_path"]).stem if post["note_path"] else None
-    related = {kind: [r for r in ideas.list_items(kind) if stem in r["sources"]] for kind in ideas.KINDS}
+    related = [r for kind in ideas.KINDS for r in ideas.list_items(kind) if stem in r["sources"]]
     return page(request, "video.html", post=post, images=images, segments=segments, conns=conns,
-                note=note, note_html=note_html, obsidian=obsidian,
-                related_ideas=related["idea"], related_learnings=related["learning"], related_events=related["event"])
+                note=note, note_html=note_html, obsidian=obsidian, related=related)
 
 
 @app.get("/media/{post_id}/{name}")
@@ -727,78 +731,126 @@ def idea_rows(con, folder=None, kinds=("idea",)):
             for item in items], lookup)
 
 
-# What differs between the Ideas, Learnings and Events pages; all three use ideas.html.
-KIND_PAGES = {
-    "idea": {"kind": "idea", "base": "/ideas", "label": "Ideas", "one": "idea", "many": "ideas",
-             "lede": "What your saved videos keep pointing to. New ones appear here after each Extract.",
-             "empty": "No ideas yet. Press <strong>Extract new videos</strong> in the sidebar: ideas appear here once a few videos point the same way.",
-             "status_hint": "To mark it as trying, kept or dropped, change <code>status</code> in Obsidian."},
-    "learning": {"kind": "learning", "base": "/learnings", "label": "Learnings", "one": "learning", "many": "learnings",
-                 "lede": "What your saved videos taught, combined across the videos that say the same thing.",
-                 "empty": "No learnings yet. Press <strong>Extract new videos</strong> in the sidebar: each Extract also checks your notes for what they teach.",
-                 "status_hint": "To mark it as kept or dropped, change <code>status</code> in Obsidian."},
-    "event": {"kind": "event", "base": "/events", "label": "Events", "one": "event", "many": "events",
-              "lede": "What your saved videos report or announce: things that happened, and things coming up.",
-              "empty": "No events yet. Press <strong>Extract new videos</strong> in the sidebar: each Extract also checks your notes for events.",
-              "status_hint": "To mark it as going, kept or dropped, change <code>status</code> in Obsidian."},
-}
+# Gold (2026-10-27): ideas, learnings and events in one list. Ideas fold into learnings as "Try it";
+# a separate idea is only a pure action. The kind filter, and what each chip keeps:
+GOLD_KINDS = {"learning": "Learnings", "try": "To try", "event": "Events"}
+STATUS_LABELS = {"new": "New", "trying": "Trying", "going": "Going", "kept": "Kept", "dropped": "Dropped"}
 # Events are filtered by when they happen, not by status.
 EVENT_GROUPS = {"upcoming": "Coming up", "past": "Past", "undated": "No date"}
+SORTS = {"sources": "Most sources", "date": "Newest"}
+STATUS_HINTS = {"idea": "To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.",
+                "learning": "To mark it as trying, kept or dropped, change <code>status</code> in Obsidian.",
+                "event": "To mark it as going, kept or dropped, change <code>status</code> in Obsidian."}
 
 
-def idea_view(request, name=None, status="all", q="", kind="idea"):
+def in_kind(item: dict, kind: str) -> bool:
+    return not kind or (item["try_it"] if kind == "try" else item["kind"] == kind)
+
+
+def gold_sorted(rows: list[dict], sort: str) -> list[dict]:
+    """Most sources first (the default), or newest first: by the date the item was last updated."""
+    newest = lambda r: r["updated"] or r["created"]
+    if sort == "date":
+        return sorted(rows, key=lambda r: (newest(r), r["support"]), reverse=True)
+    return sorted(rows, key=lambda r: (r["support"], newest(r)), reverse=True)
+
+
+def unchecked_notes(con) -> tuple[int, list[dict]]:
+    """How many notes still wait for the gold check, and the hub's themes for the Check card.
+
+    Ideas: only older notes under a theme count (new ones are checked by Extract). Learnings and
+    events: every unchecked note, since Extract works through them of any age.
+    """
+    pending = {kind: {Path(r["note_path"]).stem for r in con.execute(
+        f"SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND {column} IS NULL")}
+        for kind, (column, _) in ideas.CHECKS.items()}
+    themes = ideas.themes()
+    themed = {name for names in themes.values() for name in names}
+    waiting = (pending["idea"] & themed) | pending["learning"] | pending["event"]
+    return len(waiting), [{"name": n, "total": len(names), "unchecked": len(set(names) & waiting)} for n, names in themes.items()]
+
+
+def gold_view(request, name=None, kind="", status="", sort="", q=""):
     con = db.connect()
-    k = KIND_PAGES[kind]
-    all_rows = idea_rows(con, kinds=(kind,))
-    searched = [r for r in all_rows if not q.strip() or q.strip().lower() in
+    kind = kind if kind in GOLD_KINDS else ""
+    sort = sort if sort in SORTS else ""
+    all_rows = idea_rows(con, kinds=tuple(ideas.KINDS))
+    needle = q.strip().lower()
+    searched = [r for r in all_rows if not needle or needle in
                 " ".join(str(r[f]) for f in ("title", "description", "name")).lower()]
-    if kind == "event":
-        field, options = "timing", EVENT_GROUPS
-    else:
-        field, options = "status", {"new": "New", "trying": "Trying", "kept": "Kept", "dropped": "Dropped"}
-    counts = {key: sum(r[field] == key for r in searched) for key in options}
-    rows = [r for r in searched if status not in counts or r[field] == status]
+    kind_counts = {key: sum(in_kind(r, key) for r in searched) for key in GOLD_KINDS}
+    shown = [r for r in searched if in_kind(r, kind)]
+    field, options = ("timing", EVENT_GROUPS) if kind == "event" else ("status", STATUS_LABELS)
+    status = status if status in options else ""
+    counts = {key: sum(r[field] == key for r in shown) for key in options}
+    rows = [r for r in shown if not status or r[field] == status]
+    # Events keep their date order (Coming up soonest first, then Past); the rest follow the chosen sort.
+    rows = ideas.sort_events(rows) if kind == "event" else gold_sorted(rows, sort)
     selected = next((r for r in all_rows if r["name"] == name), None) if name else (rows[0] if rows else None)
     if name and not selected:
-        return back(k["base"], err=f"No {k['one']} named {name}. It may have been renamed or moved in Obsidian.")
+        return back("/gold", err=f"Nothing named {name} in Gold. It may have been renamed or moved in Obsidian.")
     html = notefile.render(notefile.read(selected["path"]).body, note_links(con)) if selected else ""
     removal = delete.plan(con, selected["name"]) if selected else None  # for the Delete card
-    column = ideas.CHECKS[kind][0]
-    pending = {Path(r["note_path"]).stem for r in con.execute(
-        f"SELECT note_path FROM posts WHERE status = 'done' AND note_path IS NOT NULL AND {column} IS NULL")}
-    themes = [{"name": n, "total": len(names), "unchecked": len(set(names) & pending)} for n, names in ideas.themes().items()]
-    # Ideas: only older notes under a theme need the button (new ones are checked by Extract).
-    # Learnings and events: every unchecked note counts, since Extract works through them of any age.
-    unchecked = len(pending & {name for names in ideas.themes().values() for name in names}) if kind == "idea" else len(pending)
+    # After a delete, open the row above it (or below, for the first row), so the list keeps its place.
+    at = next((i for i, r in enumerate(rows) if selected and r["name"] == selected["name"]), None)
+    neighbour = None if at is None or len(rows) < 2 else rows[at - 1 if at else 1]["name"]
+    unchecked, themes = unchecked_notes(con)
+    current = {"kind": kind, "status": status, "sort": sort, "q": q.strip()}
 
-    def query(**params):
-        params = {key: v for key, v in params.items() if v and v != "all"}
-        return "?" + urlencode(params) if params else ""
+    def link(path="/gold", **change):
+        """This page's address with some filters changed; the others are kept."""
+        params = {key: v for key, v in (current | change).items() if v}
+        return path + ("?" + urlencode(params) if params else "")
 
-    # Only statuses that have items get a chip, so a new list shows just "All 28 · New 28".
-    chips = [{"label": label, "href": k["base"] + query(status=key, q=q), "count": len(searched) if key == "all" else counts[key],
-              "current": status == key or (key == "all" and status not in counts)}
-             for key, label in {"all": "All", **options}.items()
-             if key == "all" or counts[key] or status == key]
-    calendar = selected and kind == "event" and ideas.calendar_file(selected) is not None
-    return page(request, "ideas.html", k=k, rows=rows, selected=selected, html=html, removal=removal, themes=themes,
-                unchecked=unchecked, chips=chips, keep=query(status=status, q=q), status=status if status in counts else "",
-                q=q, detail_page=bool(name), groups=EVENT_GROUPS, calendar=calendar)
-
-
-@app.get("/ideas", response_class=HTMLResponse)
-async def idea_index(request: Request, status: str = "all", q: str = ""):
-    return idea_view(request, status=status, q=q)
-
-
-@app.get("/learnings", response_class=HTMLResponse)
-async def learning_index(request: Request, status: str = "all", q: str = ""):
-    return idea_view(request, status=status, q=q, kind="learning")
+    # Kinds are tabs. A new kind drops the status filter: events are filtered by date, the rest by status.
+    kind_tabs = [{"label": "All", "href": link(kind="", status=""), "count": len(searched), "current": not kind}] + [
+        {"label": label, "href": link(kind=key, status=""), "count": kind_counts[key], "current": kind == key}
+        for key, label in GOLD_KINDS.items() if kind_counts[key] or kind == key]
+    # Status chips only when they can tell items apart: with everything "New" there is nothing to pick.
+    statuses = [key for key in options if counts[key] or status == key]
+    status_chips = [{"label": "All", "href": link(status=""), "count": len(shown), "current": not status}] + [
+        {"label": options[key], "href": link(status=key), "count": counts[key], "current": status == key}
+        for key in statuses] if len(statuses) > 1 or status else []
+    sort_chips = [{"label": label, "href": link(sort="" if key == "sources" else key), "current": (sort or "sources") == key}
+                  for key, label in SORTS.items()] if kind != "event" else []
+    calendar = selected and selected["kind"] == "event" and ideas.calendar_file(selected) is not None
+    return page(request, "gold.html", rows=rows, selected=selected, html=html, removal=removal, themes=themes,
+                unchecked=unchecked, kind_tabs=kind_tabs if len(kind_tabs) > 1 else [],
+                status_chips=status_chips, sort_chips=sort_chips, f=current,
+                keep=link(""), anything=bool(all_rows), detail_page=bool(name), groups=EVENT_GROUPS, calendar=calendar,
+                neighbour=neighbour, status_hints=STATUS_HINTS)
 
 
-@app.get("/events", response_class=HTMLResponse)
-async def event_index(request: Request, status: str = "all", q: str = ""):
-    return idea_view(request, status=status, q=q, kind="event")
+@app.get("/gold", response_class=HTMLResponse)
+async def gold_index(request: Request, kind: str = "", status: str = "", sort: str = "", q: str = ""):
+    return gold_view(request, kind=kind, status=status, sort=sort, q=q)
+
+
+def is_item_name(name: str) -> bool:
+    return ideas.kind_of(name) is not None and Path(name).name == name
+
+
+@app.get("/gold/{name}", response_class=HTMLResponse)
+async def gold_detail(request: Request, name: str, kind: str = "", status: str = "", sort: str = "", q: str = ""):
+    if not is_item_name(name):
+        return HTMLResponse("Not found", status_code=404)
+    return gold_view(request, name, kind, status, sort, q)
+
+
+# The pages before Gold: their addresses still work.
+@app.get("/ideas")
+async def old_ideas():
+    return back("/gold")
+
+
+@app.get("/learnings")
+async def old_learnings():
+    return back("/gold", kind="learning")
+
+
+@app.get("/events")
+async def old_events():
+    return back("/gold", kind="event")
 
 
 @app.post("/ideas/rebuild")
@@ -850,13 +902,16 @@ def apply_preview(run_id: int):
     # recorded_run stores a failure in the run's history instead of raising it: check how it ended.
     if done is None:
         return back(f"/ideas/preview/{run_id}", err=run_failure(run))
-    return back("/ideas", msg=f"Applied dry run {run_id}: {plural(len(done['copied']), 'note')} written to your vault"
+    return back("/gold", msg=f"Applied dry run {run_id}: {plural(len(done['copied']), 'note')} written to your vault"
                 + (f", {len(done['skipped'])} skipped because you changed them since" if done["skipped"] else "")
                 + (f" (commit {done['commit']})" if done["commit"] else "") + ".")
 
 
-def delete_item(request: Request, name: str, with_videos: str):
-    """Quick (no AI): runs in the request, under the pipeline lock, as a run Undo can revert."""
+def delete_item(request: Request, name: str, with_videos: str, then: str = ""):
+    """Quick (no AI): runs in the request, under the pipeline lock, as a run Undo can revert.
+
+    `then` is the item to open afterwards (the row above in the list); the list's filter comes from the query.
+    """
     from ..runs import recorded_run
     done = None
     try:
@@ -871,47 +926,20 @@ def delete_item(request: Request, name: str, with_videos: str):
     if done is None:
         return back_to(request, err=run_failure(run))
     videos = len(done["videos"])
-    return back(KIND_PAGES[ideas.kind_of(name)]["base"],
+    path = "/gold" + (f"/{then}" if then and is_item_name(then) and then != name else "")
+    return back(path, **{key: request.query_params.get(key, "") for key in ("kind", "status", "sort", "q")},
                 msg=f"Deleted “{title}”" + (f" and {videos} {'video' if videos == 1 else 'videos'}" if videos else "")
                 + (". You can undo it from History." if brain.uses_git() else "."))
 
 
-@app.post("/ideas/{name}/delete")
-def delete_idea(request: Request, name: str, with_videos: str = Form("")):
-    if ideas.kind_of(name) != "idea":
+@app.post("/gold/{name}/delete")
+def delete_gold(request: Request, name: str, with_videos: str = Form(""), then: str = Form("")):
+    if not is_item_name(name):
         return HTMLResponse("Not found", status_code=404)
-    return delete_item(request, name, with_videos)
+    return delete_item(request, name, with_videos, then)
 
 
-@app.post("/learnings/{name}/delete")
-def delete_learning(request: Request, name: str, with_videos: str = Form("")):
-    if ideas.kind_of(name) != "learning":
-        return HTMLResponse("Not found", status_code=404)
-    return delete_item(request, name, with_videos)
-
-
-@app.get("/ideas/{name}", response_class=HTMLResponse)
-async def idea_detail(request: Request, name: str, status: str = "all", q: str = ""):
-    if not name.startswith("idea-") or Path(name).name != name:
-        return HTMLResponse("Not found", status_code=404)
-    return idea_view(request, name, status, q)
-
-
-@app.get("/learnings/{name}", response_class=HTMLResponse)
-async def learning_detail(request: Request, name: str, status: str = "all", q: str = ""):
-    if not name.startswith("learning-") or Path(name).name != name:
-        return HTMLResponse("Not found", status_code=404)
-    return idea_view(request, name, status, q, kind="learning")
-
-
-@app.post("/events/{name}/delete")
-def delete_event(request: Request, name: str, with_videos: str = Form("")):
-    if ideas.kind_of(name) != "event":
-        return HTMLResponse("Not found", status_code=404)
-    return delete_item(request, name, with_videos)
-
-
-@app.get("/events/{name}/calendar.ics")
+@app.get("/gold/{name}/calendar.ics")
 def event_calendar(name: str):
     """Add to calendar: an .ics file for an upcoming event with a full date."""
     item = next((e for e in ideas.list_events() if e["name"] == name), None) if ideas.kind_of(name) == "event" else None
@@ -922,11 +950,11 @@ def event_calendar(name: str):
                     headers={"Content-Disposition": f'attachment; filename="{name.removeprefix("event-")}.ics"'})
 
 
-@app.get("/events/{name}", response_class=HTMLResponse)
-async def event_detail(request: Request, name: str, status: str = "all", q: str = ""):
-    if not name.startswith("event-") or Path(name).name != name:
-        return HTMLResponse("Not found", status_code=404)
-    return idea_view(request, name, status, q, kind="event")
+@app.get("/ideas/{name}")
+@app.get("/learnings/{name}")
+@app.get("/events/{name}")
+async def old_item(name: str):
+    return back(f"/gold/{name}") if is_item_name(name) else HTMLResponse("Not found", status_code=404)
 
 
 @app.get("/runs", response_class=HTMLResponse)

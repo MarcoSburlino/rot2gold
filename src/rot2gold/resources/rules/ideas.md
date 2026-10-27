@@ -6,21 +6,28 @@ Read the vault rules first (`vault-rules.md`, next to this file), and the user's
 
 ## What an idea is
 
-An idea is **a concrete thing the user could do**: a practice to try, a method, a tool, a book to read, a project or business idea. It is written as an action ("Try the Feynman technique on the next topic I study"), not as a topic ("Learning").
+An idea is **a concrete thing the user could do that no learning covers**: a book to read, a tool to try, a project or business idea. It is written as an action ("Read Atomic Habits", "Run a mixture-of-experts model in the local setup"), not as a topic ("Learning").
+
+**Most actions are not ideas.** When a video teaches something and suggests what to do with it ("explaining out loud shows your gaps, so explain the next topic to a friend"), the lesson is a learning and the action goes under that learning's `## Try it` (see "What a learning is"). Make a separate idea only for an action with no lesson behind it. The app shows ideas and learnings with a Try it together as "To try", so nothing is lost.
 
 Its value comes from its **sources**: the notes that point to it. An idea that several independent sources point toward is stronger than an idea from one post.
 
-What is *not* an idea: a quote, an opinion to agree with, a fact, a general theme ("stoicism"), or a purchase someone is promoting.
+What is *not* an idea: a quote, an opinion to agree with, a fact, a general theme ("stoicism"), a purchase someone is promoting, or an action that puts a learning into practice (that goes under the learning's `## Try it`).
 
 ## What a learning is
 
 A learning is **something understood about how things work**: a principle, a mechanism, a pattern or a finding that a video teaches. It is written as one sentence that states it ("Explaining a topic out loud shows the gaps that rereading hides"), not as a topic ("Learning techniques") and not as an action (that is an idea).
 
+A learning is about **the subject of the video**: what it teaches about the world, people, the mind, a skill or a tool. It is never about the video itself or about how it makes its case.
+
 Learnings answer: what did a video teach, does another video say something related, and how do the sources combine into **one shared learning**. So a learning note is written to grow: the first video gives it, later videos that say the same thing (or add evidence, a reason, a limit) are added to it, and its paragraph is rewritten as what the sources say together.
 
 - A learning may come from **one source** (`support: 1`). It is not a copy of that video's Key points or Insights: it is the one reusable lesson, phrased so another video could support it.
-- What is *not* a learning: a bare quote, a motivational slogan with no claim in it, a fact about the video itself ("the creator uses subtitles"), or a claim the note's **Checked** section found false. A disputed claim can be a learning only if the note says so in the text ("a small commercial study claims…").
-- **Ideas and learnings link up.** When an idea puts a learning into practice, the learning lists it under `## Use it` and the idea lists the learning under `## Learnings behind it`. A note can give an idea, a learning, both, or neither.
+- What is *not* a learning: a bare quote, a motivational slogan with no claim in it, a fact about the video itself ("the creator uses subtitles"), or a claim the note's **Checked** section found false.
+- **Not a learning: a verdict on how a video argues.** That a statistic has no source, a quote is misattributed or cut from its context, a famous name or an official-sounding file lends a claim authority, or a clip overstates a study: these come from the note's **Checked** section, not from what the video teaches. Never make a learning out of them, and never gather them across videos into one ("short clips often cite unproven numbers"). Only a video that is itself *about* this (one explaining how statistics mislead) teaches it, and then it is that video's learning.
+- **Fact-checks go in a footnote.** The title and the paragraph state the learning as its sources teach it, attributed where it is only a claim ("Jim Rohn argues…", "a small commercial study claims…"). When a source's **Checked** section disputes part of it, put the verdict in a footnote: a marker after the sentence it concerns (`…the stronger trees.[^1]`) and, after the paragraph, one line per point (`[^1]: The "65% less anxiety" figure in [[video-a]] comes from a small commercial study.`). Keep it to the points that matter, one line each. The title never carries a verdict ("…though less than speakers claim").
+- **Try it.** When the sources suggest something to do with the lesson (a practice, an exercise, a method), list it under `## Try it`: one line per action, written as an action, with the note it comes from: `- Keep a list of your wins and reread it before a hard task ([[video-a]])`. Only what the sources suggest, never advice of your own. Leave the section out when they suggest nothing. A later video that suggests another way to do it adds a line.
+- **Ideas and learnings link up.** When a separate idea is related to a learning, the learning lists it under `## Try it` (`- [[idea-…]]`) and the idea lists the learning under `## Learnings behind it`. A note can give a learning, an idea, both, or neither.
 
 ## What an event is
 
@@ -57,6 +64,8 @@ The app gives the agent the list of notes to consider. The agent only writes ide
 
 The goal is **a few ideas that grow** as more videos point to them, not a new idea at every Extract. So in every pass:
 
+- An action that fits an **existing learning** (it puts that lesson into practice) is added to that learning's `## Try it`, never made into a new idea.
+
 - A note that **fits an existing idea updates it**. It fits when it supports the same goal or practice, even from a different angle, with a different method to reach the same thing, or as a narrower or broader version of it. "Explain a topic out loud to find the gaps" fits "Try the Feynman technique"; another clip about writing down long-term goals fits "Write a five-year plan"; a different speaker making the same point fits.
 - If several existing ideas fit, update only the **closest** one (the same action first, then the same goal).
 - A **dropped** idea still counts: a note that fits it records its support there and never creates a near-copy.
@@ -72,7 +81,7 @@ The prompt lists every existing idea, learning and event (file, title, descripti
 ## Steps
 
 1. **Read what exists.** Start from the list of existing ideas in the prompt; open an idea's full note when a candidate might fit it.
-2. **Read the notes to consider**, one at a time. For each, ask: does it contain a concrete action (see "What an idea is")? Note it as a candidate with the note as its source. Most notes have none; that is normal.
+2. **Read the notes to consider**, one at a time. For each, ask: what does it teach (a learning), what does it suggest doing with that (the learning's Try it), is there an action with no lesson behind it (an idea), and does it report or announce a happening (an event)? Note each as a candidate with the note as its source. Many notes give only a learning, and some give nothing; that is normal.
 3. **Look for support** for each candidate:
    - older video notes: the hub note (themes and tags), then `rg -il "<term>" <videos folder>`;
    - the rest of the vault: `rg -il "<term>" <vault>`. A note of the user's that already does or plans something similar counts;
@@ -89,7 +98,7 @@ The prompt lists every existing idea, learning and event (file, title, descripti
 
 ## Counting sources
 
-- `support` is the number of **independent** sources in `sources:`.
+- `support` is the number of **independent** sources in `sources:`. The app recounts it after you write, so an exact count isn't needed.
 - Each note is one source. A video note and any other note in the vault are both sources.
 - Two posts **by the same creator** making the same point count as **one** source (list both, count one).
 - Quote slideshows that repeat the same famous quote count as one source per creator, not per post.
@@ -180,7 +189,9 @@ tags:
 
 > [!note] AI-generated learning drawn from the notes below. Not verified fact.
 
-<2–4 lines: the shared learning, what the sources say together, and how strong the evidence is.>
+<2–4 lines: the shared learning, what the sources say together, and how strong the evidence is.>[^1]
+
+[^1]: <only if a source's Checked section disputes part of it: one line per point>
 
 ## What each source adds
 
@@ -190,8 +201,9 @@ tags:
 
 - [[video-c]] — <one line: what it says against or beside it>
 
-## Use it
+## Try it
 
+- <an action the sources suggest, as an action> ([[video-a]])
 - [[idea-…]]
 
 ## Events that show it
@@ -210,8 +222,8 @@ tags:
 
 ```
 
-- Counting sources, `status` (the user's values: `new`, `kept`, `dropped`), tags (always `learning`), omitting empty sections (`## Where they differ`, `## Use it`, `## Related learnings`) and language follow the idea rules above.
-- `## Use it` lists only existing ideas. If no idea applies the learning, leave the section out; never invent advice to fill it.
+- Counting sources, `status` (the user's values: `new`, `trying`, `kept`, `dropped`), tags (always `learning`), omitting empty sections (`## Where they differ`, `## Try it`, `## Related learnings`) and language follow the idea rules above.
+- `## Try it` holds only what the sources suggest, and links to existing ideas. If they suggest nothing, leave the section out; never invent advice to fill it. Older learnings may have a `## Use it` section with idea links: treat it as `## Try it`.
 - `## Events that show it` (optional) lists the events that illustrate the learning.
 
 ## Event note format
@@ -271,6 +283,6 @@ tags:
 - A learning reports what its sources claim and how well supported it is; it never upgrades an opinion or an anecdote into a fact.
 - An event reports what the videos say happened, and carries over the note's checks: "the note's sources confirm the strikes; the bot claim is disputed". A figure or a cause that only the video gives is attributed to it ("the video says…").
 - An idea's title is an action, but the body reports what the sources say: "Three posts recommend…", "The Jim Rohn talk suggests…". No advice of your own beyond what the sources say.
-- If a source's note rated a related claim in its **Checked** section, carry the verdict over: "the '65% less anxiety' figure comes from a small commercial study (see the note)". Never present a disputed claim as fact.
+- If a source's note rated a related claim in its **Checked** section, carry the verdict over in a footnote (see "What a learning is"): `[^1]: The "65% less anxiety" figure in [[video-a]] comes from a small commercial study.` Never present a disputed claim as fact.
 - Keep it short. An idea or learning note is a pointer to its sources, not an essay.
 - Never invent a source or a link. Every `[[link]]` must be an existing note: check before linking.

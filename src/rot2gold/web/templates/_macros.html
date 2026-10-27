@@ -14,6 +14,28 @@
 {%- endmacro %}
 
 {% macro post_pill(status) -%}{{ pill(LABELS[status], 'mark' if status in ('new', 'fetched', 'processed') else '') }}{%- endmacro %}
+{# A row of filter chips: [{label, href, current, count (optional)}]. #}
+{% macro chip_nav(chips, label, extra='') -%}
+  <nav class="chips{{ ' ' ~ extra if extra }}" aria-label="{{ label }}">
+    {{- caller() if caller else '' -}}
+    {%- for chip in chips %}
+      <a class="chip" href="{{ chip.href }}" {% if chip.current %}aria-current="true"{% endif %}>
+        {{ chip.label }}{% if chip.count is defined %} <span class="num">{{ chip.count }}</span>{% endif %}
+      </a>
+    {%- endfor %}
+  </nav>
+{%- endmacro %}
+
+{# What a Gold item is: Learning, To try (an idea, or a learning with a Try it) or Event.
+   `hide` drops the badge the current filter already says ("learning", "try", "event"). #}
+{% macro kind_tags(item, hide='') -%}
+  <span class="kind-tags">
+    {%- if item.kind == 'learning' and hide != 'learning' %}<span class="kind">{{ icon('bulb') }} Learning</span>{% endif %}
+    {%- if item.try_it and hide != 'try' %}<span class="kind kind-try">{{ icon('target') }} To try</span>{% endif %}
+    {%- if item.kind == 'event' and hide != 'event' %}<span class="kind">{{ icon('calendar') }} Event</span>{% endif -%}
+  </span>
+{%- endmacro %}
+
 {% macro idea_pill(status) -%}{{ pill(status, 'mark' if status == 'new' else '') }}{%- endmacro %}
 {% macro run_pill(status) -%}
   {%- if status == 'running' %}<span class="pill pill-mark"><span class="dot" aria-hidden="true"></span>{{ status }}</span>
@@ -47,7 +69,15 @@
       {%- endfor %}
       {%- if tiles|length > 6 %}<span class="tile tile-more" title="{{ tiles|length - 6 }} more sources">+{{ tiles|length - 6 }}</span>{% endif %}
     </div>
-    <span class="support">{{ idea.support }} {{ 'source' if idea.support == 1 else 'sources' }}</span>
+    {#- How many videos it links, and from how many creators when some made more than one (support counts creators). #}
+    {%- set count = idea.sources|length -%}
+    {%- set noun = 'source' if tiles|selectattr('kind', 'equalto', 'note')|list else 'video' -%}
+    <span class="support-line">
+      <span class="support">{{ count }} {{ noun if count == 1 else noun ~ 's' }}</span>
+      {%- if idea.support != count %}
+      <span class="support-from">from {{ idea.support }} {{ 'creator' if idea.support == 1 else 'creators' }}</span>
+      {%- endif %}
+    </span>
   </div>
 {%- endmacro %}
 

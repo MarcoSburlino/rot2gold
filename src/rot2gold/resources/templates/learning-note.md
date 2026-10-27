@@ -15,7 +15,9 @@ tags:
 
 > [!note] AI-generated learning drawn from the notes below. Not verified fact.
 
-<2–4 lines: the shared learning, what the sources say together, and how strong the evidence is.>
+<2–4 lines: the shared learning, what the sources say together, and how strong the evidence is.>[^1]
+
+[^1]: <only if a source's Checked section disputes part of it: one line per point> <!-- omit if none -->
 
 ## What each source adds
 
@@ -25,9 +27,10 @@ tags:
 
 - [[<source note>]] — <one line: what it says against or beside it> <!-- omit section if none -->
 
-## Use it
+## Try it
 
-- [[idea-<slug>]] <!-- ideas that put this learning into practice; omit section if none -->
+- <an action the sources suggest, as an action> ([[<source note>]]) <!-- only what the sources suggest; omit section if none -->
+- [[idea-<slug>]] <!-- a related separate idea, if any -->
 
 ## Events that show it
 

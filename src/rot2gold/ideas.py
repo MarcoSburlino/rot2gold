@@ -30,6 +30,8 @@ KINDS = {"idea": "ideas", "learning": "learnings", "event": "events"}
 # in a batch row and in a dry-run manifest ("considered" is the ideas check, from before the others existed).
 CHECKS = {"idea": ("ideas_checked_at", "considered"), "learning": ("learnings_checked_at", "learned"),
           "event": ("events_checked_at", "events_seen")}
+# A learning's "## Try it" section with at least one item in it.
+TRY_IT = re.compile(r"^## Try it\s*\n(?:\s*\n)*- ", re.M)
 # The runs counters: ideas_created, ideas_updated, learnings_created, …
 COUNTERS = tuple(f"{kind}s_{action}" for kind in KINDS for action in ("created", "updated"))
 
@@ -288,8 +290,9 @@ def run_pass(con, post_ids, cfg, report, run_id=None, dry_run=False, api_key=Non
                 result[key if kind == "idea" else f"{kind}s_{key}"].append(str(path))
                 batch_counts[f"{kind}s_{key}"] += 1
                 report(f"{key} {kind} {path.name}")
+                recount(path, names)
                 meta = notefile.read(path, head_only=True).meta
-                for field in ("description", "support", "sources") + (("when",) if kind == "event" else ()):
+                for field in ("description", "sources") + (("when",) if kind == "event" else ()):
                     if not meta.get(field):
                         report(f"{path.name}: missing {field} front matter", level="warn")
                 for source in _source_names(meta.get("sources")):
@@ -359,7 +362,7 @@ def event_timing(when: str, until: str = "", today: date | None = None) -> str:
     return "upcoming" if end > now or (end == now and len(end) == 10) else "past"
 
 
-def _sort_events(items: list[dict]) -> list[dict]:
+def sort_events(items: list[dict]) -> list[dict]:
     """Coming up first (soonest first), then past (most recent first), then those without a date."""
     upcoming = sorted((i for i in items if i["timing"] == "upcoming"), key=lambda i: i["when"])
     past = sorted((i for i in items if i["timing"] == "past"), key=lambda i: i["until"] or i["when"], reverse=True)
@@ -385,28 +388,49 @@ def calendar_file(item: dict) -> str | None:
     return "".join("\r\n ".join(line[i:i + 60] for i in range(0, len(line), 60)) + "\r\n" for line in lines)
 
 
-def list_items(kind: str, folder=None) -> list[dict]:
+def recount(path: Path, names: dict[str, Path]) -> bool:
+    """Set an item's `support:` to its number of independent sources (the AI's count can be stale).
+    True if the file changed."""
+    text = path.read_text()
+    head = re.match(r"---\n(.*?\n)---\n", text, re.S)
+    if not head:
+        return False
+    fm = head.group(1)
+    line = f"support: {notefile.support(_source_names(notefile.read(path, head_only=True).meta.get('sources')), names)}\n"
+    found = re.search(r"(?m)^support:.*\n", fm)
+    if found:
+        fixed = fm[:found.start()] + line + fm[found.end():]
+    else:
+        at = re.search(r"(?m)^sources:", fm)
+        fixed = fm[:at.start()] + line + fm[at.start():] if at else fm + line
+    if fixed == fm:
+        return False
+    path.write_text("---\n" + fixed + "---\n" + text[head.end():])
+    return True
+
+
+def list_items(kind: str, folder=None, names: dict[str, Path] | None = None) -> list[dict]:
+    """`support` is counted from the sources here, not read from the file, so it is never stale."""
+    names = notefile.brain_names() if names is None else names
     out = []
     for path in (folder or kind_dir(kind)).glob(f"{kind}-*.md"):
         note = notefile.read(path, head_only=True)
         meta = note.meta
         sources = _source_names(meta.get("sources"))
-        try:
-            support = int(meta.get("support", len(sources)))
-        except (ValueError, TypeError):
-            support = len(sources)
         item = {"name": path.stem, "kind": kind, "path": path, "title": note.title,
                 "description": meta.get("description", ""), "status": meta.get("status", "new"),
-                "support": support, "created": str(meta.get("created", "")),
+                "support": notefile.support(sources, names), "created": str(meta.get("created", "")),
                 "updated": str(meta.get("updated", "")), "sources": sources,
-                "tags": meta.get("tags", [])}
+                "tags": meta.get("tags", []),
+                # "To try" in Gold: every idea, and a learning whose sources suggest something to do.
+                "try_it": kind == "idea" or (kind == "learning" and TRY_IT.search(path.read_text()) is not None)}
         if kind == "event":
             when, until = (str(meta.get(f) or "").strip() for f in ("when", "until"))
             item |= {"when": when, "until": until, "where": str(meta.get("where") or "").strip(),
                      "timing": event_timing(when, until)}
         out.append(item)
     if kind == "event":
-        return _sort_events(out)
+        return sort_events(out)
     return sorted(out, key=lambda x: (x["support"], x["updated"]), reverse=True)
 
 

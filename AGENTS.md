@@ -39,6 +39,7 @@ r2g ideas list     # idea notes by support, status, name and title
 r2g ideas themes   # themes with total and unchecked note counts
 r2g ideas pass     # new unchecked notes; --conn 1,2  --dry-run
 r2g ideas rebuild  # unchecked notes under themes; --themes "Name,Other"  --limit N  --dry-run
+r2g gold merge     # fold ideas into the learnings they put into practice; --dry-run  --yes
 r2g conn list      # connections; add <url> [--name N] | edit <id> | rm <id> | links <id> < urls.txt
 r2g runs           # recent runs with counts and AI usage
 r2g undo <run_id> [--yes]  # revert a run's brain commits and reopen its posts

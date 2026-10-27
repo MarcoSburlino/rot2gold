@@ -65,19 +65,24 @@ def sample(tmp_path, monkeypatch):
 def test_pages_and_links(sample):
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
-            for path in ("/ideas", "/ideas/idea-one", "/videos", "/videos?conn=1&status=done", "/videos/101",
+            for path in ("/gold", "/gold/idea-one", "/videos", "/videos?conn=1&status=done", "/videos/101",
                          "/runs", "/runs?conn=1", "/runs?kind=ideas", "/runs/1", "/settings",
                          "/settings/panel", "/ideas/preview/5"):
                 response = await client.get(path)
                 assert response.status_code == 200, (path, response.text[:500])
             home = await client.get("/", follow_redirects=False)
-            assert home.status_code == 303 and home.headers["location"] == "/ideas"
+            assert home.status_code == 303 and home.headers["location"] == "/gold"
+            # The pages before Gold still work: they redirect.
+            for old, new in (("/ideas", "/gold"), ("/learnings", "/gold?kind=learning"), ("/events", "/gold?kind=event"),
+                             ("/ideas/idea-one", "/gold/idea-one"), ("/learnings/learning-x", "/gold/learning-x")):
+                moved = await client.get(old, follow_redirects=False)
+                assert moved.status_code == 303 and moved.headers["location"] == new, old
             panel = (await client.get("/settings/panel")).text
             assert "<html" not in panel.lower() and "stored-secret-do-not-render" not in panel
-            detail = (await client.get("/ideas/idea-one")).text
+            detail = (await client.get("/gold/idea-one")).text
             assert 'aria-current="true"' in detail
             assert 'href="/videos/101"' in detail and '/media/101/frame.jpg' in detail
-            assert "Ideas from this video" in (await client.get("/videos/101")).text
+            assert "Gold from this video" in (await client.get("/videos/101")).text
             filtered = (await client.get("/runs?conn=1")).text
             assert 'href="/runs/1"' in filtered and 'href="/runs/3"' in filtered
             assert 'href="/runs/2"' not in filtered
@@ -117,18 +122,18 @@ def test_actions_return_to_the_page_they_came_from(sample, monkeypatch):
             elsewhere = await client.post("/connections", data={"platform": "tiktok", "url": "x"},
                                           headers={"Origin": "http://127.0.0.1:8740", "Referer": "http://evil.example/videos"},
                                           follow_redirects=False)
-            assert elsewhere.headers["location"].startswith("/ideas")  # never redirect to another site's path
+            assert elsewhere.headers["location"].startswith("/gold")  # never redirect to another site's path
 
-            hidden = await client.get("/ideas/idea-one?status=kept")  # idea-one is "new", so the filter hides it
+            hidden = await client.get("/gold/idea-one?status=kept")  # idea-one is "new", so the filter hides it
             assert hidden.status_code == 200 and "Try this idea" in hidden.text
 
-            missing = await client.get("/ideas/idea-gone", follow_redirects=False)
+            missing = await client.get("/gold/idea-gone", follow_redirects=False)
             assert missing.status_code == 303 and "err=" in missing.headers["location"]
 
             undo = await client.post("/runs/1/undo", headers=here, follow_redirects=False)
             assert undo.headers["location"].startswith("/runs/1?") and "err=" in undo.headers["location"]
 
-            page = (await client.get("/ideas?msg=Saved")).text
+            page = (await client.get("/gold?msg=Saved")).text
             assert 'data-msg=""' in page  # an ordinary message never leaks into the Settings card
     asyncio.run(check())
 
@@ -137,10 +142,11 @@ def test_simple_pages(sample):
     """The 2026-10-20 simplification: plain History, one Extract button, chips only for what exists."""
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
-            ideas_page = (await client.get("/ideas")).text
+            ideas_page = (await client.get("/gold")).text
             assert "Extract new videos" in ideas_page and 'type="checkbox" name="conn"' not in ideas_page
             assert "Trying" not in ideas_page  # no idea is "trying", so there is no chip for it
-            assert "1 older note hasn" in ideas_page and "Check them" in ideas_page  # video-one is under a theme, unchecked
+            assert 'aria-label="Filter by status"' not in ideas_page  # everything is "new": nothing to pick
+            assert "1 note hasn" in ideas_page and "checked for gold yet" in ideas_page and "Check them" in ideas_page  # video-one is unchecked
             history = (await client.get("/runs")).text
             assert "Extract · Collection 1" in history and "No new notes, no new ideas, learnings or events." in history
             run = (await client.get("/runs/2")).text
@@ -178,11 +184,14 @@ def test_delete_an_idea_with_its_videos_and_undo_it(sample, monkeypatch):
 
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
-            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/ideas/idea-one"}
-            page = (await client.get("/ideas/idea-one")).text
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/gold/idea-one"}
+            page = (await client.get("/gold/idea-one")).text
             assert 'id="delete-idea"' in page and "Also delete its video" in page
-            done = await client.post("/ideas/idea-one/delete", data={"with_videos": "1"}, headers=here, follow_redirects=False)
-            assert done.headers["location"].startswith("/ideas?msg=")
+            assert '<span class="support">2 videos</span>' in page and "from" not in page.split('class="support"')[1][:80]
+            assert 'name="then" value="idea-two"' in page  # the row next to it opens after the delete
+            done = await client.post("/gold/idea-one/delete?status=new", data={"with_videos": "1", "then": "idea-two"},
+                                     headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/gold/idea-two?status=new&msg=")  # same list, same filter
             assert not (vault / "Inbox/ideas/idea-one.md").exists() and not (videos / "video-one.md").exists()
             assert (videos / "video-two.md").exists()
             assert "[[idea-one]]" not in (vault / "Inbox/ideas/idea-two.md").read_text()
@@ -225,20 +234,21 @@ def test_learnings_page_video_rail_and_delete(sample, monkeypatch):
 
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
-            listing = (await client.get("/learnings")).text
-            assert "<h1>Learnings</h1>" in listing and "Explaining shows the gaps" in listing
-            assert 'href="/learnings/learning-one"' in listing and "Delete learning…" in listing
-            assert "1 note hasn" in listing and "checked for learnings yet" in listing
-            assert 'href="/learnings" aria-current="page"' in listing
-            assert (await client.get("/learnings/learning-one")).status_code == 200
-            assert (await client.get("/learnings/idea-one")).status_code == 404
-            assert (await client.get("/learnings/learning-missing", follow_redirects=False)).status_code == 303
+            listing = (await client.get("/gold?kind=learning")).text
+            assert "<h1>Gold</h1>" in listing and "Explaining shows the gaps" in listing
+            assert 'href="/gold/learning-one?kind=learning"' in listing and "Delete learning…" in listing
+            assert "Try this idea" not in listing.split('class="list-pane"')[1].split("</section>")[0]
+            assert "1 note hasn" in listing and "checked for gold yet" in listing
+            assert 'href="/gold" aria-current="page"' in listing
+            assert (await client.get("/gold/learning-one")).status_code == 200
+            assert (await client.get("/gold/notes-one")).status_code == 404
+            assert (await client.get("/gold/learning-missing", follow_redirects=False)).status_code == 303
             video = (await client.get("/videos/101")).text
-            assert "Learnings from this video" in video and 'href="/learnings/learning-one"' in video
-            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/learnings/learning-one"}
-            assert (await client.post("/ideas/learning-one/delete", headers=here)).status_code == 404
-            done = await client.post("/learnings/learning-one/delete", headers=here, follow_redirects=False)
-            assert done.headers["location"].startswith("/learnings?msg=")
+            assert "Gold from this video" in video and 'href="/gold/learning-one"' in video
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/gold/learning-one"}
+            assert (await client.post("/gold/notes-one/delete", headers=here)).status_code == 404
+            done = await client.post("/gold/learning-one/delete", headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/gold?msg=")
             assert not (vault / "Inbox/learnings/learning-one.md").exists()
             assert "[[learning-one]]" not in (vault / "Inbox/ideas/idea-one.md").read_text()
             history = (await client.get("/runs")).text
@@ -265,24 +275,80 @@ def test_events_page_groups_by_date_and_offers_a_calendar_file(sample, monkeypat
 
     async def check():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
-            listing = (await client.get("/events")).text
-            assert "<h1>Events</h1>" in listing and 'href="/events" aria-current="page"' in listing
+            listing = (await client.get("/gold?kind=event")).text
+            assert "<h1>Gold</h1>" in listing and 'href="/gold" aria-current="page"' in listing
+            assert 'aria-label="Sort"' not in listing  # events keep their date order
             assert listing.index("Coming up") < listing.index("Design week") < listing.index(">Past<") < listing.index("Old strike")
             assert "Milan, Italy" in listing and "Jun 1983" in listing and "Add to calendar" in listing
-            past = (await client.get("/events?status=past")).text
+            past = (await client.get("/gold?kind=event&status=past")).text
             assert "Old strike" in past and "Design week" not in past.split('class="list-pane"')[1]
-            assert "Add to calendar" not in (await client.get("/events/event-old-strike")).text
-            ics = await client.get("/events/event-design-week/calendar.ics")
+            assert "Add to calendar" not in (await client.get("/gold/event-old-strike")).text
+            ics = await client.get("/gold/event-design-week/calendar.ics")
             assert ics.status_code == 200 and ics.headers["content-type"].startswith("text/calendar")
             assert f"DTSTART;VALUE=DATE:{soon.replace('-', '')}" in ics.text and "LOCATION:Milan\\, Italy" in ics.text
-            assert (await client.get("/events/event-old-strike/calendar.ics")).status_code == 404
-            assert (await client.get("/events/idea-one")).status_code == 404
+            assert (await client.get("/gold/event-old-strike/calendar.ics")).status_code == 404
+            assert (await client.get("/gold/idea-one/calendar.ics")).status_code == 404
             video = (await client.get("/videos/101")).text
-            assert "Events in this video" in video and 'href="/events/event-design-week"' in video
-            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/events/event-old-strike"}
-            done = await client.post("/events/event-old-strike/delete", headers=here, follow_redirects=False)
-            assert done.headers["location"].startswith("/events?msg=")
+            assert "Gold from this video" in video and 'href="/gold/event-design-week"' in video
+            here = {"Origin": "http://127.0.0.1:8740", "Referer": "http://127.0.0.1:8740/gold/event-old-strike"}
+            done = await client.post("/gold/event-old-strike/delete?kind=event", headers=here, follow_redirects=False)
+            assert done.headers["location"].startswith("/gold?kind=event&msg=")
             assert not (vault / "Inbox/events/event-old-strike.md").exists()
             history = (await client.get("/runs")).text
             assert "Deleted an event" in history and "Event deleted." in history
+    asyncio.run(check())
+
+
+def test_sources_label_says_creators_only_when_they_differ():
+    """27 videos from 18 creators: support counts creators, the tiles count videos."""
+    strip = web.templates.env.get_template("_macros.html").module.source_strip
+    tiles = [{"name": f"video-{n}", "title": "t", "kind": "video"} for n in range(27)]
+    html = str(strip({"sources": [t["name"] for t in tiles], "source_tiles": tiles, "support": 18}))
+    assert "+21" in html and '<span class="support">27 videos</span>' in html and "from 18 creators" in html
+    html = str(strip({"sources": ["video-0"], "source_tiles": tiles[:1], "support": 1}))
+    assert '<span class="support">1 video</span>' in html and "creator" not in html
+    note = [{"name": "some-note", "title": "some-note", "kind": "note"}]
+    assert '<span class="support">1 source</span>' in str(strip({"sources": ["some-note"], "source_tiles": note, "support": 1}))
+
+
+def test_gold_filters_and_sorting(sample):
+    """Gold lists ideas, learnings and events together: filter by kind (To try = ideas and learnings
+    with a Try it) and status, sort by sources or by date."""
+    vault = sample
+    (vault / "Resources/commonplace/videos/video-two.md").write_text('---\ncreator: ann\n---\n# Two\n')
+    (vault / "Resources/commonplace/videos/video-three.md").write_text('---\ncreator: bob\n---\n# Three\n')
+    (vault / "Inbox/learnings").mkdir()
+    (vault / "Inbox/learnings/learning-wins.md").write_text(
+        '---\ndescription: Wins build confidence\nstatus: trying\nupdated: 2026-10-01\nsources:\n  - "[[video-two]]"\n'
+        '  - "[[video-three]]"\n---\n# Confidence grows from your own wins\n\n## Try it\n\n- Keep a list of wins ([[video-two]])\n')
+    (vault / "Inbox/learnings/learning-sleep.md").write_text(
+        '---\ndescription: Sleep\nstatus: new\nupdated: 2026-10-25\nsources:\n  - "[[video-two]]"\n---\n# Sleep helps memory\n')
+    rows = lambda html: html.split('class="list-pane"')[1].split("</section>")[0]
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://127.0.0.1:8740") as client:
+            everything = (await client.get("/gold")).text
+            listed = rows(everything)
+            # Most sources first: the learning from two creators, then the rest.
+            assert listed.index("Confidence grows") < listed.index("Sleep helps")
+            assert listed.index("Confidence grows") < listed.index("Try this idea")
+            # Each row says what it is: the learning with a Try it has both badges, the idea only To try.
+            wins = listed.split("Confidence grows")[0].rsplit('class="row idea-row"', 1)[1]
+            assert "#i-bulb" in wins and 'class="kind kind-try"' in wins
+            idea = listed.split("Try this idea")[0].rsplit('class="row idea-row"', 1)[1]
+            assert "#i-bulb" not in idea and 'class="kind kind-try"' in idea
+            assert 'aria-label="Filter by status"' in everything  # "new" and "trying": two statuses, so chips
+            for label in ("All <span", "Learnings <span", "To try <span", "Most sources", "Newest"):
+                assert label in everything, label
+            newest = rows((await client.get("/gold?sort=date")).text)
+            assert newest.index("Sleep helps") < newest.index("Confidence grows")  # updated 25 Oct before 1 Oct
+            to_try = rows((await client.get("/gold?kind=try")).text)
+            assert "Confidence grows" in to_try and "Try this idea" in to_try and "Sleep helps" not in to_try
+            trying = (await client.get("/gold?kind=learning&status=trying")).text
+            assert "Confidence grows" in rows(trying) and "Sleep helps" not in rows(trying)
+            assert 'href="/gold/learning-wins?kind=learning&amp;status=trying"' in trying
+            searched = rows((await client.get("/gold?q=sleep")).text)
+            assert "Sleep helps" in searched and "Confidence grows" not in searched
+            assert "Nothing matches" in (await client.get("/gold?q=nothing-like-this")).text
+            assert (await client.get("/gold?kind=bogus&sort=bogus")).status_code == 200
     asyncio.run(check())

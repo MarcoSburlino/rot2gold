@@ -112,7 +112,7 @@
       try {
         const status = await (await fetch('/setup/status', { cache: 'no-store' })).json();
         if (status.boot !== done.dataset.restartFrom) {
-          const open = Object.assign(document.createElement('a'), { href: '/ideas', className: 'button button-primary' });
+          const open = Object.assign(document.createElement('a'), { href: '/gold', className: 'button button-primary' });
           open.textContent = `Open ${document.title.split(' · ').pop()}`;
           $('[data-restart-note]').replaceChildren(open);
           open.focus();

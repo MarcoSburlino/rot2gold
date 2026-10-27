@@ -29,6 +29,7 @@ dependencies = [
   "jinja2",
   "python-multipart",
   "markdown-it-py",
+  "mdit-py-plugins",  # footnotes in notes
   "pyyaml",
   "platformdirs",
   "tomli-w",

@@ -76,12 +76,77 @@ def test_list_ideas_and_tolerant_front_matter(vault):
     (vault / "Inbox/ideas/idea-two.md").write_text(
         "---\nsupport: 3\nupdated: 2026-10-20\nsources:\n  - \"[[video-two]]\"\n---\n# Try another\n")
     rows = ideas.list_ideas()
-    assert [r["name"] for r in rows] == ["idea-two", "idea-one"]
-    assert rows[1]["description"] == "The line credited to X: confidence comes from proof"
-    assert rows[1]["sources"] == ["video-one", "other"]
-    assert rows[1]["support"] == 2 and rows[1]["status"] == "new"
-    assert rows[0]["sources"] == ["video-two"]
+    assert [r["name"] for r in rows] == ["idea-one", "idea-two"]  # support is counted, not read: 2 sources vs 1
+    assert rows[0]["description"] == "The line credited to X: confidence comes from proof"
+    assert rows[0]["sources"] == ["video-one", "other"]
+    assert rows[0]["support"] == 2 and rows[0]["status"] == "new"
+    assert rows[1]["sources"] == ["video-two"] and rows[1]["support"] == 1
     assert notefile.read(vault / "Inbox/ideas/idea-one.md").meta["tags"] == ["idea"]
+
+
+def test_support_counts_creators_and_recount_fixes_the_file(vault):
+    """Videos by the same creator count once; recount writes that number into the item's front matter."""
+    videos = vault / "Resources/commonplace/videos"
+    videos.mkdir()
+    for name, creator in (("video-a", "ann"), ("video-b", "ann"), ("video-c", "bob")):
+        (videos / f"{name}.md").write_text(f"---\ncreator: {creator}\n---\n# {name}\n")
+    path = vault / "Inbox/ideas/idea-one.md"
+    path.write_text('---\ndescription: One\nsupport: 7\nsources:\n  - "[[video-a]]"\n  - "[[video-b]]"\n'
+                    '  - "[[video-c]]"\n  - "[[other-note]]"\n---\n# Try it\n\nsupport: in the body stays\n')
+    names = notefile.brain_names()
+    assert notefile.support(["video-a", "video-b", "video-c", "other-note"], names) == 3  # ann, bob, the note
+    assert ideas.list_ideas()[0]["support"] == 3
+    assert ideas.recount(path, names) is True
+    text = path.read_text()
+    assert "support: 3\n" in text and "support: 7" not in text and "support: in the body stays" in text
+    assert ideas.recount(path, names) is False  # already right: the file is left alone
+    path.write_text('---\ndescription: One\nsources:\n  - "[[video-c]]"\n---\n# Try it\n')
+    assert ideas.recount(path, names) is True
+    assert path.read_text().startswith('---\ndescription: One\nsupport: 1\nsources:')
+
+
+def test_gold_merge_folds_linked_ideas_into_their_learnings(vault):
+    """Gold: an idea linked to a learning becomes a line in its Try it, bringing its sources and the
+    user's notes; links follow it; pure-action and dropped ideas stay."""
+    from rot2gold import gold
+    (vault / "Inbox/learnings").mkdir()
+    (vault / "Inbox/events").mkdir()
+    learning = vault / "Inbox/learnings/learning-proof.md"
+    learning.write_text(
+        '---\ndescription: "Proof builds confidence"\ncreated: 2026-10-20\nupdated: 2026-10-20\nsupport: 1\n'
+        'sources:\n  - "[[video-a]]"\nstatus: new\ntags:\n  - learning\n---\n\n# Confidence grows from proof\n\n'
+        '> [!note] AI-generated learning.\n\nThe paragraph.\n\n## What each source adds\n\n- [[video-a]] — the line\n\n'
+        '## Use it\n\n- [[idea-stack]]\n- [[idea-other]]\n\n## Log\n\n- 2026-10-20 — created from [[video-a]]\n\n## My notes\n\n')
+    (vault / "Inbox/ideas/idea-stack.md").write_text(
+        '---\ndescription: "Stack proof"\nsupport: 2\nsources:\n  - "[[video-a]]"\n  - "[[video-b]]"\nstatus: trying\n---\n\n'
+        '# Build a stack of proof\n\n> [!note] AI-generated idea.\n\nDo the thing you doubt,\nagain and again.\n\n'
+        '## Why sources point here\n\n- [[video-a]] — first\n- [[video-b]] — second, new to the learning\n\n'
+        '## Learnings behind it\n\n- [[learning-proof]]\n\n## My notes\n\nI tried this in March.\n')
+    (vault / "Inbox/ideas/idea-other.md").write_text(
+        '---\nstatus: dropped\nsources:\n  - "[[video-a]]"\n---\n# A dropped idea\n\nText.\n\n## Learnings behind it\n\n- [[learning-proof]]\n')
+    (vault / "Inbox/ideas/idea-book.md").write_text('---\nstatus: new\nsources:\n  - "[[video-c]]"\n---\n# Read a book\n\nText.\n')
+    (vault / "Inbox/events/event-talk.md").write_text('---\nwhen: 2026\nsources:\n  - "[[video-a]]"\n---\n# A talk\n\nSee [[idea-stack|the idea]].\n')
+
+    found = gold.plan()
+    assert [(p["idea"]["name"], p["learning"]["name"], p["new_sources"]) for p in found["pairs"]] == [
+        ("idea-stack", "learning-proof", ["video-b"])]
+    assert [i["name"] for i in found["alone"]] == ["idea-book"] and [i["name"] for i in found["dropped"]] == ["idea-other"]
+
+    lines = []
+    gold.merge(lambda line, **kw: lines.append(line), today="2026-10-27")
+    text = learning.read_text()
+    assert not (vault / "Inbox/ideas/idea-stack.md").exists() and (vault / "Inbox/ideas/idea-book.md").exists()
+    assert '  - "[[video-a]]"\n  - "[[video-b]]"\nstatus: trying' in text  # its source, and the status the user set
+    assert "updated: 2026-10-27" in text and "support: 2" in text
+    assert "- [[video-a]] — the line\n- [[video-b]] — second, new to the learning\n" in text
+    assert "## Use it" not in text and "[[idea-stack]]" not in text
+    assert "## Try it\n\n- [[idea-other]]\n- **Build a stack of proof.** Do the thing you doubt, again and again.\n" in text
+    assert "## Log\n\n- 2026-10-27 — merged in the idea “Build a stack of proof”: its action is under Try it, with 1 more source\n" in text
+    assert "From the idea “Build a stack of proof”:\n\nI tried this in March." in text
+    assert ideas.list_items("learning")[0]["try_it"] is True
+    assert "See [[learning-proof|the idea]]." in (vault / "Inbox/events/event-talk.md").read_text()
+    assert lines == ["merged idea idea-stack into learning-proof; links updated in event-talk.md"]
+    assert gold.plan()["pairs"] == []  # running it again changes nothing
 
 
 def test_v2_to_v3_without_backup(tmp_path, monkeypatch):
@@ -243,4 +308,4 @@ def test_event_timing_and_date_order():
         assert ideas.event_timing(when, until, today) == timing, (when, until)
     items = [{"name": n, "when": w, "until": "", "timing": ideas.event_timing(w, "", today)}
              for n, w in (("a", "1983"), ("b", "2026-12-01"), ("c", ""), ("d", "2026-11-02"), ("e", "2026-09-30"))]
-    assert [i["name"] for i in ideas._sort_events(items)] == ["d", "b", "e", "a", "c"]
+    assert [i["name"] for i in ideas.sort_events(items)] == ["d", "b", "e", "a", "c"]

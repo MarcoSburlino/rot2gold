@@ -200,6 +200,23 @@ def test_direct_ideas_create_then_update_with_a_new_source(local_vault, monkeypa
     assert "- [[video-b]] — also says so" in text and "new support: [[video-b]]" in text and "Mine, keep it." in text
 
 
+def test_direct_learning_gets_a_try_it_section_that_grows():
+    """Gold: a learning carries what its sources suggest doing; an update adds only new actions, before the Log."""
+    item = {"title": "Spacing beats cramming", "description": "d", "summary": "s", "topic_tags": [],
+            "try_it": ["Review tomorrow ([[video-a]])", "- Review tomorrow ([[video-a]])", " "]}
+    text = direct.new_item(item, "learning", [{"note": "video-a", "line": "says so"}], {}, "2026-10-27")
+    assert "## Try it\n\n- Review tomorrow ([[video-a]])\n\n## Log" in text  # blank and repeated lines dropped
+    assert "## Try it" not in direct.new_item(item | {"try_it": []}, "learning", [{"note": "video-a", "line": "x"}], {}, "2026-10-27")
+    assert "## Try it" not in direct.new_item(item, "idea", [{"note": "video-a", "line": "x"}], {}, "2026-10-27")
+    bare = direct.new_item(item | {"try_it": []}, "learning", [{"note": "video-a", "line": "x"}], {}, "2026-10-27")
+    more = {"try_it": ["Review tomorrow ([[video-a]])", "Use flashcards ([[video-b]])"]}
+    updated = direct.update_item(bare, "learning", [{"note": "video-b", "line": "y"}], {}, "2026-10-28", more)
+    assert updated.index("## Try it") < updated.index("## Log")
+    assert "- Review tomorrow ([[video-a]])\n- Use flashcards ([[video-b]])" in updated
+    again = direct.update_item(updated, "learning", [{"note": "video-c", "line": "z"}], {}, "2026-10-29", more)
+    assert again.count("Use flashcards") == 1  # an action already there is not added twice
+
+
 def test_direct_mode_ignores_a_skip_for_a_post_with_speech(local_vault, monkeypatch):
     vault, con = local_vault
     con.execute("INSERT INTO segments (post_id, idx, start, end, text) VALUES ('1', 0, 0, 5, ?)",

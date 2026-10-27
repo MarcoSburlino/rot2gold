@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, post_pill, idea_pill, thumb %}
+{% from "_macros.html" import icon, post_pill, idea_pill, thumb, kind_tags %}
 {% set title = note.title if note else ('@' ~ post.creator if post.creator else 'Post ' ~ post.id) %}
 {% block title %}{{ title }} · {{ APP_NAME }}{% endblock %}
 
@@ -57,41 +57,21 @@
       {% endif %}
 
       <section class="rail-section">
-        <h2 class="rail-title">Ideas from this video</h2>
-        {% if related_ideas %}
+        <h2 class="rail-title">Gold from this video</h2>
+        {% if related %}
           <ul class="mini-list">
-            {% for idea in related_ideas %}
-              <li><a href="/ideas/{{ idea.name }}">{{ idea.title }}</a> {{ idea_pill(idea.status) }}</li>
+            {% for item in related %}
+              <li class="gold-mini">
+                {{ kind_tags(item) }}
+                <a href="/gold/{{ item.name }}">{{ item.title }}</a>
+                {% if item.kind == 'event' %}<span class="muted num">{{ item.when|event_date(item.until) }}</span>{% else %}{{ idea_pill(item.status) }}{% endif %}
+              </li>
             {% endfor %}
           </ul>
         {% else %}
           <p class="muted">None yet.</p>
         {% endif %}
       </section>
-
-      <section class="rail-section">
-        <h2 class="rail-title">Learnings from this video</h2>
-        {% if related_learnings %}
-          <ul class="mini-list">
-            {% for learning in related_learnings %}
-              <li><a href="/learnings/{{ learning.name }}">{{ learning.title }}</a> {{ idea_pill(learning.status) }}</li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="muted">None yet.</p>
-        {% endif %}
-      </section>
-
-      {% if related_events %}
-        <section class="rail-section">
-          <h2 class="rail-title">Events in this video</h2>
-          <ul class="mini-list">
-            {% for event in related_events %}
-              <li><a href="/events/{{ event.name }}">{{ event.title }}</a> <span class="muted num">{{ event.when|event_date(event.until) }}</span></li>
-            {% endfor %}
-          </ul>
-        </section>
-      {% endif %}
 
       {% if images or segments %}
         <section class="rail-section">

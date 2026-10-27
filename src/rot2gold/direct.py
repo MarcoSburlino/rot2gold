@@ -35,6 +35,7 @@ ITEM = {"type": "object", "properties": {
     "action": {"type": "string", "enum": ["create", "update"]}, "file": {"type": "string"},
     "title": {"type": "string"}, "description": {"type": "string"}, "summary": {"type": "string"},
     "when": {"type": "string"}, "until": {"type": "string"}, "where": {"type": "string"}, "topic_tags": LIST,
+    "try_it": LIST,
     "sources": {"type": "array", "items": {"type": "object", "properties": {
         "note": {"type": "string"}, "line": {"type": "string"}}}}}}
 IDEAS_SCHEMA = {"type": "object", "properties": {"items": {"type": "array", "items": ITEM},
@@ -251,15 +252,6 @@ def note_digest(path: Path, limit: int = 1500) -> str:
     return text[:limit]
 
 
-def _support(sources: list[str], names: dict) -> int:
-    """Independent sources: two notes by the same creator count once."""
-    creators = set()
-    for s in sources:
-        meta = notefile.read(names[s], head_only=True).meta if s in names else {}
-        creators.add(str(meta.get("creator") or s))
-    return len(creators)
-
-
 def _split(text: str) -> tuple[dict, str]:
     if text.startswith("---\n") and (end := text.find("\n---\n", 4)) != -1:
         return yaml.safe_load(text[4:end]) or {}, text[end + 5:]
@@ -297,23 +289,33 @@ def new_item(item: dict, kind: str, sources: list[dict], names: dict, today: str
     if kind == "event":
         meta |= {k: (item.get(k) or "") if DATE.fullmatch(item.get(k) or "") or k == "where" else ""
                  for k in ("when", "until", "where")}
-    meta |= {"support": _support(links, names), "sources": [f"[[{s}]]" for s in links], "status": "new",
+    meta |= {"support": notefile.support(links, names), "sources": [f"[[{s}]]" for s in links], "status": "new",
              "tags": [kind] + [t for t in (tag(x) for x in item.get("topic_tags", [])[:2]) if t]}
+    actions = _try_lines(item) if kind == "learning" else []
     body = [f"# {item['title']}", "", CALLOUTS[kind], "", item.get("summary", "").strip(), "", SOURCE_SECTIONS[kind], "",
-            *[f"- [[{s['note']}]] — {s['line'].strip()}" for s in sources], "", "## Log", "",
+            *[f"- [[{s['note']}]] — {s['line'].strip()}" for s in sources], "",
+            *(["## Try it", "", *actions, ""] if actions else []), "## Log", "",
             f"- {today} — created from " + ", ".join(f"[[{s}]]" for s in links), "", "## My notes", ""]
     return _join(meta, "\n" + "\n".join(body))
 
 
-def update_item(text: str, kind: str, sources: list[dict], names: dict, today: str) -> str | None:
-    """Add new sources to an existing item; None if nothing is new. Title, status and the user's notes stay."""
+def _try_lines(item: dict) -> list[str]:
+    """A learning's "## Try it" lines: what its sources suggest doing, each once."""
+    lines = [f"- {line.strip().removeprefix('- ').strip()}" for line in item.get("try_it") or [] if line.strip(" -")]
+    return list({line.lower(): line for line in reversed(lines)}.values())[::-1]
+
+
+def update_item(text: str, kind: str, sources: list[dict], names: dict, today: str, item: dict | None = None) -> str | None:
+    """Add new sources (and, for a learning, new Try it lines) to an existing item; None if no source is new.
+    Title, status and the user's notes stay."""
+    item = item or {}
     meta, body = _split(text)
     have = [str(s).strip("[]") for s in (meta.get("sources") or [])]
     fresh = [s for s in sources if s["note"] not in have]
     if not fresh:
         return None
     meta["sources"] = [f"[[{s}]]" for s in have + [s["note"] for s in fresh]]
-    meta["support"] = _support(have + [s["note"] for s in fresh], names)
+    meta["support"] = notefile.support(have + [s["note"] for s in fresh], names)
     meta["updated"] = today
     lines = body.splitlines()
     heading = SOURCE_SECTIONS[kind]
@@ -325,6 +327,15 @@ def update_item(text: str, kind: str, sources: list[dict], names: dict, today: s
     start, end = found
     last = max((i for i in range(start + 1, end) if lines[i].startswith("- ")), default=start + 1)
     lines[last + 1:last + 1] = [f"- [[{s['note']}]] — {s['line'].strip()}" for s in fresh]
+    if kind == "learning" and (actions := _try_lines(item)):
+        if _section(lines, "## Try it") is None:  # a new section goes just before the Log
+            log = _section(lines, "## Log")
+            at = log[0] if log else len(lines)
+            lines[at:at] = ["## Try it", "", ""]
+        start, end = _section(lines, "## Try it")
+        have_lines = {line.strip().lower() for line in lines[start + 1:end]}
+        last = max((i for i in range(start + 1, end) if lines[i].startswith("- ")), default=start + 1)
+        lines[last + 1:last + 1] = [a for a in actions if a.lower() not in have_lines]
     start, end = _ensure_section(lines, "## Log")
     first = next((i for i in range(start + 1, end) if lines[i].strip()), start + 1)
     lines.insert(first, f"- {today} — new support: " + ", ".join(f"[[{s['note']}]]" for s in fresh))
@@ -375,7 +386,7 @@ def find_ideas(con, batch: list[str], needs: dict, known: dict, cfg: dict, folde
         name = (item.get("file") or "").removesuffix(".md")
         if item.get("action") == "update" and name in existing:
             current = target_dir / f"{name}.md" if (target_dir / f"{name}.md").is_file() else existing[name]
-            text = update_item(current.read_text(), kind, sources, names, today)
+            text = update_item(current.read_text(), kind, sources, names, today, item)
             if text:
                 (target_dir / f"{name}.md").write_text(text)
                 report["updated"].append(str(target_dir / f"{name}.md"))

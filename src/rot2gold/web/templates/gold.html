@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, idea_pill, source_strip, distinct, chip_nav, kind_tags %}
+{% block title %}{{ selected.title ~ ' · ' if detail_page and selected else '' }}Gold · {{ APP_NAME }}{% endblock %}
+
+{% block main %}
+  <header class="page-head">
+    <div>
+      <h1>Gold</h1>
+      <p class="lede">What your saved videos taught, what they suggest you try, and what they report or announce, combined across the videos that say the same thing.</p>
+    </div>
+  </header>
+
+  {% if unchecked %}
+    <div class="banner banner-action">
+      <p>{{ unchecked }} {{ "note hasn't" if unchecked == 1 else "notes haven't" }} been checked for gold yet. Each Extract checks some of them.</p>
+      <button type="button" class="button button-small" data-dialog="find-ideas">Check them now</button>
+    </div>
+  {% endif %}
+
+  {# Kinds as tabs; sorting and search on the same line; status chips only when they tell items apart. #}
+  <div class="gold-bar">
+    {% if kind_tabs %}
+      <nav class="gold-tabs" aria-label="Kind">
+        {% for tab in kind_tabs %}
+          <a class="gold-tab" href="{{ tab.href }}" {% if tab.current %}aria-current="true"{% endif %}>
+            {{ tab.label }} <span class="num">{{ tab.count }}</span>
+          </a>
+        {% endfor %}
+      </nav>
+    {% endif %}
+    <div class="gold-tools">
+      {% if sort_chips %}
+        <nav class="segmented" aria-label="Sort">
+          {% for option in sort_chips %}
+            <a class="segment" href="{{ option.href }}" {% if option.current %}aria-current="true"{% endif %}>{{ option.label }}</a>
+          {% endfor %}
+        </nav>
+      {% endif %}
+      <form method="get" action="/gold" class="search" role="search">
+        {% for key in ('kind', 'status', 'sort') if f[key] %}
+          <input type="hidden" name="{{ key }}" value="{{ f[key] }}">
+        {% endfor %}
+        <label class="visually-hidden" for="gold-search">Search gold</label>
+        {{ icon('search') }}
+        <input id="gold-search" type="search" name="q" value="{{ f.q }}" placeholder="Search gold">
+      </form>
+    </div>
+  </div>
+  {% if status_chips %}
+    <div class="toolbar">
+      {{ chip_nav(status_chips, 'Filter by ' ~ ('date' if f.kind == 'event' else 'status')) }}
+    </div>
+  {% endif %}
+
+  {% if rows or selected %}
+    <div class="ideas-layout" data-view="{{ 'detail' if detail_page else 'list' }}">
+      <section class="list-pane" aria-label="Gold" data-list="/gold{{ keep }}">
+        {% if rows %}
+          <ul class="rows">
+            {% for item in rows %}
+              {% if f.kind == 'event' and not f.status and (loop.first or loop.previtem.timing != item.timing) %}
+                <li class="rows-label section-label">{{ groups[item.timing] }}</li>
+              {% endif %}
+              <li>
+                <a class="row idea-row" href="/gold/{{ item.name }}{{ keep }}"
+                   {% if selected and selected.name == item.name %}aria-current="true"{% endif %}>
+                  {{ kind_tags(item, hide=f.kind) }}
+                  <span class="row-top">
+                    <span class="row-title">{{ item.title }}</span>
+                    {{ idea_pill(item.status) }}
+                  </span>
+                  {% if item.kind == 'event' %}
+                    <span class="row-when{% if item.timing == 'upcoming' %} row-when-upcoming{% endif %}">{{ item.when|event_date(item.until) }}{% if item.where %} · {{ item.where }}{% endif %}</span>
+                  {% endif %}
+                  {{ source_strip(item) }}
+                  {% set d = distinct(item.description, item.title) %}
+                  {% if d %}<span class="row-meta">{{ d }}</span>{% endif %}
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="empty">Nothing matches. <a href="/gold">Show all gold</a></p>
+        {% endif %}
+      </section>
+
+      {% if selected %}
+        {% set one = selected.kind %}
+        <article class="reading-pane" aria-labelledby="idea-title">
+          <a class="back-link" href="/gold{{ keep }}">{{ icon('back') }} All gold</a>
+          <div class="reading-head">
+            <h2 id="idea-title" class="reading-title">{{ selected.title }}</h2>
+            {% if removal %}
+              <details class="menu" data-menu>
+                <summary class="icon-button" aria-label="More actions for this {{ one }}">{{ icon('more') }}</summary>
+                <div class="menu-list">
+                  <button type="button" class="menu-item menu-item-danger" data-dialog="delete-idea">Delete {{ one }}…</button>
+                </div>
+              </details>
+            {% endif %}
+          </div>
+          <p class="meta-line">
+            {{ kind_tags(selected) }}
+            {{ idea_pill(selected.status) }}
+            {% if selected.kind == 'event' %}
+              <span class="num">{{ selected.when|event_date(selected.until) }}</span>
+              {% if selected.where %}<span>{{ selected.where }}</span>{% endif %}
+              {% if selected.timing == 'upcoming' %}<span>coming up</span>{% endif %}
+            {% else %}
+              <span>updated {{ selected.updated or selected.created or 'unknown' }}</span>
+            {% endif %}
+          </p>
+          {{ source_strip(selected, open=True) }}
+          <div class="reading-actions">
+            {% if selected.obsidian %}<a class="button button-primary" href="{{ selected.obsidian }}">{{ icon('external') }} Open in Obsidian</a>{% endif %}
+            {% if calendar %}<a class="button" href="/gold/{{ selected.name }}/calendar.ics" download>{{ icon('calendar') }} Add to calendar</a>{% endif %}
+            <p class="hint">{{ status_hints[selected.kind]|safe }}</p>
+          </div>
+          {% set d = distinct(selected.description, selected.title) %}
+          {% if d %}<p class="description">{{ d }}</p>{% endif %}
+          <div class="prose">{{ html|safe }}</div>
+        </article>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="empty">
+      {% if anything %}
+        <p>Nothing matches. <a href="/gold">Show all gold</a></p>
+      {% else %}
+        <p>Nothing here yet. Press <strong>Extract new videos</strong> in the sidebar: what your videos teach, suggest and announce appears here.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block dialogs %}
+{% if removal %}
+{% set one = selected.kind %}
+{% set videos = removal.videos %}
+<dialog id="delete-idea" class="dialog" aria-labelledby="delete-idea-title">
+  <form method="post" action="/gold/{{ selected.name }}/delete{{ keep }}" class="dialog-form" data-focus-selected>
+    {% if neighbour %}<input type="hidden" name="then" value="{{ neighbour }}">{% endif %}
+    <div class="dialog-head">
+      <h2 id="delete-idea-title">Delete this {{ one }}?</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body stack">
+      <p>“{{ selected.title }}” is deleted from your vault.</p>
+      {% if videos %}
+        <fieldset class="delete-videos">
+          <legend class="visually-hidden">Its videos</legend>
+          <label class="check">
+            <input type="checkbox" name="with_videos" value="1">
+            <span>Also delete {{ 'its video' if videos|length == 1 else 'its ' ~ videos|length ~ ' videos' }}: their notes are removed from your vault</span>
+          </label>
+          <ul class="plain-list delete-list">
+            {% for v in videos %}<li>{{ v.title }}</li>{% endfor %}
+          </ul>
+        </fieldset>
+      {% endif %}
+      {% if removal.kept %}
+        <p class="muted">
+          {{ 'This video stays' if removal.kept|length == 1 else 'These videos stay' }} because
+          {{ 'it supports' if removal.kept|length == 1 else 'they support' }} other gold:
+          {% for v in removal.kept %}{{ v.title }} (“{{ v.other_idea }}”){% if not loop.last %}; {% endif %}{% endfor %}.
+        </p>
+      {% endif %}
+      <p class="muted">Deleted videos stay listed in the app as skipped, so Extract won't bring them back.{% if vault_git() %} You can undo this from History.{% endif %}</p>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="submit" class="button button-danger" data-busy-label="Deleting…" {% if active %}disabled title="A run is in progress"{% endif %}>Delete {{ one }}</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% if unchecked %}
+<dialog id="find-ideas" class="dialog" aria-labelledby="find-ideas-title">
+  <form method="post" action="/ideas/rebuild" class="dialog-form">
+    <div class="dialog-head">
+      <h2 id="find-ideas-title">Check notes for gold</h2>
+      <button type="button" class="icon-button" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="dialog-body stack">
+      <p>The AI reads {{ 'the note' if unchecked == 1 else 'the ' ~ unchecked ~ ' notes' }} not checked yet and adds what {{ 'it teaches, suggests or announces' if unchecked == 1 else 'they teach, suggest or announce' }}.
+        If it reaches a usage limit it stops, and next time it carries on where it left off.</p>
+      <details class="advanced">
+        <summary>Only some themes</summary>
+        <fieldset class="theme-list">
+          <legend class="visually-hidden">Themes</legend>
+          {% for theme in themes if theme.unchecked %}
+            <label class="check theme">
+              <input type="checkbox" name="themes" value="{{ theme.name }}">
+              <span>{{ theme.name }}</span>
+              <span class="num muted">{{ theme.unchecked }}</span>
+            </label>
+          {% endfor %}
+        </fieldset>
+        <small class="muted">Tick none to check every theme.</small>
+      </details>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="button" data-close>Cancel</button>
+      <button type="submit" class="button button-primary" {% if active %}disabled title="A run is in progress"{% endif %}>Check for gold</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

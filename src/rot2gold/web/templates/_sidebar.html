@@ -2,19 +2,13 @@
 {% set path = request.url.path %}
 <aside id="sidebar" class="sidebar" aria-label="Navigation and collections">
   <div class="sidebar-head">
-    <a class="brand brand-sidebar" href="/ideas">{{ wordmark() }}</a>
+    <a class="brand brand-sidebar" href="/gold">{{ wordmark() }}</a>
     <button type="button" class="icon-button sidebar-close" data-close-sidebar aria-label="Close menu">{{ icon('x') }}</button>
   </div>
 
   <nav class="nav" aria-label="Main">
-    <a href="/ideas" {% if path.startswith('/ideas') or path == '/' %}aria-current="page"{% endif %}>
-      Ideas <span class="count">{{ idea_count }}</span>
-    </a>
-    <a href="/learnings" {% if path.startswith('/learnings') %}aria-current="page"{% endif %}>
-      Learnings <span class="count">{{ learning_count }}</span>
-    </a>
-    <a href="/events" {% if path.startswith('/events') %}aria-current="page"{% endif %}>
-      Events <span class="count">{{ event_count }}</span>
+    <a href="/gold" {% if path.startswith('/gold') or path.startswith('/ideas') or path == '/' %}aria-current="page"{% endif %}>
+      Gold <span class="count">{{ gold_count }}</span>
     </a>
     <a href="/videos" {% if path.startswith('/videos') %}aria-current="page"{% endif %}>
       Videos <span class="count">{{ post_count }}</span>

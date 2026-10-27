@@ -1,6 +1,6 @@
 # Components
 
-Icons: inline SVG from `templates/_icons.html` (16px, 1.5px stroke, `currentColor`, `aria-hidden="true"`; buttons with only an icon carry `aria-label`). Set: plus, x, chevron, back, more (⋯), menu, external, calendar, check, stop, play, note, search, gear. A new glyph must match: 24 grid, 1.5 stroke, round caps and joins.
+Icons: inline SVG from `templates/_icons.html` (16px, 1.5px stroke, `currentColor`, `aria-hidden="true"`; buttons with only an icon carry `aria-label`). Set: plus, x, chevron, back, more (⋯), menu, external, calendar, check, stop, play, note, search, gear, bulb, target. A new glyph must match: 24 grid, 1.5 stroke, round caps and joins.
 
 **Buttons.** Height 34 (sm 28), r-control. Primary: gold fill, `--on-accent` text, weight 600; on hover gold-strong plus `--glow-soft`. Use one per view. Secondary: `--surface-raised` fill, `--border-strong` border, cream text. Quiet: no border, text-2, hover `--hover`. Destructive: red text and a red outline, never filled. Pressed: 1px down. Disabled: 45% opacity. Label says exactly what happens ("Extract new videos", "Save settings", "Check for ideas").
 
@@ -8,7 +8,7 @@ Icons: inline SVG from `templates/_icons.html` (16px, 1.5px stroke, `currentColo
 
 **Sidebar.** `--bg-sidebar`; sections separated by 24 spacing, not boxes.
 - Brand: the wordmark `Rot<b>2</b>Gold` (display 20/700, gold "2").
-- Nav row: icon-less text (text-2) + count (mono xs, text-3) right-aligned. The current page gets a `--hover` tint, cream text 600, a 3px glowing gold bar on the left, and its count in gold. Ideas, Learnings, Events, Videos, History.
+- Nav row: icon-less text (text-2) + count (mono xs, text-3) right-aligned. The current page gets a `--hover` tint, cream text 600, a 3px glowing gold bar on the left, and its count in gold. Gold, Videos, History.
 - Section label: "Collections" (label style) + quiet icon button (plus).
 - Connection row: name (link to its videos, 600) · more-button (⋯, opens its dialog). Line 2 (sm, text-2): "111 videos", plus "· 3 waiting for a note" in gold when some are. Line 3 (xs, text-3, links to the run): "Last extract yesterday: 7 notes, 0 ideas" / "nothing new"; failed or interrupted in alert. A failed listing shows the error in alert, 3 lines max, and an "Update downloaders" small button.
 - Extract block: one primary button, full width, "Extract new videos" (all collections), with a hint below (xs text-3) saying what it does. No checkboxes, no options: per-collection extract lives in the collection's card. Hidden while a run is active (the live widget takes its place).
@@ -16,6 +16,10 @@ Icons: inline SVG from `templates/_icons.html` (16px, 1.5px stroke, `currentColo
 - Footer: quiet gear button "Settings" · quiet "Quit".
 
 **Filter chips.** Pill, sm 500, `--border-strong` border, no fill, text-2; count in mono 2xs after the label. Hover: `--hover`. Current: solid cream fill with dark text. Show a chip only when its group has items (no "Trying 0"); hide the row when only "All" is left. A removable filter ("In Material ×") is a gold-tinted chip with an x icon.
+
+**Gold bar.** The kinds (All · Learnings · To try · Events) are tabs on a hairline, styled like the Settings tabs, with the count in mono 2xs (gold when open). On the same line, right-aligned: a segmented switch for sorting (Most sources · Newest: a pill with a 1px `--border-strong` border, the pick raised on `--surface-raised` in cream) and the search field. Status chips go on a line below, only when at least two statuses have items. Under 768 px the tabs keep the hairline and sorting and search take the next line.
+
+**Kind badges.** What a Gold item is, before its title (rows, reading pane, video rail): xs 500 text with a 14px icon. Learning: bulb, text-2. To try: target, gold (it asks for action). Event: calendar, text-2. A learning with a Try it has both. A tab hides the badge it already implies.
 
 **Plain words.** Pipeline terms stay out of the main UI: "videos" not "posts", "History" not "runs", "waiting for a note" not "listed/fetched/processed", "What was said" not "transcript segments". Token counts, batches, run numbers and commit hashes live in a folded "Details".
 

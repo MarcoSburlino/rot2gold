@@ -120,6 +120,41 @@ def cmd_runs(args) -> None:
               + (f"\n      {r['error']}" if r["error"] else ""))
 
 
+def cmd_gold(args) -> None:
+    """r2g gold merge [--dry-run]: fold ideas into the learnings they put into practice."""
+    from . import gold, notes
+    found = gold.plan()
+    for pair in found["pairs"]:
+        idea, learning = pair["idea"], pair["learning"]
+        print(f"{idea['name']}\n  → {learning['name']}\n    “{idea['title']}” goes under Try it in “{learning['title']}”"
+              + (f"\n    brings {len(pair['new_sources'])} more sources: {', '.join(pair['new_sources'])}" if pair["new_sources"] else "")
+              + (f"\n    also linked, not merged into: {'; '.join(pair['also_linked'])}" if pair["also_linked"] else ""))
+    for idea in found["dropped"]:
+        print(f"{idea['name']}\n  stays: you set it to dropped")
+    for idea in found["alone"]:
+        print(f"{idea['name']}\n  stays: no learning behind it, so it is a pure action")
+    print(f"\n{len(found['pairs'])} ideas merge into {len({p['learning']['name'] for p in found['pairs']})} learnings;"
+          f" {len(found['alone']) + len(found['dropped'])} stay as ideas.")
+    if args.dry_run or not found["pairs"]:
+        return
+    if not args.yes and input("Merge them? Undo reverts it. [y/N] ").strip().lower() != "y":
+        raise SystemExit("nothing merged")
+    from .runs import recorded_run
+    cfg = load()
+    with recorded_run("terminal", "r2g gold merge", "gold-merge", [], cfg) as run:
+        run.report.set_stage("merge")
+        before = brain.snapshot()
+        done = gold.merge(run.report)
+        sha, changed = brain.finish(before, brain.idea_paths(), f"agent: merge {len(done)} ideas into their learnings (run {run.run_id})")
+        notes.add_commit(run.con, run.run_id, sha)
+        if sha:
+            run.report(f"vault commit {sha}: {len(changed)} files")
+        run.counts["learnings_updated"] = len({p["learning"]["name"] for p in done})
+        run.report.set_stage("done")
+    row = db.connect().execute("SELECT status, error FROM runs WHERE id = ?", (run.run_id,)).fetchone()
+    print(f"run {run.run_id} {row['status']}" + (f": {row['error']}" if row["error"] else f": commit {sha or '-'}"))
+
+
 def cmd_ideas(args) -> None:
     con = db.connect()
     if args.action == "list":
@@ -315,6 +350,11 @@ def main() -> None:
     for ip in (isub.choices["pass"], isub.choices["rebuild"]):
         ip.add_argument("--dry-run", action="store_true")
         ip.add_argument("--origin", default="terminal", choices=("terminal", "app"), help=argparse.SUPPRESS)
+    sp = sub.add_parser("gold", help="Gold: fold ideas into the learnings they put into practice")
+    gsub = sp.add_subparsers(dest="action", required=True)
+    gp = gsub.add_parser("merge", help="move each idea's action under its learning's Try it (one commit; Undo reverts it)")
+    gp.add_argument("--dry-run", action="store_true", help="only show what would merge")
+    gp.add_argument("--yes", action="store_true")
     sp = sub.add_parser("ui", help="start the app at http://127.0.0.1:8740 (the default when no command is given)")
     sp.add_argument("--no-browser", action="store_true")
     sp = sub.add_parser("setup", help="choose the vault, folders and AI in the terminal (the app asks the same on first start)")
@@ -376,6 +416,8 @@ def main() -> None:
             cmd_setup(args)
         elif args.cmd == "ideas":
             cmd_ideas(args)
+        elif args.cmd == "gold":
+            cmd_gold(args)
         elif args.cmd == "undo":
             cmd_undo(args)
         elif args.cmd == "update-downloaders":
